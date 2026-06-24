@@ -112,6 +112,7 @@ describe("mobile OTA publish scripts", () => {
     const template = await readFile(path.join(workspaceRoot, "deploy/ansible/templates/Caddyfile.j2"), "utf8");
     const apiBlock = template.slice(template.indexOf("handle_path /api/*"), template.indexOf("handle /releases*"));
     const mobileIndex = template.indexOf("handle_path /mobile-update/*");
+    const mobileBlock = template.slice(mobileIndex, template.indexOf("handle {"));
     const webShellBlock = template.slice(template.indexOf("handle {"), template.indexOf("try_files"));
 
     expect(template).not.toMatch(/\{\{ env\.domain \}\} \{\n\s+\{\{ bright_os_basic_auth_directive \}\}/);
@@ -119,7 +120,18 @@ describe("mobile OTA publish scripts", () => {
     expect(apiBlock).not.toContain("header_up Authorization");
     expect(mobileIndex).toBeGreaterThan(template.indexOf("handle /releases*"));
     expect(mobileIndex).toBeLessThan(template.indexOf("handle {"));
+    expect(mobileBlock).toContain('header /manifest.json Cache-Control "no-store"');
     expect(webShellBlock).toContain("bright_os_basic_auth_directive");
+  });
+
+  it("uses the public API endpoint for production Android bundles", async () => {
+    const deployBranch = await readFile(path.join(workspaceRoot, "deploy/scripts/deploy-branch.sh"), "utf8");
+    const buildApk = await readFile(path.join(workspaceRoot, "deploy/scripts/build-android-env-apk.sh"), "utf8");
+
+    expect(deployBranch).toContain('ANDROID_API="https://api.brightos.world"');
+    expect(deployBranch).toContain('export NEXT_PUBLIC_BRIGHT_TIMER_ANDROID_API="$ANDROID_API"');
+    expect(buildApk).toContain('ANDROID_API="https://api.brightos.world"');
+    expect(buildApk).toContain('export NEXT_PUBLIC_BRIGHT_TIMER_ANDROID_API="$ANDROID_API"');
   });
 
   it("promotes production deployment metadata into the production database path", async () => {

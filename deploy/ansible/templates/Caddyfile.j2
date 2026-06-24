@@ -20,6 +20,7 @@ http://{{ env.domain }} {
   }
 
   handle_path /mobile-update/* {
+    header /manifest.json Cache-Control "no-store"
     root * {{ bright_os_env_root }}/{{ env.path }}/mobile-update
     file_server
   }

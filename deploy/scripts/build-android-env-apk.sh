@@ -19,6 +19,11 @@ DOMAIN="${META[2]}"
 GRADLE_TASK="${META[3]}"
 RELEASE_KEY="${META[4]}"
 
+ANDROID_API="https://$DOMAIN/api"
+if [[ "$ENVIRONMENT" == "prod" ]]; then
+  ANDROID_API="https://api.brightos.world"
+fi
+
 export BRIGHT_OS_ROOT="$ROOT"
 export BRIGHT_OS_APP_VERSION="${BRIGHT_OS_APP_VERSION:-$("$NODE_BIN" -e '
 const fs = require("node:fs");
@@ -33,7 +38,7 @@ export NEXT_PUBLIC_BRIGHT_OS_BRANCH="${BRIGHT_OS_BRANCH:-}"
 export NEXT_PUBLIC_BRIGHT_OS_COMMIT="${BRIGHT_OS_COMMIT:-}"
 export NEXT_PUBLIC_BRIGHT_OS_OTA_CHANNEL="$DOMAIN/mobile-update"
 export NEXT_PUBLIC_BRIGHT_TIMER_API="/api"
-export NEXT_PUBLIC_BRIGHT_TIMER_ANDROID_API="https://$DOMAIN/api"
+export NEXT_PUBLIC_BRIGHT_TIMER_ANDROID_API="$ANDROID_API"
 
 (cd "$ROOT" && "$NPM_BIN" run app:build)
 (cd "$ROOT" && "$NPM_BIN" run app:cap:sync)
