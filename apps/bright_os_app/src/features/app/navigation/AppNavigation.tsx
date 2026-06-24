@@ -10,19 +10,17 @@ import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGrou
 import { cx } from "../appUtils";
 import { useMobileSheetDrag } from "../hooks/useMobileSheetDrag";
 import type { PrimarySectionId, SectionId } from "../appModel";
-import { navHref, navItems } from "../appModel";
+import { isPrimarySection, navHref, navItems, sectionTitle } from "../appModel";
 
 export function DesktopRail({
   expanded,
   section,
-  onSection,
   onSettings,
   onArchive,
   onLogout,
 }: {
   expanded: boolean;
   section: SectionId;
-  onSection: (section: PrimarySectionId) => void;
   onSettings: () => void;
   onArchive: () => void;
   onLogout: () => Promise<void>;
@@ -38,32 +36,7 @@ export function DesktopRail({
         <RailCollapseButton />
       </SidebarHeader>
       <SidebarContent>
-        {(["Platform", "Time"] as const).map((group) => (
-          <SidebarGroup key={group}>
-            {expanded ? <SidebarGroupLabel>{group}</SidebarGroupLabel> : null}
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {navItems.filter((item) => item.group === group).map((item) => {
-                  const Icon = item.icon;
-                  return (
-                    <SidebarMenuItem key={item.id}>
-                      <SidebarMenuButton
-                        type="button"
-                        tooltip={item.label}
-                        isActive={isActiveNavItem(item.id, section)}
-                        aria-label={item.label}
-                        onClick={() => onSection(item.id)}
-                      >
-                        <Icon aria-hidden="true" />
-                        {expanded ? <span>{item.label}</span> : null}
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        ))}
+        <PageMenu expanded={expanded} section={section} />
       </SidebarContent>
       <SidebarRail />
     </Sidebar>
@@ -84,11 +57,13 @@ export function MobileMenuButton({ onClick }: { onClick: () => void }) {
 }
 
 export function MobileProfileDrawer({
+  section,
   onClose,
   onSettings,
   onArchive,
   onLogout,
 }: {
+  section: SectionId;
   onClose: () => void;
   onSettings: () => void;
   onArchive: () => void;
@@ -165,8 +140,22 @@ export function MobileProfileDrawer({
           onArchive={() => closeThen(onArchive)}
           onLogout={() => closeThenAsync(onLogout)}
         />
+        <PageMenu expanded section={section} />
       </aside>
     </div>
+  );
+}
+
+function PageMenu({ expanded, section }: { expanded: boolean; section: SectionId }) {
+  if (!expanded) return null;
+
+  return (
+    <SidebarGroup>
+      <SidebarGroupLabel>Меню страницы</SidebarGroupLabel>
+      <SidebarGroupContent>
+        <div className="px-2 py-1.5 text-sm font-medium text-sidebar-foreground">{sectionTitle(section)}</div>
+      </SidebarGroupContent>
+    </SidebarGroup>
   );
 }
 
@@ -347,5 +336,5 @@ export function MainDock({
 }
 
 function isActiveNavItem(itemId: PrimarySectionId, section: SectionId): boolean {
-  return itemId === section;
+  return isPrimarySection(section) && itemId === section;
 }

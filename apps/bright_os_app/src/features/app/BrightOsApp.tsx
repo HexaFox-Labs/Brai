@@ -130,7 +130,6 @@ export function BrightOsApp({ initialSection = "actions" }: { initialSection?: S
       <DesktopRail
         expanded={app.desktopRailExpanded}
         section={app.section}
-        onSection={app.selectSection}
         onSettings={app.openSettingsPage}
         onArchive={() => app.selectSection("archive")}
         onLogout={app.onLogout}
@@ -167,6 +166,7 @@ export function BrightOsApp({ initialSection = "actions" }: { initialSection?: S
       />
       {app.mobileMenuOpen && isPrimarySection(app.section) ? (
         <MobileProfileDrawer
+          section={app.section}
           onClose={() => app.setMobileMenuOpen(false)}
           onSettings={app.openSettingsPage}
           onArchive={() => app.selectSection("archive")}
