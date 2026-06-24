@@ -32,6 +32,12 @@ If checks fail or an external blocker prevents commit or push, report the exact 
 
 Ignored generated files may remain local. Do not commit runtime data, build output, signing material, local caches, or generated deploy artifacts.
 
+## GitHub CLI In Codex
+
+Codex sandbox network restrictions can make `gh auth status` falsely report a GitHub CLI login
+failure. Before asking the user to re-authenticate, rerun the same `gh` command with network access
+outside the sandbox. Treat authentication as broken only if the outside-sandbox check also fails.
+
 ## Public Baseline
 
 The public repository starts from a clean baseline history. Do not push old private/bootstrap history, runtime artifacts, generated deploy output, signing material, databases, or personal notes.
