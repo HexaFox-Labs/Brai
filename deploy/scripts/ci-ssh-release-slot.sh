@@ -24,5 +24,5 @@ DEPLOY_REPO="$1"
 BRIGHT_OS_BRANCH="$2"
 
 cd "$DEPLOY_REPO"
-deploy/scripts/preview-slots.sh release "$BRIGHT_OS_BRANCH"
+bash deploy/scripts/preview-slots.sh release "$BRIGHT_OS_BRANCH"
 REMOTE
