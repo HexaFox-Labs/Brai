@@ -13,16 +13,24 @@ Read-only questions, planning, investigation without project-file changes, and e
 
 Agents must not reuse an existing unrelated `codex/*` branch just because it is the current checkout. Direct follow-ups may continue the same branch, and explicit project-owner branch instructions override the default.
 
-A pushed `codex/*` branch allocates or reuses a preview slot through `deploy/scripts/preview-slots.sh`, deploys that slot, and reports the slot URL. No push means no slot/deploy.
+A pushed `codex/*` branch allocates or reuses a preview slot through `deploy/scripts/preview-slots.sh`, deploys that slot, and reports the slot URL. If all slots `A` through `E` are occupied, the branch enters the preview queue until a slot is released. No push means no slot/deploy/queue.
 
 Local dev server URLs are agent-only verification aids. The user-facing handoff for project changes is the preview slot URL after `deploy-preview` succeeds; if CI/deploy is not complete, report that blocker instead of asking the project owner to open `localhost` or `127.0.0.1`.
+
+For implementation tasks, the final response must include the preview letter (`A` through `E`), preview URL, branch, and commit. If the preview letter or URL is missing because every slot is occupied, the response must say the branch is queued and include queue position/source when available. If it is missing for any other reason, the response must say exactly which push, CI, or deploy step blocked it. Ordinary `codex/*` branch push/deploy is standing Bright OS CI/CD automation and must not be treated as an optional manual confirmation step.
 
 Preview acceptance flow:
 
 ```text
-codex/* accepted -> merge into dev -> deploy dev -> release preview slot
+codex/* accepted -> accept-preview.sh -> PR/merge queue into dev -> deploy dev -> release preview slot
 dev accepted     -> merge into main -> production release/deploy
 ```
+
+Acceptance trigger:
+
+- If the project owner says `Принято`, `принимаю`, `accepted`, or an equivalent acceptance phrase after a preview handoff, run `deploy/scripts/accept-preview.sh <codex-branch>` immediately. Negated phrases such as `пока не принято` or `не принято` are not acceptance triggers.
+- The script is the single local acceptance entrypoint. It creates or reuses a GitHub PR into `dev` and calls `gh pr merge --merge --auto --match-head-commit <sha>` so branch protection, checks, merge queue, `deploy-dev`, metadata promotion, and preview-slot release stay in GitHub Actions.
+- After starting acceptance, monitor GitHub Actions until `dev` deploy and preview-slot release finish, or report the exact PR/check/merge-queue/deploy blocker.
 
 The development repository default branch should be `dev` once `dev` exists. If `dev` is missing during the first accepted preview, bootstrap it from the latest accepted workflow/source commit, set GitHub default branch to `dev`, then merge the accepted `codex/*` branch into `dev` through a PR so the normal promotion and slot-release jobs run.
 

@@ -46,15 +46,40 @@ Bright OS SHALL run the public branch guard before accepting source into `main`,
 ### Requirement: Task branches deploy through preview slots
 Agents working on ordinary Bright OS feature, fix, refactor, or infrastructure implementation tasks SHALL start from the latest `origin/dev` branch unless the project owner explicitly requests another base.
 
+Ordinary `codex/*` task branch pushes to `origin` and their preview deploys SHALL be treated as standing Bright OS CI/CD automation approved by the project owner, not as optional per-task manual confirmations.
+
 #### Scenario: A project-file change begins
 - **WHEN** work changes repository files
 - **THEN** the agent creates or continues an appropriate `codex/<task-slug>` branch
 - **AND** the pushed branch is deployed to a preview slot before user-facing handoff
+- **AND** the handoff names the preview slot letter and URL
+
+#### Scenario: Preview slots are full
+- **WHEN** work changes repository files
+- **AND** all preview slots `A` through `E` are occupied
+- **THEN** the pushed branch is queued for the next released preview slot
+- **AND** the handoff reports the queued state and queue position/source when available
+- **AND** the agent does not describe the task as complete until a preview slot letter and URL exist
+
+#### Scenario: Preview deployment is blocked
+- **WHEN** work changes repository files
+- **AND** the task branch cannot be pushed or deployed to a preview slot
+- **THEN** the agent reports the exact push, CI, or deploy blocker
+- **AND** the agent does not describe the task as complete
 
 #### Scenario: Preview work is accepted
 - **WHEN** the project owner accepts preview work
-- **THEN** it is merged into `dev` before production
+- **THEN** the agent runs `deploy/scripts/accept-preview.sh <codex-branch>` instead of replying with a text-only acknowledgement
+- **AND** the script creates or reuses a GitHub pull request from the preview branch into `dev`
+- **AND** the script enables merge or auto-merge for the exact pushed preview head commit
+- **AND** the agent monitors the GitHub PR, merge queue, `deploy-dev`, metadata promotion, and preview-slot release until completion or an explicit blocker is known
+- **AND** the work is merged into `dev` before production
 - **AND** `dev` is promoted to `main` only after an explicit production release or merge request
+
+#### Scenario: Preview work is not accepted yet
+- **WHEN** the project owner uses a negated acceptance phrase such as "пока не принято" or "не принято"
+- **THEN** the agent does not run the preview acceptance script
+- **AND** the preview branch remains unmerged
 
 ### Requirement: OpenSpec CLI is pinned as project tooling
 The project SHALL pin `@fission-ai/openspec` as development tooling and require the supported Bright OS Node 22 runtime for OpenSpec CLI usage.

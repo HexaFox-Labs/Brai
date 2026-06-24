@@ -14,11 +14,17 @@ Before the first project-file change for a task, branch from the latest accepted
 
 Read-only questions, planning, and investigation without project-file changes do not need a branch or preview slot.
 
+Implementation work that changes project files is not complete until the task branch is pushed, CI/deploy has assigned or reused a preview slot, and the user-facing handoff names the preview letter and URL. If all five preview slots are occupied, the branch is queued for the next released slot; report the queued status and position/source if available, but do not describe the task as complete until a slot letter and URL exist.
+
+After a preview handoff, the project owner saying `Принято`, `принимаю`, `accepted`, or an equivalent acceptance phrase is an acceptance trigger, not a conversational acknowledgement. Negated phrases such as `пока не принято` or `не принято` are not acceptance triggers. Run `deploy/scripts/accept-preview.sh <codex-branch>` immediately, then monitor the GitHub PR/merge queue, `deploy-dev`, and preview-slot release until completion or an explicit blocker/queue state is known. Do not answer with only "принято".
+
 ## Commit And Push
 
 Implementation tasks must finish with a clean tracked working tree.
 
 If a task changes project files, commit the intended tracked changes and push the task branch before handing work back, unless the user explicitly requested planning only, local-only work, no commit, or no push.
+
+For Bright OS `codex/*` task branches, pushing to `origin` and triggering the preview deployment is part of the standing CI/CD workflow approved by the project owner. Do not ask for a separate per-task push confirmation for ordinary implementation work. If the execution environment still blocks the push or deploy, report the exact blocker and leave the task marked incomplete.
 
 Before commit:
 
@@ -28,7 +34,7 @@ Before commit:
 - do not revert unrelated changes;
 - run or report relevant checks.
 
-If checks fail or an external blocker prevents commit or push, report the exact branch, tracked status, failing check, and next command instead of implying the task is complete.
+If checks fail or an external blocker prevents commit, push, or preview deploy, report the exact branch, tracked status, failing check or deploy step, and next command instead of implying the task is complete. A full preview pool is a queue state, not a failed task; keep monitoring or report the queued state when the current turn cannot wait.
 
 Ignored generated files may remain local. Do not commit runtime data, build output, signing material, local caches, or generated deploy artifacts.
 

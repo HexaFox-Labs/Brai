@@ -41,6 +41,7 @@
 - `npm run android:icons:preview` - генерация Dev/A-E Android launcher icons from canonical logo.
 - `npm run android:build:env-apk -- <flavor>` - сборка и публикация non-production Android APK flavor (`dev`, `previewA`-`previewE`) with matching web fallback.
 - `deploy/scripts/preview-slots.sh` - lock-protected preview slot registry commands.
+- `deploy/scripts/accept-preview.sh <codex-branch>` - deterministic acceptance entrypoint when the project owner accepts a preview; creates/reuses PR into `dev` and enables merge/auto-merge.
 - `npm --prefix services/timer_api test` - тесты timer API.
 - `npm --prefix services/timer_api start` - запуск timer API.
 

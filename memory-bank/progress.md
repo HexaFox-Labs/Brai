@@ -26,4 +26,5 @@
 - Accepted task merges into `dev` add a `build` ledger row and increment `Z`.
 - Promotions from `dev` to `main` add a `build` ledger row and increment `Y`.
 - Shipped APK releases add an `apk` ledger row and increment `S`.
-- Implementation tasks must finish with clean tracked status, committed and pushed, unless explicitly local-only.
+- Implementation tasks must finish with clean tracked status, committed, pushed, and deployed to a preview slot with the preview letter and URL reported, unless explicitly local-only. If all preview slots are occupied, the pushed branch is queued and remains incomplete until a slot is assigned.
+- After preview handoff, the project owner saying `Принято` or an equivalent acceptance phrase must run `deploy/scripts/accept-preview.sh <codex-branch>` and monitor PR/merge/deploy/release instead of replying with an acknowledgement. Negated phrases such as `пока не принято` do not trigger acceptance.
