@@ -1,0 +1,82 @@
+import { beforeEach, describe, expect, it } from "vitest";
+import { clientDb, getMeta } from "@/shared/storage/db";
+import {
+  enqueueTimerEvent,
+  loadCanonicalState,
+  loadHistoryCache,
+  pendingEvents,
+  saveCanonicalState,
+  saveHistoryCache,
+} from "@/shared/storage/syncStore";
+import type { TimerState } from "@/shared/types/timer";
+
+describe("sync store guards", () => {
+  beforeEach(async () => {
+    const db = clientDb();
+    await Promise.all(db.tables.map((table) => table.clear()));
+  });
+
+  it("does not overwrite canonical state with an older server revision", async () => {
+    expect(await saveCanonicalState(state(5))).toBe(true);
+    expect(await saveCanonicalState(state(4))).toBe(false);
+
+    expect((await loadCanonicalState())?.server_revision).toBe(5);
+    expect(await getMeta<number>("lastServerRevision")).toBe(5);
+  });
+
+  it("preserves event metadata in the pending queue", async () => {
+    await enqueueTimerEvent({
+      type: "stop",
+      baseServerRevision: 7,
+      metadata: { global_stop: true },
+    });
+
+    expect((await pendingEvents())[0].metadata).toEqual({ global_stop: true });
+  });
+
+  it("splits cached history across Moscow midnight", async () => {
+    await saveHistoryCache({
+      sessions: [
+        {
+          id: "session-1",
+          started_at_utc: "2026-06-12T20:30:00.000Z",
+          ended_at_utc: "2026-06-12T21:30:00.000Z",
+          duration_seconds: 3600,
+          started_date_msk: "2026-06-12",
+          started_hour_msk: 23,
+          ended_date_msk: "2026-06-13",
+          ended_hour_msk: 0,
+        },
+      ],
+      groups: {},
+    });
+
+    const history = await loadHistoryCache();
+
+    expect(history.sessions).toHaveLength(1);
+    expect(history.groups["2026-06-12"].total_seconds).toBe(1800);
+    expect(history.groups["2026-06-13"].total_seconds).toBe(1800);
+    expect(history.groups["2026-06-12"].sessions?.[0]).toMatchObject({
+      id: "session-1:2026-06-12",
+      started_at_utc: "2026-06-12T20:30:00.000Z",
+      ended_at_utc: "2026-06-12T21:00:00.000Z",
+      duration_seconds: 1800,
+    });
+    expect(history.groups["2026-06-13"].sessions?.[0]).toMatchObject({
+      id: "session-1:2026-06-13",
+      started_at_utc: "2026-06-12T21:00:00.000Z",
+      ended_at_utc: "2026-06-12T21:30:00.000Z",
+      duration_seconds: 1800,
+    });
+  });
+});
+
+function state(serverRevision: number): TimerState {
+  return {
+    server_time_utc: `2026-06-14T12:00:0${serverRevision}.000Z`,
+    server_revision: serverRevision,
+    timezone: "Europe/Moscow",
+    active_session: null,
+    elapsed_seconds: 0,
+  };
+}

@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "root": "/srv/projects/bright-os-envs",
+  "environments": {
+    "prod": {
+      "branch": "main",
+      "domain": "app.brightos.world",
+      "displayName": "Production",
+      "displayLabel": "Prod",
+      "androidApp": "Bright OS",
+      "androidFlavor": "production",
+      "applicationId": "world.brightos.bright_os_client",
+      "apiPort": 3020,
+      "serviceName": "brightos-timer-api.service",
+      "path": "prod",
+      "releaseKey": "production"
+    },
+    "dev": {
+      "branch": "dev",
+      "domain": "dev.brightos.world",
+      "displayName": "Dev",
+      "displayLabel": "Dev",
+      "androidApp": "Bright OS Dev",
+      "androidFlavor": "dev",
+      "applicationId": "world.brightos.bright_os_client.dev",
+      "apiPort": 3030,
+      "serviceName": "brightos-timer-api-dev.service",
+      "path": "dev",
+      "releaseKey": "dev"
+    },
+    "preview-a": {
+      "branch": "codex/*",
+      "domain": "a.test.brightos.world",
+      "displayName": "Preview A",
+      "displayLabel": "A",
+      "androidApp": "Bright OS A",
+      "androidFlavor": "previewA",
+      "applicationId": "world.brightos.bright_os_client.preview.a",
+      "apiPort": 3031,
+      "serviceName": "brightos-timer-api-preview-a.service",
+      "path": "preview-a",
+      "releaseKey": "a"
+    },
+    "preview-b": {
+      "branch": "codex/*",
+      "domain": "b.test.brightos.world",
+      "displayName": "Preview B",
+      "displayLabel": "B",
+      "androidApp": "Bright OS B",
+      "androidFlavor": "previewB",
+      "applicationId": "world.brightos.bright_os_client.preview.b",
+      "apiPort": 3032,
+      "serviceName": "brightos-timer-api-preview-b.service",
+      "path": "preview-b",
+      "releaseKey": "b"
+    },
+    "preview-c": {
+      "branch": "codex/*",
+      "domain": "c.test.brightos.world",
+      "displayName": "Preview C",
+      "displayLabel": "C",
+      "androidApp": "Bright OS C",
+      "androidFlavor": "previewC",
+      "applicationId": "world.brightos.bright_os_client.preview.c",
+      "apiPort": 3033,
+      "serviceName": "brightos-timer-api-preview-c.service",
+      "path": "preview-c",
+      "releaseKey": "c"
+    },
+    "preview-d": {
+      "branch": "codex/*",
+      "domain": "d.test.brightos.world",
+      "displayName": "Preview D",
+      "displayLabel": "D",
+      "androidApp": "Bright OS D",
+      "androidFlavor": "previewD",
+      "applicationId": "world.brightos.bright_os_client.preview.d",
+      "apiPort": 3034,
+      "serviceName": "brightos-timer-api-preview-d.service",
+      "path": "preview-d",
+      "releaseKey": "d"
+    },
+    "preview-e": {
+      "branch": "codex/*",
+      "domain": "e.test.brightos.world",
+      "displayName": "Preview E",
+      "displayLabel": "E",
+      "androidApp": "Bright OS E",
+      "androidFlavor": "previewE",
+      "applicationId": "world.brightos.bright_os_client.preview.e",
+      "apiPort": 3035,
+      "serviceName": "brightos-timer-api-preview-e.service",
+      "path": "preview-e",
+      "releaseKey": "e"
+    }
+  }
+}

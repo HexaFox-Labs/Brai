@@ -1,0 +1,164 @@
+import type {
+  GoalData,
+  HistoryData,
+  PendingTimerEvent,
+  TimerState,
+  TimerSyncResponse,
+} from "@/shared/types/timer";
+import type { ActionsState, ActionsSyncResponse, PendingActionEvent } from "@/shared/types/activities";
+
+interface RequestOptions extends RequestInit {
+  json?: unknown;
+}
+
+/**
+ * Wraps the Bright OS timer and activity HTTP API with typed client methods.
+ */
+export class TimerApi {
+  constructor(private readonly baseUrl: string) {}
+
+  async session(): Promise<{ authenticated: boolean }> {
+    return this.request("/auth/session");
+  }
+
+  async login(password: string): Promise<{ authenticated: boolean }> {
+    return this.request("/auth/login", {
+      method: "POST",
+      json: { password },
+    });
+  }
+
+  async logout(): Promise<void> {
+    await this.request("/auth/logout", { method: "POST" });
+  }
+
+  async state(): Promise<TimerState> {
+    return this.request("/v1/timer/state");
+  }
+
+  async history(): Promise<HistoryData> {
+    return this.request("/v1/sessions");
+  }
+
+  async goal(): Promise<GoalData> {
+    return this.request("/v1/goals/challenge");
+  }
+
+  async actions(): Promise<ActionsState> {
+    return fromActivitiesState(await this.request<ActivitiesApiState>("/v1/activities"));
+  }
+
+  async syncEvents(params: {
+    deviceId: string;
+    platform: string;
+    events: PendingTimerEvent[];
+    lastKnownServerTimeUtc?: string | null;
+  }): Promise<TimerSyncResponse> {
+    return this.request("/v1/timer/events/sync", {
+      method: "POST",
+      json: {
+        device: {
+          device_id: params.deviceId,
+          platform: params.platform,
+          display_name: params.platform === "android" ? "Bright OS Android" : "Bright OS Web",
+        },
+        last_known_server_time_utc: params.lastKnownServerTimeUtc ?? null,
+        events: params.events.map((event) => ({
+          event_id: event.eventId,
+          client_sequence: event.clientSequence,
+          type: event.type,
+          occurred_at_utc: event.occurredAtUtc,
+          local_timer_id: event.localTimerId,
+          base_server_revision: event.baseServerRevision,
+          payload_version: event.payloadVersion,
+          metadata: event.metadata,
+        })),
+      },
+    });
+  }
+
+  async syncActionEvents(params: {
+    deviceId: string;
+    platform: string;
+    events: PendingActionEvent[];
+    lastKnownServerTimeUtc?: string | null;
+  }): Promise<ActionsSyncResponse> {
+    const response = await this.request<ActivitiesApiSyncResponse>("/v1/activities/events/sync", {
+      method: "POST",
+      json: {
+        device: {
+          device_id: params.deviceId,
+          platform: params.platform,
+          display_name: params.platform === "android" ? "Bright OS Android" : "Bright OS Web",
+        },
+        last_known_server_time_utc: params.lastKnownServerTimeUtc ?? null,
+        events: params.events.map((event) => ({
+          event_id: event.eventId,
+          client_sequence: event.clientSequence,
+          type: event.type,
+          occurred_at_utc: event.occurredAtUtc,
+          activity_id: event.actionId,
+          base_server_revision: event.baseServerRevision,
+          payload_version: event.payloadVersion,
+          payload: event.payload,
+        })),
+      },
+    });
+    return { ...response, state: fromActivitiesState(response.state) };
+  }
+
+  liveUrl(): string {
+    const target = new URL(resolvePath(this.baseUrl, "/v1/live"), window.location.href);
+    target.protocol = target.protocol === "https:" ? "wss:" : "ws:";
+    return target.toString();
+  }
+
+  private async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+    const headers = new Headers(options.headers);
+    if (options.json !== undefined) headers.set("content-type", "application/json");
+    const response = await fetch(resolvePath(this.baseUrl, path), {
+      ...options,
+      headers,
+      credentials: "include",
+      body: options.json === undefined ? options.body : JSON.stringify(options.json),
+    });
+
+    if (!response.ok) {
+      const error = new Error(`timer_api_${response.status}`);
+      error.name = response.status === 401 ? "UnauthorizedError" : "TimerApiError";
+      throw error;
+    }
+
+    return (await response.json()) as T;
+  }
+}
+
+interface ActivitiesApiState {
+  server_time_utc: string;
+  server_revision: number;
+  activities: ActionsState["actions"];
+  archived_activities?: ActionsState["archived_actions"];
+}
+
+interface ActivitiesApiSyncResponse {
+  acknowledged_event_ids: string[];
+  ignored_events: Array<{ event_id: string; reason: string }>;
+  server_revision: number;
+  server_time_utc: string;
+  state: ActivitiesApiState;
+}
+
+function fromActivitiesState(state: ActivitiesApiState): ActionsState {
+  return {
+    server_time_utc: state.server_time_utc,
+    server_revision: state.server_revision,
+    actions: state.activities,
+    archived_actions: state.archived_activities ?? [],
+  };
+}
+
+function resolvePath(baseUrl: string, path: string): string {
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  if (!baseUrl || baseUrl === "/") return cleanPath;
+  return `${baseUrl.replace(/\/$/, "")}${cleanPath}`;
+}

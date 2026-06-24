@@ -1,0 +1,197 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+:root {
+  --font-app-sans: var(--font-geist-sans, ui-sans-serif), system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-app-mono: var(--font-geist-mono, ui-monospace), "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --background: #f7f7f3;
+  --foreground: #111827;
+  --card: #ffffff;
+  --card-foreground: #111827;
+  --popover: #ffffff;
+  --popover-foreground: #111827;
+  --primary: #244be0;
+  --primary-foreground: #ffffff;
+  --secondary: #edeff2;
+  --secondary-foreground: #111827;
+  --muted: #f4f4f5;
+  --muted-foreground: #111827;
+  --accent: #e3e8ff;
+  --accent-foreground: #111827;
+  --destructive: #9f2d28;
+  --destructive-foreground: #ffffff;
+  --border: #d4d9e2;
+  --input: #d4d4d8;
+  --ring: #244be0;
+  --radius: 8px;
+}
+
+@theme inline {
+  --font-sans: var(--font-app-sans);
+  --font-mono: var(--font-app-mono);
+  --font-heading: var(--font-app-sans);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+}
+
+[data-theme="dark"] {
+  --background: #050607;
+  --foreground: #CDE5DB;
+  --card: #0D1110;
+  --card-foreground: #CDE5DB;
+  --popover: #0D1110;
+  --popover-foreground: #CDE5DB;
+  --primary: #8ea2ff;
+  --primary-foreground: #111827;
+  --secondary: #1b2026;
+  --secondary-foreground: #CDE5DB;
+  --muted: #262626;
+  --muted-foreground: #CDE5DB;
+  --accent: #202a55;
+  --accent-foreground: #CDE5DB;
+  --destructive: #f08d83;
+  --destructive-foreground: #111827;
+  --border: #252c35;
+  --input: #3a3a3a;
+  --ring: #8ea2ff;
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+    border-color: var(--color-border);
+    outline-color: color-mix(in srgb, var(--color-ring) 50%, transparent);
+  }
+
+  html,
+  body {
+    min-height: 100%;
+  }
+
+  body {
+    min-height: 100dvh;
+    margin: 0;
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-app-sans);
+    font-weight: 400;
+    letter-spacing: 0;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  strong,
+  b {
+    font-weight: 600;
+  }
+
+  code,
+  kbd,
+  samp,
+  pre {
+    font-family: var(--font-app-mono);
+  }
+
+  button,
+  input,
+  textarea {
+    font: inherit;
+    letter-spacing: 0;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+    opacity: 0.54;
+  }
+
+  input,
+  textarea {
+    color: var(--foreground);
+  }
+}
+
+html[data-platform="android"] .app-shell {
+  --mobile-top-padding: env(safe-area-inset-top);
+}
+
+/* Keep static export from painting the desktop rail expanded before React hydrates. */
+@media (min-width: 861px) {
+  html[data-sidebar-state="collapsed"] [data-app-shell] {
+    --rail-width: var(--rail-width-icon) !important;
+  }
+
+  html[data-sidebar-state="collapsed"] [data-app-shell] .desktop-rail [data-slot="sidebar-group-label"],
+  html[data-sidebar-state="collapsed"] [data-app-shell] .desktop-rail [data-sidebar="menu-button"] > span:not([data-slot="avatar"]),
+  html[data-sidebar-state="collapsed"] [data-app-shell] .desktop-rail [data-sidebar="menu-button"] > svg.ml-auto,
+  html[data-sidebar-state="collapsed"] [data-app-shell] .desktop-rail .rail-profile > div:not([data-slot="avatar"]),
+  html[data-sidebar-state="collapsed"] [data-app-shell] .desktop-rail .rail-profile > svg,
+  html[data-sidebar-state="collapsed"] [data-app-shell] .desktop-rail [aria-label="Свернуть меню"] {
+    display: none;
+  }
+}
+
+/* External mobile debug consoles must not expose their floating launcher in the app UI. */
+.eruda-entry-btn,
+.__vconsole .vc-switch,
+#vConsole .vc-switch {
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+@keyframes mobile-drawer-in {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes mobile-detail-sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+
+  to {
+    transform: translateY(0);
+  }
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}

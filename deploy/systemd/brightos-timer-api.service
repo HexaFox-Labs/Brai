@@ -1,0 +1,18 @@
+[Unit]
+Description=Bright OS Timer API
+After=network.target
+
+[Service]
+Type=simple
+User=bright-os
+Group=bright-os
+WorkingDirectory=/srv/projects/bright-os/services/timer_api
+EnvironmentFile=/etc/bright-os/timer-api.env
+ExecStart=/srv/opt/node-v22.16.0/bin/node src/index.js
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

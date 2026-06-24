@@ -1,0 +1,30 @@
+{
+  "name": "bright-os",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "openspec": "scripts/use-node22.sh node scripts/run-openspec.mjs",
+    "openspec:guard": "scripts/use-node22.sh node scripts/check-open-openspec-changes.mjs",
+    "openspec:validate": "scripts/use-node22.sh node scripts/check-open-openspec-changes.mjs && scripts/use-node22.sh node scripts/run-openspec.mjs validate --all --strict",
+    "public:guard": "scripts/use-node22.sh node scripts/check-public-branch.mjs",
+    "app:dev": "scripts/use-node22.sh npm --prefix apps/bright_os_app run dev",
+    "app:build": "scripts/use-node22.sh npm --prefix apps/bright_os_app run build",
+    "app:lint": "scripts/use-node22.sh npm --prefix apps/bright_os_app run lint",
+    "app:test": "scripts/use-node22.sh npm --prefix apps/bright_os_app run test",
+    "app:e2e": "scripts/use-node22.sh npm --prefix apps/bright_os_app run e2e",
+    "app:cap:sync": "scripts/use-node22.sh npm --prefix apps/bright_os_app run cap:sync",
+    "android:build:release": "scripts/use-node22.sh npm --prefix apps/bright_os_app run android:release",
+    "android:icons:preview": "deploy/scripts/generate-android-preview-icons.sh",
+    "android:build:env-apk": "deploy/scripts/build-android-env-apk.sh",
+    "publish:client-web-layer": "deploy/scripts/publish-client-web-layer.sh",
+    "publish:web": "deploy/scripts/publish-web.sh",
+    "publish:mobile-bundle": "deploy/scripts/publish-mobile-bundle.sh",
+    "publish:apk": "deploy/scripts/publish-capacitor-apk.sh"
+  },
+  "devDependencies": {
+    "@fission-ai/openspec": "1.4.1"
+  }
+}

@@ -1,0 +1,646 @@
+# next-capacitor-client Specification
+
+## Purpose
+TBD - created by archiving change migrate-to-next-capacitor-local-first. Update Purpose after archive.
+## Requirements
+### Requirement: Next.js is the primary client platform
+Bright OS SHALL use a Next.js, React, TypeScript, and Tailwind CSS client as the primary product UI for future web and Android app work.
+
+#### Scenario: Web UI is implemented
+- **WHEN** a product UI feature is added after the migration
+- **THEN** it is implemented in the Next.js client
+- **AND** it is available to both the web surface and the Capacitor Android surface unless the feature is explicitly web-only or native-only
+- **AND** React components use Tailwind CSS utilities as the default styling mechanism
+
+#### Scenario: Active client source is inspected
+- **WHEN** a maintainer looks for the current product UI source
+- **THEN** the canonical source is under `apps/bright_os_app`
+- **AND** no retired client source tree is required for normal development, build, or deployment
+
+### Requirement: Android app uses Capacitor over the same web bundle
+Bright OS SHALL package the same built Next.js app into the Android application through Capacitor.
+
+#### Scenario: Android APK is built
+- **WHEN** the Android APK is built
+- **THEN** it packages the same product UI and feature modules used by the web build
+- **AND** Android-specific behavior is isolated behind platform adapters or native plugins
+
+#### Scenario: New native capability is required
+- **WHEN** a feature requires Android permissions, Capacitor plugins, Kotlin/native code, manifest changes, signing changes, or SDK changes
+- **THEN** the feature requires an APK update
+- **AND** the native dependency is documented before release
+
+### Requirement: Responsive app UI is designed mobile-first
+The Next.js client SHALL treat narrow Android phone viewports as a primary supported layout.
+
+#### Scenario: A page or component is added
+- **WHEN** a page, component, navigation pattern, control, chart, or form is added
+- **THEN** it is verified on narrow mobile and desktop viewports
+- **AND** text, controls, and dynamic content do not overlap or overflow their intended containers
+- **AND** responsive styling is expressed with Tailwind utilities except for documented global/platform exceptions
+
+#### Scenario: Navigation is rendered
+- **WHEN** the client renders primary navigation
+- **THEN** it shows `Действия` and `Фокус`
+- **AND** it does not show `Цель` as a primary navigation item
+- **AND** Android-sized viewports use a bottom navigation pattern with icon-only visible items
+- **AND** desktop-sized web viewports use the left rail for the same primary items
+- **AND** `Действия` is the first primary navigation item
+
+#### Scenario: Mobile Actions profile drawer is opened
+- **WHEN** the client is shown on an Android-sized viewport
+- **AND** the user opens the menu from the Actions page header
+- **THEN** a profile drawer opens over the content with a backdrop
+- **AND** the drawer shows only the user avatar, `Bright OS`, and `Workspace`
+- **AND** tapping outside the drawer closes it
+- **AND** horizontal tab swipes are disabled while the drawer is open
+
+#### Scenario: Mobile tabs are changed by horizontal swipe
+- **WHEN** the client is shown on Android-sized viewports
+- **AND** the user swipes horizontally across a non-excluded content area
+- **THEN** the active bottom-navigation tab changes to the adjacent tab in the swipe direction
+- **AND** the mobile tab order is `Действия`, then `Фокус`
+- **AND** the active and adjacent tab screens visually track the finger during the horizontal swipe
+- **AND** the transition settles with a short transform animation after release
+- **AND** vertically dominant gestures are treated as normal page scrolling
+- **AND** content areas can opt out of tab-swipe navigation for their own horizontal gestures or scrolling
+
+#### Scenario: Desktop rail expansion controls are placed in stable locations
+- **WHEN** the client is shown on a desktop-sized web viewport
+- **AND** the desktop rail is collapsed
+- **THEN** the page header shows the current section icon instead of a rail collapse/expand control
+- **AND** clicking the collapsed rail avatar expands the rail
+- **WHEN** the desktop rail is expanded
+- **THEN** the rail collapse control is rendered inside the rail header/profile area
+- **AND** the page header continues to show the current section icon
+
+#### Scenario: Desktop screens use the full workspace
+- **WHEN** the client is shown on a desktop-sized web viewport
+- **THEN** the main content shell uses the full available area beside the desktop rail
+- **AND** page content starts from the left edge of the main content area
+- **AND** the shell does not center pages inside an artificial max-width column
+- **AND** individual compact modules may center their own bounded controls inside that full-width shell
+
+#### Scenario: Desktop split panels expand inside the full workspace
+- **WHEN** an existing activity is opened for desktop detail editing
+- **THEN** the activity list and detail panel divide the full available Actions workspace 50/50 by default
+- **AND** the detail panel stretches vertically within the active desktop content area
+- **AND** a visible vertical divider can be dragged to resize the list/detail ratio
+- **AND** each side remains at least 30% of the Actions workspace width
+- **AND** the resized ratio is not persisted and resets to the default when details are opened again
+
+#### Scenario: Markdown preview hides source markers
+- **WHEN** an activity description preview is shown in the list
+- **THEN** Markdown formatting markers such as heading hashes are not shown as source text
+- **AND** heading markers are handled even when the user omits a space after `#`
+
+### Requirement: Product behavior remains parity-compatible with first-stage workflows
+The Next.js/Capacitor client SHALL preserve the current timer module workflows.
+
+#### Scenario: Timer parity is verified
+- **WHEN** the migration is ready for cutover
+- **THEN** Timer, History, Goal, Settings, Russian copy, light/dark theme, offline pending state, and live reconciliation are available in the Next.js/Capacitor client
+- **AND** accepted timer sync behavior is preserved
+
+### Requirement: Visual redesigns reproduce verified ready-made sources exactly by default
+Bright OS visual redesign work SHALL use existing Bright OS components or verified free ready-made shadcn-compatible sources by default, and SHALL reproduce a selected source exactly unless the project owner explicitly asks for custom design or structural adaptation.
+
+#### Scenario: A page redesign is requested broadly
+- **WHEN** the project owner asks to redesign a page without explicitly asking for custom design or adaptation
+- **THEN** the agent first searches existing Bright OS components, existing shared primitives, official shadcn/ui, and configured free/open registries for a suitable ready-made block or component
+- **AND** the selected candidate has a public demo or preview page, confirmed free/non-Pro status, and accessible source through MCP or the shadcn CLI
+- **AND** the agent does not implement a custom substitute if no suitable free ready-made block exists
+- **AND** the agent reports that no suitable free ready-made block exists and asks the project owner for direction
+
+#### Scenario: Registry search returns gated items
+- **WHEN** a configured registry search returns items marked Pro, paid, All Access, license-gated, API-key-gated, private-token-gated, `UNAUTHORIZED`, or `FORBIDDEN`
+- **THEN** those items are rejected before visual selection unless the project owner explicitly asks to use paid/private content
+- **AND** paid registry credentials, license keys, or API keys are not requested or configured unless the project owner explicitly asks to use paid/private content
+
+#### Scenario: A ready-made block is implemented
+- **WHEN** the project owner accepts a ready-made block or the source block is otherwise explicit
+- **THEN** the agent obtains the actual source code from the accepted source and copies it as the implementation baseline
+- **AND** the agent does not recreate the component from memory, screenshots, registry metadata, descriptions, or visually similar substitutes
+- **AND** the implementation preserves the original structure, class names and utilities, layout hierarchy, spacing, typography, radii, colors, animation, responsive behavior, and interaction behavior exactly
+- **AND** allowed edits are limited to import/path compatibility, replacing source demo content with existing Bright OS content, explicitly requested content/Russian copy/image/icon changes, data wiring, Bright OS actions, explicitly requested removals, and necessary size constraints
+- **AND** when the project owner asks to replace an existing Bright OS area with the selected block without explicitly requesting content changes, existing Bright OS content, data bindings, order, meaning, visibility, and item count are preserved by default
+- **AND** source demo content is used only as slot guidance and is removed instead of becoming Bright OS product content by default
+- **AND** if existing content cannot fit the selected block without losing meaning or inventing new content, the agent reports the blocker and asks the project owner for direction
+- **AND** additions remain minimal and use the selected block's existing style vocabulary
+- **AND** structural redesign, restyling, refactoring, mixing multiple blocks into a new composition, or stylistic invention requires project owner's explicit request to adapt or customize
+- **AND** if the accepted source code is unavailable, gated, legally unclear, or incompatible, the agent reports the blocker and asks the project owner for direction instead of inventing a replacement
+
+### Requirement: Shadcn-compatible UI uses Radix primitives for accessible behavior
+Bright OS interactive UI primitives SHALL use Radix UI Primitives as the default accessibility and behavior layer when a Radix primitive exists for the needed interaction.
+
+#### Scenario: Interactive primitive is added
+- **WHEN** a dialog, alert dialog, menu, popover, hover card, tooltip, tabs, accordion, checkbox, switch, slider, select, scroll area, or comparable interactive primitive is added
+- **THEN** the implementation uses an existing source-owned shadcn-compatible wrapper or approved ready-made block when available
+- **AND** uses Radix UI Primitives for keyboard behavior, focus management, ARIA semantics, portals, or controlled/uncontrolled state before custom headless behavior is written
+- **AND** visual styling remains Tailwind-first through Bright OS tokens and shadcn-compatible class patterns
+
+#### Scenario: Radix dependency is imported directly
+- **WHEN** client code imports from a specific `@radix-ui/react-*` package
+- **THEN** that package is declared as a direct dependency of `apps/bright_os_app`
+- **AND** code does not rely on transitive Radix packages pulled in by the installed `radix-ui` barrel package
+
+#### Scenario: Radix barrel import is used
+- **WHEN** an approved source intentionally imports primitives from the official `radix-ui` package
+- **THEN** the installed `radix-ui` client dependency may be used
+- **AND** Radix Themes or another design-system provider is not added unless the project owner explicitly asks for it
+
+#### Scenario: Product UI needs a visible scrolling surface
+- **WHEN** Bright OS product UI needs a visible scrollable area
+- **THEN** it uses the source-owned shadcn/Radix `ScrollArea` wrapper under `apps/bright_os_app/src/shared/ui/scroll-area.tsx`
+- **AND** native browser scrollbars are not exposed in product UI
+- **AND** text editors and Markdown previews either expand inside the standard `ScrollArea` or hide their native scrollbar
+- **AND** desktop split-screen product layouts give each pane its own vertical `ScrollArea` instead of making one pane scroll through the shared page or another pane's scroll
+- **AND** desktop split-screen scrollbars sit close to the pane or workspace edge with only a small inset
+- **AND** pane content/cards keep a small gap from the visible scrollbar instead of sitting underneath it
+- **AND** when a rightmost split pane must reach the workspace edge, only that pane extends to the edge instead of widening the whole split grid
+- **AND** exceptions require project owner's explicit approval
+
+#### Scenario: Text action button labels are rendered
+- **WHEN** a visible text action button or toggle button is shown in Bright OS product UI
+- **THEN** its label stays on one line or the control is made icon-only
+- **AND** the UI does not wrap words or individual characters inside compact buttons
+
+#### Scenario: Official shadcn base component is needed
+- **WHEN** future Bright OS UI work needs a base component from the official shadcn/ui docs list
+- **THEN** the agent uses the local source-owned file under `apps/bright_os_app/src/shared/ui` before reinstalling or hand-building an equivalent primitive
+- **AND** those local files remain the source of truth for Bright OS base components
+- **AND** `Data Table`, `Date Picker`, `Toast`, and `Typography` are treated as documentation compositions assembled from installed primitives instead of separate current registry UI files
+
+### Requirement: Capacitor Android loads the latest verified local web bundle
+Bright OS Capacitor Android SHALL load the latest verified local OTA bundle when one exists, while retaining the bundled APK fallback.
+
+#### Scenario: Verified OTA bundle exists
+- **WHEN** the Android app starts
+- **AND** a verified local OTA bundle exists
+- **THEN** Capacitor loads that local bundle as the web layer
+
+#### Scenario: Verified OTA bundle does not exist
+- **WHEN** the Android app starts
+- **AND** no verified local OTA bundle exists
+- **THEN** Capacitor loads the web layer bundled inside the APK
+
+### Requirement: Web layer reports startup readiness to Android
+The Bright OS web layer SHALL provide a readiness signal for Android OTA activation.
+
+#### Scenario: Web app boots successfully
+- **WHEN** the web app has initialized the app shell and required client state
+- **AND** it is running inside the Android native shell
+- **THEN** it sends a readiness signal with the active bundle version to Android
+
+#### Scenario: Web app runs in browser
+- **WHEN** the web app runs as the browser web deployment
+- **THEN** the readiness signal does not break browser startup
+- **AND** the browser path does not require Android native APIs
+
+### Requirement: Mobile OTA bundles remain static-export compatible
+Bright OS mobile OTA bundles SHALL be compatible with local WebView loading from a static export.
+
+#### Scenario: Mobile page is added
+- **WHEN** a new ordinary client page is added for Android OTA delivery
+- **THEN** it works from the mobile static bundle
+- **AND** does not depend on server-side rendering, Next.js runtime server functions, or public app service ports
+
+#### Scenario: API calls are made from Android
+- **WHEN** the Android web layer calls Bright OS APIs
+- **THEN** it uses the existing Android-compatible API configuration
+- **AND** does not embed private Bearer tokens in the OTA bundle
+
+#### Scenario: Markdown descriptions render in the client
+- **WHEN** the client renders an Activity description preview
+- **THEN** it renders supported Markdown through client-side React code
+- **AND** it does not depend on server-side rendering or runtime server functions
+- **AND** raw HTML in Markdown is not enabled
+
+### Requirement: UI icons default to Lucide through the shadcn-compatible foundation
+Bright OS UI icons SHALL use `lucide-react` SVG icons through the shadcn-compatible foundation by default unless the project owner explicitly requests another icon style.
+
+#### Scenario: Primary navigation renders icons
+- **WHEN** the client renders primary navigation
+- **THEN** navigation and product controls use Lucide SVG icons by default
+- **AND** the item remains accessible by its Russian text label
+- **AND** emoji are used only as intentional content/tone choices or when the project owner explicitly asks for emoji
+
+### Requirement: Activities UI supports fast capture and completion
+The Next.js/Capacitor client SHALL provide a fast `Действия` list UI optimized for desktop and Android-sized viewports.
+
+#### Scenario: Desktop activity is added
+- **WHEN** the user types an activity into the desktop top input and presses Enter
+- **THEN** the new activity appears immediately below the input
+
+#### Scenario: Mobile activity is added
+- **WHEN** the user taps the mobile floating plus button
+- **THEN** a dimmed overlay opens with a focused input near the bottom of the viewport
+- **AND** the user can add the activity with Enter or the send button
+- **AND** the bottom navigation is not shown while the overlay is open
+- **AND** the floating plus button remains fixed to the viewport when the `Действия` list scrolls
+
+#### Scenario: Desktop activity details are edited
+- **WHEN** the user clicks an existing activity title on desktop
+- **THEN** a right-side editing panel opens and the main Actions area adapts around it
+- **AND** the panel shows an editable title and a description field with placeholder `Введите описание`
+- **AND** the panel can be closed with a visible close control or Escape
+- **AND** entered text is saved locally before the panel closes
+
+#### Scenario: Mobile activity details are edited
+- **WHEN** the user taps an existing activity outside its checkbox and delete control on an Android-sized viewport
+- **THEN** a full-screen editor opens
+- **AND** the title field is focused with the cursor at the end
+- **AND** the description field fills the space below the title and above the keyboard
+- **AND** bottom navigation is hidden while the editor is open
+
+#### Scenario: Mobile editor closes safely
+- **WHEN** the user taps the check button, presses Back, swipes downward, switches app visibility, or the page hides
+- **THEN** the current title and description are saved locally before the editor closes or the app leaves the foreground
+
+#### Scenario: Description preview is shown in the list
+- **WHEN** an activity description contains visible characters
+- **THEN** the list shows one small single-line preview under the title
+- **AND** whitespace and newlines are collapsed for the preview
+- **AND** overflow fades at the end of the line
+
+#### Scenario: Empty description does not reserve list space
+- **WHEN** an activity description has no visible characters after whitespace normalization
+- **THEN** the list does not reserve a description preview row for that activity
+
+#### Scenario: Completed activities are grouped
+- **WHEN** activities have status `Done`
+- **THEN** they appear under a collapsible `Выполнено N` group
+- **AND** completed activity titles use a visually completed treatment
+- **AND** the group is not shown when there are no completed activities
+
+#### Scenario: Desktop activity is deleted
+- **WHEN** the pointer hovers or focuses an activity row on a desktop-sized viewport
+- **THEN** a muted trash button appears in the row's reserved right area
+- **AND** clicking it removes the activity with a smooth row-collapse animation
+
+#### Scenario: Mobile activity delete menu is revealed
+- **WHEN** the user swipes an activity row left on an Android-sized viewport
+- **THEN** the row follows the finger during the drag
+- **AND** after release the row returns to its normal position while the trash button remains visible on the right
+- **AND** tapping outside the trash button hides it smoothly without completing, editing, or deleting the activity
+
+#### Scenario: Mobile activity is deleted
+- **WHEN** the mobile trash button is visible
+- **AND** the user taps it
+- **THEN** the activity is deleted with a smooth row-collapse animation
+- **AND** rows below it shift upward smoothly
+
+#### Scenario: Mobile Activities list is compact
+- **WHEN** the `Действия` section contains only one new activity
+- **THEN** the activity row uses only the height needed by the row content
+- **AND** the page does not add empty scrollable space below the list
+- **AND** completing the activity shows a checkmark in the checkbox
+
+#### Scenario: Desktop activity is reordered
+- **WHEN** the pointer hovers or focuses a `New` activity row on desktop
+- **THEN** a muted drag handle appears to the left of the checkbox
+- **AND** dragging the handle moves the row vertically with smooth neighbor movement
+- **AND** dropping the row saves the new `New` activity order
+
+#### Scenario: Desktop activity rows keep aligned controls and compact handles
+- **WHEN** the user views `New` and `Done` activities on a desktop-sized viewport
+- **THEN** visible row checkboxes align vertically across active and completed groups
+- **AND** `New` rows show a muted standard drag handle to the left of the checkbox with minimal left spacing and reduced right spacing
+- **AND** completed rows reserve the same drag-handle slot with an invisible non-interactive placeholder
+- **AND** activity descriptions use standard muted, lighter-weight typography than the row title
+
+#### Scenario: Mobile activity is reordered
+- **WHEN** the user long-presses a `New` activity row on an Android-sized viewport
+- **THEN** the row enters drag mode and can be moved vertically
+- **AND** dropping the row saves the new `New` activity order
+- **AND** a short tap still opens the detail editor
+- **AND** a left swipe still reveals the delete button
+
+#### Scenario: Completed activities remain grouped
+- **WHEN** activities have status `Done`
+- **THEN** they appear under a collapsible `Выполнено N` group
+- **AND** completed activity titles use a visually completed treatment
+- **AND** completed activities are not manually reordered
+
+#### Scenario: Activity titles are bounded in list rows
+- **WHEN** an activity title is longer than two visual lines in the list
+- **THEN** the list row shows no more than two title lines
+- **AND** title overflow is visually faded rather than spilling into later row content or the delete-control area
+- **AND** the full title remains available in the detail editor
+
+#### Scenario: Active desktop row highlight covers the full row
+- **WHEN** an activity row is active on a desktop-sized viewport
+- **THEN** the active visual background covers the content area and the reserved delete-control area as one continuous row
+- **AND** the delete control remains independently clickable when visible
+
+#### Scenario: Completed activity group header is compact and standard
+- **WHEN** the completed activity group is visible
+- **THEN** the `Выполнено` header is smaller than the main list row titles
+- **AND** the completed count uses the primary color token
+- **AND** the expand/collapse control uses a standard centered disclosure icon aligned to the header text
+
+#### Scenario: Desktop title clicks choose inline caret placement or detail focus
+- **WHEN** an activity row is active on a desktop-sized web viewport
+- **AND** the user clicks directly on visible title text in the list row
+- **THEN** inline list title editing starts immediately
+- **AND** the text cursor is placed at the clicked text position
+- **WHEN** the user clicks elsewhere inside the row outside visible title text
+- **THEN** the existing detail-panel behavior is preserved
+- **AND** the right detail title receives focus with the cursor at the end
+
+#### Scenario: Activity title drafts mirror between list and detail editors
+- **WHEN** an activity title is edited inline in the desktop list
+- **THEN** the right detail panel title updates immediately while the same activity is open
+- **WHEN** an activity title is edited in the right detail panel
+- **THEN** the list row title updates immediately
+- **AND** both edit directions continue to persist through the existing local-first activity save and sync flow
+
+#### Scenario: Motion title transition source is required before use
+- **WHEN** dynamic title transition behavior is implemented with Motion Primitives `text-effect`
+- **THEN** the implementation uses the real source from `npx motion-primitives@latest add text-effect` or project owner's explicit URL
+- **AND** no custom substitute is implemented from memory, screenshots, registry metadata, or a visually similar hand-built component
+- **AND** unavailable, gated, rate-limited, or security-checkpointed source access is reported as a blocker
+
+### Requirement: Client styling is Tailwind-first
+The Bright OS Next.js client SHALL express component styling through Tailwind CSS utilities and source-owned shadcn components, with global CSS limited to the standard shadcn/Tailwind token layer and unavoidable document-level rules.
+
+#### Scenario: Component layout is styled
+- **WHEN** app shell, navigation, cards, forms, lists, detail panels, buttons, charts, or status indicators are styled
+- **THEN** layout, spacing, typography, border, color, state, and responsive behavior are expressed with Tailwind utilities from the accepted shadcn source or local source-owned primitive
+- **AND** component-specific named CSS classes are not required for the visual result
+- **AND** visual-only local class names are not used as design contracts for tests or behavior
+
+#### Scenario: Behavior hooks are needed
+- **WHEN** client logic or tests need to identify UI elements such as delete controls, drag handles, rows, overlays, detail panels, chart containers, auth forms, or settings controls
+- **THEN** they use accessible roles/text, `data-slot`, or explicit behavior `data-*` attributes
+- **AND** they do not rely on styling-only class names such as `panel`, `settings-card`, `chart-panel`, `metric`, `auth-panel`, or `empty-state`
+
+#### Scenario: Global stylesheet is inspected
+- **WHEN** `apps/bright_os_app/src/app/globals.css` is inspected after the visual-system migration
+- **THEN** it follows the shadcn/Tailwind v4 shape: Tailwind import, required shadcn CSS import or equivalent local setup, dark variant, `@theme inline`, standard semantic token variables, `@layer base`, platform selectors, debug-console hiding selectors, and necessary keyframes only
+- **AND** base border/outline/body defaults live in `@layer base`
+- **AND** it does not contain component class blocks for the app shell, rail, navigation, panels, Activities, Timer, History, Goal, Settings, Auth, or chart UI
+
+#### Scenario: Runtime-calculated styles are needed
+- **WHEN** a component needs values calculated from runtime state, such as gesture transforms, sortable transforms, split-panel position, measured animation sizes, safe-area offsets, or chart geometry
+- **THEN** it may keep a narrow inline style for that dynamic value
+- **AND** static presentation around that value remains Tailwind-first and shadcn-token based
+
+### Requirement: Client typography uses the Bright OS Geist scale
+The Bright OS Next.js client SHALL use the configured app sans and mono font variables while following standard shadcn/Tailwind typography utility names instead of a custom Bright OS numeric weight scale.
+
+#### Scenario: App root loads project fonts
+- **WHEN** the Next root layout renders the application document
+- **THEN** it loads the configured app sans font and app mono font through the existing root font variables
+- **AND** global theme tokens expose those fonts through standard Tailwind/shadcn font aliases
+- **AND** new font families are not selected or added unless the project owner explicitly requests a font change or an accepted source block requires a documented font asset
+
+#### Scenario: Product UI chooses font utilities
+- **WHEN** product UI renders headings, navigation, buttons, badges, status labels, row titles, descriptions, metadata, values, inputs, or body copy
+- **THEN** it uses standard utility names from Tailwind/shadcn component source such as `font-normal`, `font-medium`, `font-semibold`, or source-provided equivalents
+- **AND** product UI does not use arbitrary font weights such as `font-[850]`
+- **AND** agents do not invent a project-specific typography scale or enforce the old `200/400/600` rule by default
+
+#### Scenario: Product UI chooses font sizes
+- **WHEN** product UI renders metadata, labels, rows, forms, buttons, settings text, page titles, section titles, body copy, or values
+- **THEN** it uses standard Tailwind/shadcn font-size utilities such as `text-xs`, `text-sm`, `text-base`, `text-lg`, `text-xl`, or `text-2xl`
+- **AND** `text-5xl` and larger sizes are reserved for explicit major metrics such as the running timer or primary goal progress
+- **AND** product UI does not use arbitrary font sizes such as `text-[15px]`, viewport-scaled typography, local CSS `font-size`, or a custom Bright OS type scale by default
+- **AND** copied accepted source components may keep their source-provided font-size utilities unless the project owner explicitly asks to normalize that source
+
+#### Scenario: Goal duration labels are compact
+- **WHEN** Goal or Focus Goal panels render duration totals
+- **THEN** they use compact labels such as `1ч 30м` or `12ч`
+- **AND** hours have no leading zero
+- **AND** minutes are omitted when the minute value is `0`
+
+### Requirement: Activity detail descriptions support Markdown preview
+The Next.js/Capacitor client SHALL let the project owner switch an Activity detail description between editable Markdown source and rendered Markdown preview.
+
+#### Scenario: Desktop description preview is toggled
+- **WHEN** an existing Activity is opened in the desktop detail panel
+- **THEN** the top-right area shows an icon-only read/edit toggle
+- **AND** the toggle is in edit-source mode when no global preview preference has been saved
+- **AND** changing the toggle saves the global preview preference for later Activity detail editor openings
+- **AND** while edit-source mode is active, the description is editable as plain Markdown source
+- **AND** while read-preview mode is active, the current description is shown as formatted Markdown
+- **AND** enabling preview flushes the current local description save before hiding the editor field
+
+#### Scenario: Mobile description preview is toggled
+- **WHEN** an existing Activity is opened in the mobile full-screen detail editor
+- **THEN** the editor shows the same icon-only read/edit toggle
+- **AND** the toggle uses the same saved global preview preference as desktop
+- **AND** switching to read-preview mode hides the editable description field and keeps bottom navigation hidden
+- **AND** switching to edit-source mode restores the editable description field with the same text
+
+#### Scenario: Markdown preview keeps the safe renderer boundary
+- **WHEN** Activity Markdown is rendered in full preview mode
+- **THEN** it uses client-side React rendering from the source-owned Markdown renderer
+- **AND** raw HTML is not enabled
+- **AND** no new Markdown parsing dependency is required
+
+### Requirement: Settings opens the Activities Archive
+The Next.js/Capacitor client SHALL expose archived Activities from Settings.
+
+#### Scenario: Archive entry is shown
+- **WHEN** the client renders Settings
+- **THEN** it shows an `Архив` block
+- **AND** the block has a control that opens the Archive page
+
+#### Scenario: Archived activity is restored
+- **WHEN** the user opens `Архив`
+- **AND** restores an archived activity
+- **THEN** the row collapses from Archive
+- **AND** the activity appears at the top of `Действия`
+- **AND** the restore control uses the row's reserved right-side action area
+
+### Requirement: Shared section headers own contextual actions
+Bright OS section headers SHALL provide the standard location and spacing for section-specific contextual actions.
+
+#### Scenario: Header contextual actions render
+- **WHEN** a section exposes contextual actions
+- **THEN** those action icons render in the section header to the left of the sync status
+- **AND** the sync status remains the rightmost header icon
+- **AND** each action has an accessible label
+- **AND** an active contextual action exposes an accessible active state
+
+#### Scenario: Header spacing is applied
+- **WHEN** any current or future primary section renders inside the app shell
+- **THEN** the desktop top inset above the header is `14px`
+- **AND** the mobile safe-area/top inset behavior remains unchanged
+- **AND** the gap below the header is `8px` on desktop and mobile
+- **AND** the spacing is implemented as shared shell/header behavior rather than per-section offsets
+
+### Requirement: Focus owns Goal and History panels
+The Focus section SHALL own Goal and History as mutually exclusive contextual panels.
+
+#### Scenario: Focus header exposes Goal and History icons
+- **WHEN** the client renders the `Фокус` header
+- **THEN** it shows a `Crown` icon for `Цель`
+- **AND** it shows the existing History icon for `История`
+- **AND** those icons render before the sync status
+
+#### Scenario: Focus context panels are mutually exclusive
+- **WHEN** the user opens `Цель` from the Focus header
+- **THEN** the Goal panel is active
+- **AND** the History panel is closed
+- **AND** the Goal icon is marked active
+- **WHEN** the user opens `История`
+- **THEN** the History panel is active
+- **AND** the Goal panel is closed
+- **AND** the History icon is marked active
+- **WHEN** the user activates the currently active panel icon again
+- **THEN** both Focus context panels are closed
+
+#### Scenario: Desktop Focus panel preference persists
+- **WHEN** the client is shown on a desktop-sized viewport
+- **AND** the user changes the active Focus context panel
+- **THEN** the client persists `goal`, `history`, or `none` as a lightweight local UI preference
+- **AND** reloading Focus restores the same desktop panel state
+
+#### Scenario: Desktop Focus starts without a context panel
+- **WHEN** the client is shown on a desktop-sized viewport
+- **AND** the user opens `Фокус` without a saved panel preference
+- **THEN** the main Focus workspace shows the timer centered vertically and horizontally
+- **AND** no History or Goal panel is open by default
+
+#### Scenario: Focus timer is centered with no panel
+- **WHEN** the Focus desktop panel preference is `none`
+- **THEN** the timer block occupies the main Focus position centered vertically and horizontally
+- **AND** the clock digits are centered inside the timer block
+- **AND** the running/waiting text label is not shown
+
+#### Scenario: Desktop Focus opens History as a context panel
+- **WHEN** the client is shown on a desktop-sized viewport
+- **AND** the user opens the History header icon from `Фокус`
+- **THEN** the workspace splits into a timer half and a History half
+- **AND** the History half shows the existing timer history groups
+
+#### Scenario: Mobile Focus opens History as a bottom sheet
+- **WHEN** the client is shown on an Android-sized viewport
+- **AND** the user opens the History header icon from `Фокус`
+- **THEN** the timer remains the main content
+- **AND** History opens as a bottom sheet with a grabber
+- **AND** the sheet closes by downward swipe
+- **AND** the sheet does not require a visible close button
+- **AND** tab swipe navigation is disabled while the sheet is open
+
+#### Scenario: Mobile Focus opens Goal as a bottom sheet
+- **WHEN** the client is shown on an Android-sized viewport
+- **AND** the user opens the Goal header icon from `Фокус`
+- **THEN** Goal opens as a bottom sheet with a grabber
+- **AND** the sheet closes by downward swipe
+- **AND** the sheet does not require a visible close button
+- **AND** tab swipe navigation is disabled while the sheet is open
+
+### Requirement: Actions has a contextual info panel
+The Actions section SHALL expose an empty contextual info panel that can later hold section-specific supporting information.
+
+#### Scenario: Actions header exposes an info icon
+- **WHEN** the client renders the `Действия` header
+- **THEN** it shows an `Info` icon before the sync status
+- **AND** activating the icon opens the Actions info panel
+- **AND** activating the icon again closes the Actions info panel
+- **AND** the icon is marked active while the info panel is open
+
+#### Scenario: Desktop Actions detail replaces the info panel
+- **WHEN** the client is shown on a desktop-sized viewport
+- **AND** the Actions info panel is open
+- **AND** the user opens Activity details
+- **THEN** the Activity detail editor occupies the same right-panel slot as the info panel
+- **AND** the Activity list width does not jump while the panel is replaced
+- **WHEN** the user closes the Activity detail editor
+- **THEN** the Actions info panel returns if it was open before the detail editor opened
+
+#### Scenario: Mobile Actions info uses a bottom sheet
+- **WHEN** the client is shown on an Android-sized viewport
+- **AND** the user opens the Actions info icon
+- **THEN** the info panel opens as a bottom sheet with a grabber
+- **AND** the sheet closes by downward swipe
+- **AND** the sheet does not require a visible close button
+- **AND** tab swipe navigation is disabled while the sheet is open
+
+### Requirement: Focus has a canonical route
+The Next.js/Capacitor client SHALL expose `Фокус` at `/focus`.
+
+#### Scenario: Focus is opened
+- **WHEN** the user opens `Фокус`
+- **THEN** the browser address is `/focus`
+
+#### Scenario: Non-Focus primary section is opened
+- **WHEN** the user leaves `Фокус` for another primary section
+- **THEN** the browser address returns to `/`
+
+### Requirement: Bright OS UI uses the default shadcn visual system
+Bright OS client UI SHALL use official shadcn/ui defaults and configured shadcn-compatible registries as the default visual system, without agent-invented colors, radii, fonts, shadows, or custom visual composition.
+
+#### Scenario: Default visual source is needed
+- **WHEN** an agent designs, refactors, or implements Bright OS product UI
+- **THEN** `apps/bright_os_app/components.json` is the shadcn source of truth
+- **AND** the implementation follows `style: "new-york"`, `baseColor: "neutral"`, Tailwind CSS v4, CSS variables, the `@/shared/ui` aliases, and `lucide` icon library
+- **AND** the agent uses local source-owned shadcn/ui primitives before writing new visual markup
+- **AND** the agent does not create a competing design system, local style guide, custom theme provider, or standalone visual language
+
+#### Scenario: Product UI needs a visual decision
+- **WHEN** UI work needs color, radius, shadow, spacing density, typography, icon style, or interaction chrome
+- **THEN** the default answer comes from official shadcn/ui source, installed source-owned primitives, or an accepted registry block
+- **AND** the agent does not choose a new palette, typeface, radius scale, shadow style, gradient, decorative effect, or custom visual motif unless the project owner explicitly asks for custom design
+- **AND** Codex Desktop-like neutral dark/light density is treated as the target visual feel, not oversized custom dashboard cards
+
+#### Scenario: Configured registries are used
+- **WHEN** official shadcn/ui does not cover a required product block
+- **THEN** the agent may search the configured registries from `components.json`
+- **AND** the selected item must have accessible source, public/free status, and no Pro/paid/license/API-key/private-token gate
+- **AND** the accepted source is copied as the baseline
+- **AND** any adaptation is limited to import compatibility, Bright OS data/actions, Russian copy required by the product, accessibility, and documented mobile/static-export compatibility
+- **AND** the adaptation keeps the shadcn token vocabulary instead of inventing a new visual style
+
+### Requirement: Product styling uses semantic shadcn tokens instead of hardcoded colors
+Bright OS product UI SHALL express colors through semantic shadcn tokens and central theme variables, not hardcoded product colors in component markup.
+
+#### Scenario: Product component needs color
+- **WHEN** a product component, page, control, status, chart, metric, surface, navigation item, or form needs color
+- **THEN** it uses semantic shadcn/Tailwind token utilities such as `bg-background`, `bg-card`, `text-foreground`, `text-muted-foreground`, `border-border`, `bg-accent`, `text-accent-foreground`, `bg-primary`, `text-primary-foreground`, `text-destructive`, `ring-ring`, or chart/sidebar token aliases
+- **AND** it does not hardcode product-specific hex, RGB, OKLCH, `color-mix`, arbitrary color utilities, or one-off palette classes for Bright OS styling
+- **AND** any exception must be copied from an accepted source block or documented as a non-product data visualization color requirement
+
+#### Scenario: Product component needs radius or shadow
+- **WHEN** a product component needs radius, border, outline, ring, or shadow
+- **THEN** it uses the standard shadcn/Tailwind utility vocabulary from the accepted component source
+- **AND** it does not introduce static arbitrary radii, arbitrary shadows, or local `--radius` wrappers to recreate a custom card style
+- **AND** required runtime geometry, gestures, safe-area values, and measured transforms may stay as narrow dynamic inline styles
+
+### Requirement: Product surfaces use source-owned shadcn primitives
+Bright OS client UI SHALL show product surfaces through source-owned shadcn/Card primitives or accepted ready-made blocks instead of manual legacy border/surface containers.
+
+#### Scenario: New product surface is added
+- **WHEN** an agent adds a product surface with settings, controls, metrics, charts, tables, statuses, update information, auth forms, empty states, or comparable product content
+- **THEN** the surface uses a source-owned shadcn primitive such as `Card`, `CardHeader`, `CardContent`, `CardFooter`, `CardFrame`, `Table`, `Badge`, `Button`, `Input`, `ScrollArea`, or an accepted ready-made block
+- **AND** the agent does not create a new `panelClass`, `settings-card`, `chart-panel`, `metric`, `auth-panel`, `empty-state`, or comparable visual container class
+- **AND** the agent does not manually assemble the primary visual frame through `border border-border bg-card shadow-*` or older `border-[var(--line)] bg-[var(--surface)] shadow-[var(--shadow)]` class recipes
+
+#### Scenario: Legacy product surface is touched
+- **WHEN** an agent changes an existing product surface that still uses `panelClass` or comparable manual visual container markup
+- **THEN** the touched surface is migrated to the source-owned shadcn primitive path unless the project owner explicitly says the task is a non-visual emergency fix
+- **AND** any remaining legacy surface usage is listed as deferred debt
+- **AND** tests stop relying on styling-only class names when accessible roles, text, `data-slot`, or explicit behavior `data-*` selectors can identify the same element
+
+#### Scenario: Semantic form grouping is needed
+- **WHEN** a form group requires `fieldset` and `legend` semantics
+- **THEN** `fieldset` may be used for accessibility and form grouping
+- **AND** it is not styled as the primary visual card/frame when an existing shadcn surface primitive can provide the containing visual surface
+
+### Requirement: Runtime theme stays inside standard shadcn tokens
+Bright OS client theme control SHALL use standard shadcn semantic tokens and supported theme modes instead of user-authored arbitrary color palettes.
+
+#### Scenario: Theme mode is changed
+- **WHEN** the project owner changes the app theme
+- **THEN** the app switches between supported standard theme modes such as light and dark
+- **AND** the mode updates standard shadcn semantic tokens before visible UI renders
+- **AND** the app does not expose a product UI for arbitrary primary/success/warning/danger color selection by default
+
+#### Scenario: Theme tokens are edited in code
+- **WHEN** a developer changes theme token values
+- **THEN** the change is made centrally in the shadcn/Tailwind token layer
+- **AND** token names remain the standard shadcn semantic names
+- **AND** component files do not receive one-off color overrides to compensate for token changes

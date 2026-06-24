@@ -1,0 +1,25 @@
+export function cleanTitle(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+export function normalizeDescription(value: unknown): string {
+  return typeof value === "string" ? value.replace(/\r\n?/g, "\n") : "";
+}
+
+export function visibleDescriptionPreview(value: unknown): string {
+  return markdownPreviewSource(value)
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^\s*[-*+]\s+/gm, "")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/_([^_]+)_/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function markdownPreviewSource(value: unknown): string {
+  return normalizeDescription(value).replace(/^(#{1,6})([^\s#])/gm, "$1 $2");
+}

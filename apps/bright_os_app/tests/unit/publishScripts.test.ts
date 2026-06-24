@@ -1,0 +1,266 @@
+import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
+import { copyFile, mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { promisify } from "node:util";
+import { describe, expect, it } from "vitest";
+
+const execFileAsync = promisify(execFile);
+const workspaceRoot = path.resolve(process.cwd(), "../..");
+
+describe("mobile OTA publish scripts", () => {
+  it("publishes browser web and Android OTA from one web-layer command", async () => {
+    const root = await fixtureRoot("bright-client-web-layer-");
+    await writeStaticExport(root, "unified");
+    const previousVersion = "9.9.9.98";
+    const previousBundle = path.join(root, "deploy/mobile-update/bundles", previousVersion);
+    await mkdir(previousBundle, { recursive: true });
+    await writeFile(path.join(previousBundle, "bundle.zip"), "previous");
+    await mkdir(path.join(root, "deploy/mobile-update"), { recursive: true });
+    await writeFile(
+      path.join(root, "deploy/mobile-update/manifest.json"),
+      JSON.stringify({ bundleVersion: previousVersion }),
+    );
+
+    await execFileAsync("bash", [path.join(workspaceRoot, "deploy/scripts/publish-client-web-layer.sh")], {
+      env: {
+        ...process.env,
+        BRIGHT_OS_ROOT: root,
+        BRIGHT_OS_BUILD_CLIENT: "false",
+        BRIGHT_OS_APP_VERSION: "9.9.9.99",
+        BRIGHT_OS_MIN_APK_VERSION_CODE: "2999",
+        BRIGHT_OS_PUBLISHED_AT: "2026-06-15T00:00:00Z",
+      },
+    });
+
+    const bundleVersion = "9.9.9.99";
+    const manifest = JSON.parse(
+      await readFile(path.join(root, "deploy/mobile-update/manifest.json"), "utf8"),
+    );
+
+    await expect(readFile(path.join(root, "deploy/web/index.html"), "utf8")).resolves.toContain(
+      "unified",
+    );
+    await expect(
+      readFile(path.join(root, "deploy/mobile-update/bundles", bundleVersion, "bundle.zip")),
+    ).resolves.toBeInstanceOf(Buffer);
+    expect(manifest.bundleVersion).toBe(bundleVersion);
+  });
+
+  it("publishes browser web and Android OTA into environment-specific roots", async () => {
+    const root = await fixtureRoot("bright-env-publish-");
+    await writeStaticExport(root, "env");
+    const envRoot = path.join(root, "envs/preview-a");
+
+    await execFileAsync("bash", [path.join(workspaceRoot, "deploy/scripts/publish-client-web-layer.sh")], {
+      env: {
+        ...process.env,
+        BRIGHT_OS_ROOT: root,
+        BRIGHT_OS_BUILD_CLIENT: "false",
+        BRIGHT_OS_APP_VERSION: "9.9.9.99",
+        BRIGHT_OS_WEB_TARGET: path.join(envRoot, "web"),
+        BRIGHT_OS_MOBILE_TARGET: path.join(envRoot, "mobile-update"),
+        BRIGHT_OS_UPDATE_BASE_URL: "https://a.test.brightos.world/mobile-update",
+        BRIGHT_OS_MOBILE_BUNDLE_VERSION: "9.9.9.99.42",
+        BRIGHT_OS_ENVIRONMENT: "preview-a",
+        BRIGHT_OS_MIN_APK_VERSION_CODE: "2999",
+        BRIGHT_OS_PUBLISHED_AT: "2026-06-15T00:00:00Z",
+      },
+    });
+
+    const manifest = JSON.parse(await readFile(path.join(envRoot, "mobile-update/manifest.json"), "utf8"));
+    await expect(readFile(path.join(envRoot, "web/index.html"), "utf8")).resolves.toContain("env");
+    expect(manifest.bundleVersion).toBe("9.9.9.99.42");
+    expect(manifest.archiveUrl).toBe("https://a.test.brightos.world/mobile-update/bundles/9.9.9.99.42/bundle.zip");
+  });
+
+  it("publishes a baseline web layer for a selected non-production environment", async () => {
+    const root = await fixtureRoot("bright-env-baseline-");
+    await writeStaticExport(root, "baseline");
+    await mkdir(path.join(root, "deploy"), { recursive: true });
+    await copyFile(
+      path.join(workspaceRoot, "deploy/environments.json"),
+      path.join(root, "deploy/environments.json"),
+    );
+
+    await execFileAsync("bash", [path.join(workspaceRoot, "deploy/scripts/publish-environment-web-layer.sh"), "preview-b"], {
+      env: {
+        ...process.env,
+        BRIGHT_OS_ROOT: root,
+        BRIGHT_OS_BUILD_CLIENT: "false",
+        BRIGHT_OS_ENVS_ROOT: path.join(root, "envs"),
+        BRIGHT_OS_APP_VERSION: "9.9.9.99",
+        BRIGHT_OS_MIN_APK_VERSION_CODE: "2999",
+        BRIGHT_OS_PUBLISHED_AT: "2026-06-15T00:00:00Z",
+      },
+    });
+
+    const target = path.join(root, "envs/preview-b");
+    const manifest = JSON.parse(await readFile(path.join(target, "mobile-update/manifest.json"), "utf8"));
+    await expect(readFile(path.join(target, "web/index.html"), "utf8")).resolves.toContain("baseline");
+    expect(manifest.bundleVersion).toBe("9.9.9.99.0");
+    expect(manifest.archiveUrl).toBe("https://b.test.brightos.world/mobile-update/bundles/9.9.9.99.0/bundle.zip");
+  });
+
+  it("keeps non-production OTA public while protecting only the web shell in Caddy", async () => {
+    const template = await readFile(path.join(workspaceRoot, "deploy/ansible/templates/Caddyfile.j2"), "utf8");
+    const apiBlock = template.slice(template.indexOf("handle_path /api/*"), template.indexOf("handle /releases*"));
+    const mobileIndex = template.indexOf("handle_path /mobile-update/*");
+    const webShellBlock = template.slice(template.indexOf("handle {"), template.indexOf("try_files"));
+
+    expect(template).not.toMatch(/\{\{ env\.domain \}\} \{\n\s+\{\{ bright_os_basic_auth_directive \}\}/);
+    expect(apiBlock).not.toContain("bright_os_basic_auth_directive");
+    expect(apiBlock).not.toContain("header_up Authorization");
+    expect(mobileIndex).toBeGreaterThan(template.indexOf("handle /releases*"));
+    expect(mobileIndex).toBeLessThan(template.indexOf("handle {"));
+    expect(webShellBlock).toContain("bright_os_basic_auth_directive");
+  });
+
+  it("promotes production deployment metadata into the production database path", async () => {
+    const script = await readFile(path.join(workspaceRoot, "deploy/scripts/ci-ssh-promote-deployment.sh"), "utf8");
+    expect(script).toContain('export BRIGHT_TIMER_DB="$DEPLOY_REPO/data/bright_timer.sqlite"');
+  });
+
+  it("publishes a versioned bundle and atomic manifest from a static export", async () => {
+    const root = await fixtureRoot("bright-mobile-publish-");
+    await writeStaticExport(root, "ota");
+
+    await execFileAsync("bash", [path.join(workspaceRoot, "deploy/scripts/publish-mobile-bundle.sh")], {
+      env: {
+        ...process.env,
+        BRIGHT_OS_ROOT: root,
+        BRIGHT_OS_APP_VERSION: "9.9.9.99",
+        BRIGHT_OS_MIN_APK_VERSION_CODE: "2999",
+        BRIGHT_OS_PUBLISHED_AT: "2026-06-15T00:00:00Z",
+      },
+    });
+
+    const bundleVersion = "9.9.9.99";
+    const archivePath = path.join(root, "deploy/mobile-update/bundles", bundleVersion, "bundle.zip");
+    const manifestPath = path.join(root, "deploy/mobile-update/manifest.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    const archive = await readFile(archivePath);
+
+    expect(manifest).toMatchObject({
+      schemaVersion: 1,
+      channel: "stable",
+      bundleVersion,
+      archiveUrl: `https://app.brightos.world/mobile-update/bundles/${bundleVersion}/bundle.zip`,
+      entrypoint: "index.html",
+      minApkVersionCode: 2999,
+      maxApkVersionCode: null,
+      mandatory: false,
+    });
+    expect(manifest.sizeBytes).toBe((await stat(archivePath)).size);
+    expect(manifest.sha256).toBe(createHash("sha256").update(archive).digest("hex"));
+  });
+
+  it("replaces an existing OTA bundle instead of rewriting it in place", async () => {
+    const root = await fixtureRoot("bright-mobile-replace-");
+    await writeStaticExport(root, "ota-replace");
+    const bundleVersion = "9.9.9.99";
+    const bundleDir = path.join(root, "deploy/mobile-update/bundles", bundleVersion);
+    const archivePath = path.join(bundleDir, "bundle.zip");
+    await mkdir(bundleDir, { recursive: true });
+    await writeFile(archivePath, "old");
+    const previousInode = (await stat(archivePath)).ino;
+
+    await execFileAsync("bash", [path.join(workspaceRoot, "deploy/scripts/publish-mobile-bundle.sh")], {
+      env: {
+        ...process.env,
+        BRIGHT_OS_ROOT: root,
+        BRIGHT_OS_APP_VERSION: bundleVersion,
+        BRIGHT_OS_MIN_APK_VERSION_CODE: "2999",
+        BRIGHT_OS_PUBLISHED_AT: "2026-06-15T00:00:00Z",
+      },
+    });
+
+    const nextInode = (await stat(archivePath)).ino;
+    expect(nextInode).not.toBe(previousInode);
+  });
+
+  it("keeps mobile OTA bundles outside browser web publication cleanup", async () => {
+    const root = await fixtureRoot("bright-web-publish-");
+    await writeStaticExport(root, "web");
+    const marker = path.join(root, "deploy/mobile-update/bundles/old.web.1/keep.txt");
+    await mkdir(path.dirname(marker), { recursive: true });
+    await writeFile(marker, "keep");
+    await mkdir(path.join(root, "deploy/web"), { recursive: true });
+    await writeFile(path.join(root, "deploy/web/old.txt"), "old");
+
+    await execFileAsync("bash", [path.join(workspaceRoot, "deploy/scripts/publish-web.sh")], {
+      env: { ...process.env, BRIGHT_OS_ROOT: root },
+    });
+
+    await expect(readFile(marker, "utf8")).resolves.toBe("keep");
+    await expect(readFile(path.join(root, "deploy/web/index.html"), "utf8")).resolves.toContain("web");
+    await expect(readFile(path.join(root, "deploy/web/old.txt"), "utf8")).rejects.toThrow();
+  });
+
+  it("allocates, reuses, and releases preview slots with the lock wrapper", async () => {
+    const root = await fixtureRoot("bright-slots-");
+    const envsRoot = path.join(root, "envs");
+    const env = {
+      ...process.env,
+      BRIGHT_OS_ROOT: workspaceRoot,
+      BRIGHT_OS_ENVS_ROOT: envsRoot,
+    };
+
+    const slotScript = path.join(workspaceRoot, "deploy/scripts/preview-slots.mjs");
+    await execFileAsync("node", [slotScript, "allocate", "codex/one", "abc"], { env });
+    let registry = JSON.parse(await readFile(path.join(envsRoot, "preview-slots.json"), "utf8"));
+    expect(registry.A.branch).toBe("codex/one");
+    expect(registry.A.commit).toBe("abc");
+
+    await execFileAsync("node", [slotScript, "allocate", "codex/one", "def"], { env });
+    registry = JSON.parse(await readFile(path.join(envsRoot, "preview-slots.json"), "utf8"));
+    expect(registry.A.branch).toBe("codex/one");
+    expect(registry.A.commit).toBe("def");
+
+    await execFileAsync("node", [slotScript, "allocate", "codex/two", "123"], { env });
+    registry = JSON.parse(await readFile(path.join(envsRoot, "preview-slots.json"), "utf8"));
+    expect(registry.B.branch).toBe("codex/two");
+
+    await execFileAsync("node", [slotScript, "release", "codex/one"], { env });
+    registry = JSON.parse(await readFile(path.join(envsRoot, "preview-slots.json"), "utf8"));
+    expect(registry.A.status).toBe("free");
+    expect(registry.A.branch).toBeNull();
+    await expect(readFile(path.join(envsRoot, "preview-status/index.html"), "utf8")).resolves.toContain("Bright OS Preview Slots");
+  });
+
+  it("renders exactly seven APK release sections without stale missing links", async () => {
+    const root = await fixtureRoot("bright-release-page-");
+    const releaseDir = path.join(root, "deploy/releases");
+    await mkdir(releaseDir, { recursive: true });
+    await mkdir(path.join(root, "deploy"), { recursive: true });
+    await copyFile(
+      path.join(workspaceRoot, "deploy/environments.json"),
+      path.join(root, "deploy/environments.json"),
+    );
+    await writeFile(path.join(releaseDir, "bright-os-0.0.1.1-capacitor.apk"), "apk");
+
+    await execFileAsync("node", [path.join(workspaceRoot, "deploy/scripts/update-release-index.mjs"), "--release", "production", "--file", "bright-os-0.0.1.1-capacitor.apk", "--version", "0.0.1.1", "--version-code", "1", "--published-at", "2026-06-23T09:13:50Z"], {
+      env: { ...process.env, BRIGHT_OS_ROOT: root },
+    });
+
+    const html = await readFile(path.join(releaseDir, "index.html"), "utf8");
+    expect(html.match(/<section>/g)?.length).toBe(7);
+    expect(html).toContain("Bright OS Dev");
+    expect(html).toContain("Bright OS E");
+    expect(html).toContain("APK ещё не опубликован");
+    expect(html).toContain("bright-os-0.0.1.1-capacitor.apk");
+  });
+});
+
+async function fixtureRoot(prefix: string) {
+  return await mkdtemp(path.join(tmpdir(), prefix));
+}
+
+async function writeStaticExport(root: string, marker: string) {
+  const out = path.join(root, "apps/bright_os_app/out");
+  await mkdir(path.join(out, "_next"), { recursive: true });
+  await writeFile(path.join(out, "index.html"), `<main>${marker}</main>`);
+  await writeFile(path.join(out, "_next/app.js"), "console.log('ok')");
+  await writeFile(path.join(out, "version.json"), JSON.stringify({ marker }));
+}

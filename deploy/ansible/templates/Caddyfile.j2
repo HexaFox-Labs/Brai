@@ -1,0 +1,50 @@
+{% for name, env in bright_os_envs.items() if name != 'prod' %}
+http://{{ env.domain }} {
+  redir https://{{ env.domain }}{uri} permanent
+}
+
+{{ env.domain }} {
+  encode zstd gzip
+  tls {
+    issuer acme {
+      disable_http_challenge
+    }
+  }
+
+  handle_path /api/* {
+    reverse_proxy 127.0.0.1:{{ env.api_port }}
+  }
+
+  handle /releases* {
+    reverse_proxy 127.0.0.1:{{ env.api_port }}
+  }
+
+  handle_path /mobile-update/* {
+    root * {{ bright_os_env_root }}/{{ env.path }}/mobile-update
+    file_server
+  }
+
+  handle {
+    {{ bright_os_basic_auth_directive }}
+    root * {{ bright_os_env_root }}/{{ env.path }}/web
+    try_files {path} {path}.html {path}/ /index.html
+    file_server
+  }
+}
+{% endfor %}
+
+http://{{ bright_os_preview_status_domain }} {
+  redir https://{{ bright_os_preview_status_domain }}{uri} permanent
+}
+
+{{ bright_os_preview_status_domain }} {
+  {{ bright_os_basic_auth_directive }}
+  encode zstd gzip
+  tls {
+    issuer acme {
+      disable_http_challenge
+    }
+  }
+  root * {{ bright_os_env_root }}/preview-status
+  file_server
+}

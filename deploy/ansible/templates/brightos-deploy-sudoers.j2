@@ -1,0 +1,5 @@
+{{ bright_os_deploy_user }} ALL=(root) NOPASSWD: /usr/bin/caddy validate --config {{ bright_os_caddyfile }}
+{{ bright_os_deploy_user }} ALL=(root) NOPASSWD: /bin/systemctl reload caddy
+{% for name, env in bright_os_envs.items() %}
+{{ bright_os_deploy_user }} ALL=(root) NOPASSWD: /bin/systemctl restart {{ env.service }}
+{% endfor %}

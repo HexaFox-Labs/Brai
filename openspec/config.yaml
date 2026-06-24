@@ -1,0 +1,25 @@
+schema: spec-driven
+context: |
+  Bright OS is a public-baseline Next.js/Capacitor productivity app with a
+  Node.js Timer API and self-hosted deployment automation. Durable project
+  context lives in memory-bank/, and accepted project requirements live in
+  openspec/specs/. Planned requirement changes must be proposed under
+  openspec/changes/ before implementation unless an emergency direct edit is
+  explicitly approved.
+rules:
+  proposal:
+    - Read openspec/specs/ and memory-bank/ before creating a proposal.
+    - Planned requirement changes MUST start in openspec/changes/<change-id>/ before implementation unless the user explicitly asks for an emergency direct edit.
+    - Proposal Capabilities MUST list every new or modified capability whose requirements change.
+    - Use kebab-case change IDs and capability IDs.
+  specs:
+    - Durable accepted behavior, workflow rules, architecture constraints, services, and invariants MUST be represented in openspec/specs/.
+    - Change-local spec files MUST use ADDED, MODIFIED, REMOVED, or RENAMED Requirements sections.
+    - Main specs under openspec/specs/ MUST use Purpose and Requirements sections, not delta headers.
+    - Requirements MUST use SHALL or MUST and include at least one Scenario.
+  design:
+    - Create design.md when a change affects architecture, data models, dependencies, security, performance, migration, or more than one module.
+    - Record decisions with rationale and note alternatives considered.
+  tasks:
+    - tasks.md MUST use trackable checkbox items in the form "- [ ] X.Y Task description".
+    - Mark tasks complete as implementation progresses, and keep verification tasks explicit.
