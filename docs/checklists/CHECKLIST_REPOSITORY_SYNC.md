@@ -8,3 +8,4 @@
 - [ ] Run or report relevant checks.
 - [ ] Commit intended changes.
 - [ ] Push only when the target repository and branch are approved.
+- [ ] End with clean tracked `git status --short`, or report the blocker explicitly.

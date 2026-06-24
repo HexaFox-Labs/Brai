@@ -14,6 +14,7 @@ Bright OS now uses the clean public repository baseline as its source of truth.
 - Run `npm run public:guard` before publishing or merging public branches.
 - Use `dev` for shared development and `codex/*` branches for preview work.
 - Keep public release versions aligned with the `build_versions` ledger.
+- Implementation tasks should end with committed and pushed tracked changes unless explicitly local-only.
 
 ## Open Questions
 
