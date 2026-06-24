@@ -46,10 +46,19 @@ Bright OS SHALL run the public branch guard before accepting source into `main`,
 ### Requirement: Task branches deploy through preview slots
 Agents working on ordinary Bright OS feature, fix, refactor, or infrastructure implementation tasks SHALL start from the latest `origin/dev` branch unless the project owner explicitly requests another base.
 
+Ordinary `codex/*` task branch pushes to `origin` and their preview deploys SHALL be treated as standing Bright OS CI/CD automation approved by the project owner, not as optional per-task manual confirmations.
+
 #### Scenario: A project-file change begins
 - **WHEN** work changes repository files
 - **THEN** the agent creates or continues an appropriate `codex/<task-slug>` branch
 - **AND** the pushed branch is deployed to a preview slot before user-facing handoff
+- **AND** the handoff names the preview slot letter and URL
+
+#### Scenario: Preview deployment is blocked
+- **WHEN** work changes repository files
+- **AND** the task branch cannot be pushed or deployed to a preview slot
+- **THEN** the agent reports the exact push, CI, or deploy blocker
+- **AND** the agent does not describe the task as complete
 
 #### Scenario: Preview work is accepted
 - **WHEN** the project owner accepts preview work

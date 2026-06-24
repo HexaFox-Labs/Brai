@@ -17,6 +17,8 @@ A pushed `codex/*` branch allocates or reuses a preview slot through `deploy/scr
 
 Local dev server URLs are agent-only verification aids. The user-facing handoff for project changes is the preview slot URL after `deploy-preview` succeeds; if CI/deploy is not complete, report that blocker instead of asking the project owner to open `localhost` or `127.0.0.1`.
 
+For implementation tasks, the final response must include the preview letter (`A` through `E`), preview URL, branch, and commit. If the preview letter or URL is missing, the task is not complete and the response must say exactly which push, CI, or deploy step blocked it. Ordinary `codex/*` branch push/deploy is standing Bright OS CI/CD automation and must not be treated as an optional manual confirmation step.
+
 Preview acceptance flow:
 
 ```text
