@@ -10,23 +10,23 @@ import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGrou
 import { cx } from "../appUtils";
 import { useMobileSheetDrag } from "../hooks/useMobileSheetDrag";
 import type { PrimarySectionId, SectionId } from "../appModel";
-import { navHref, navItems } from "../appModel";
+import { isPrimarySection, navHref, navItems, sectionTitle } from "../appModel";
 
 export function DesktopRail({
   expanded,
   section,
-  onSection,
   onSettings,
   onArchive,
   onLogout,
 }: {
   expanded: boolean;
   section: SectionId;
-  onSection: (section: PrimarySectionId) => void;
   onSettings: () => void;
   onArchive: () => void;
   onLogout: () => Promise<void>;
 }) {
+  const pageMenuTitle = sectionTitle(section);
+
   return (
     <Sidebar
       collapsible="icon"
@@ -38,32 +38,12 @@ export function DesktopRail({
         <RailCollapseButton />
       </SidebarHeader>
       <SidebarContent>
-        {(["Platform", "Time"] as const).map((group) => (
-          <SidebarGroup key={group}>
-            {expanded ? <SidebarGroupLabel>{group}</SidebarGroupLabel> : null}
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {navItems.filter((item) => item.group === group).map((item) => {
-                  const Icon = item.icon;
-                  return (
-                    <SidebarMenuItem key={item.id}>
-                      <SidebarMenuButton
-                        type="button"
-                        tooltip={item.label}
-                        isActive={isActiveNavItem(item.id, section)}
-                        aria-label={item.label}
-                        onClick={() => onSection(item.id)}
-                      >
-                        <Icon aria-hidden="true" />
-                        {expanded ? <span>{item.label}</span> : null}
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        ))}
+        <SidebarGroup>
+          {expanded ? <SidebarGroupLabel>Меню страницы</SidebarGroupLabel> : null}
+          <SidebarGroupContent>
+            {expanded ? <div className="px-2 py-1.5 text-sm font-medium text-sidebar-foreground">{pageMenuTitle}</div> : null}
+          </SidebarGroupContent>
+        </SidebarGroup>
       </SidebarContent>
       <SidebarRail />
     </Sidebar>
@@ -347,5 +327,5 @@ export function MainDock({
 }
 
 function isActiveNavItem(itemId: PrimarySectionId, section: SectionId): boolean {
-  return itemId === section;
+  return isPrimarySection(section) && itemId === section;
 }

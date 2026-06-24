@@ -130,7 +130,6 @@ export function BrightOsApp({ initialSection = "actions" }: { initialSection?: S
       <DesktopRail
         expanded={app.desktopRailExpanded}
         section={app.section}
-        onSection={app.selectSection}
         onSettings={app.openSettingsPage}
         onArchive={() => app.selectSection("archive")}
         onLogout={app.onLogout}

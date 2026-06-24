@@ -716,7 +716,7 @@ describe("BrightOsApp shell", () => {
     await waitFor(() => expect(document.documentElement).toHaveAttribute("data-platform", "android"));
   });
 
-  it("expands and collapses the desktop rail as a layout state", () => {
+  it("expands and collapses the desktop rail as a layout state", async () => {
     Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 1200 });
     render(<BrightOsApp />);
     const shell = document.querySelector(".app-shell");
@@ -732,6 +732,11 @@ describe("BrightOsApp shell", () => {
     expect(document.documentElement).toHaveAttribute("data-sidebar-state", "expanded");
     expect(screen.getByText("Workspace")).toBeInTheDocument();
     expect(rail).toContainElement(screen.getByRole("button", { name: "Свернуть меню" }));
+    expect(rail).toHaveTextContent("Меню страницы");
+    expect(rail).toHaveTextContent("Действия");
+    expect(rail).not.toHaveTextContent("Platform");
+    expect(rail).not.toHaveTextContent("Time");
+    expect(rail).not.toHaveTextContent("Фокус");
 
     fireEvent.click(screen.getByRole("button", { name: "Свернуть меню" }));
     expect(shell).not.toHaveClass("is-rail-expanded");
@@ -751,6 +756,12 @@ describe("BrightOsApp shell", () => {
     expect(rail).toHaveClass("expanded");
     expect(document.documentElement).toHaveAttribute("data-sidebar-state", "expanded");
     expect(document.cookie).toContain("sidebar_state=true");
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Фокус" }).at(-1) as HTMLElement);
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Фокус" })).toBeInTheDocument());
+    expect(rail).toHaveTextContent("Меню страницы");
+    expect(rail).toHaveTextContent("Фокус");
+    expect(rail).not.toHaveTextContent("Действия");
   });
 
   it("restores the collapsed desktop rail after reload", async () => {
