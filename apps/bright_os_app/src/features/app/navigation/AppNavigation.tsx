@@ -25,8 +25,6 @@ export function DesktopRail({
   onArchive: () => void;
   onLogout: () => Promise<void>;
 }) {
-  const pageMenuTitle = sectionTitle(section);
-
   return (
     <Sidebar
       collapsible="icon"
@@ -38,12 +36,7 @@ export function DesktopRail({
         <RailCollapseButton />
       </SidebarHeader>
       <SidebarContent>
-        <SidebarGroup>
-          {expanded ? <SidebarGroupLabel>Меню страницы</SidebarGroupLabel> : null}
-          <SidebarGroupContent>
-            {expanded ? <div className="px-2 py-1.5 text-sm font-medium text-sidebar-foreground">{pageMenuTitle}</div> : null}
-          </SidebarGroupContent>
-        </SidebarGroup>
+        <PageMenu expanded={expanded} section={section} />
       </SidebarContent>
       <SidebarRail />
     </Sidebar>
@@ -64,11 +57,13 @@ export function MobileMenuButton({ onClick }: { onClick: () => void }) {
 }
 
 export function MobileProfileDrawer({
+  section,
   onClose,
   onSettings,
   onArchive,
   onLogout,
 }: {
+  section: SectionId;
   onClose: () => void;
   onSettings: () => void;
   onArchive: () => void;
@@ -145,8 +140,22 @@ export function MobileProfileDrawer({
           onArchive={() => closeThen(onArchive)}
           onLogout={() => closeThenAsync(onLogout)}
         />
+        <PageMenu expanded section={section} />
       </aside>
     </div>
+  );
+}
+
+function PageMenu({ expanded, section }: { expanded: boolean; section: SectionId }) {
+  if (!expanded) return null;
+
+  return (
+    <SidebarGroup>
+      <SidebarGroupLabel>Меню страницы</SidebarGroupLabel>
+      <SidebarGroupContent>
+        <div className="px-2 py-1.5 text-sm font-medium text-sidebar-foreground">{sectionTitle(section)}</div>
+      </SidebarGroupContent>
+    </SidebarGroup>
   );
 }
 

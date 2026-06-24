@@ -166,6 +166,7 @@ export function BrightOsApp({ initialSection = "actions" }: { initialSection?: S
       />
       {app.mobileMenuOpen && isPrimarySection(app.section) ? (
         <MobileProfileDrawer
+          section={app.section}
           onClose={() => app.setMobileMenuOpen(false)}
           onSettings={app.openSettingsPage}
           onArchive={() => app.selectSection("archive")}

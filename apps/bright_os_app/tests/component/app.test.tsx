@@ -783,8 +783,11 @@ describe("BrightOsApp shell", () => {
     expect(document.querySelector(".mobile-menu-backdrop")).toBeInTheDocument();
     expect(document.querySelector(".mobile-menu-backdrop > div")).toHaveClass("bg-foreground/15", "dark:bg-background/80");
     expect(document.querySelector(".mobile-profile-drawer")).toHaveTextContent("Workspace");
+    expect(document.querySelector(".mobile-profile-drawer")).toHaveTextContent("Меню страницы");
+    expect(document.querySelector(".mobile-profile-drawer")).toHaveTextContent("Действия");
     expect(document.querySelector(".mobile-profile-drawer")).not.toHaveTextContent("Platform");
     expect(document.querySelector(".mobile-profile-drawer")).not.toHaveTextContent("Time");
+    expect(document.querySelector(".mobile-profile-drawer")).not.toHaveTextContent("Фокус");
     expect(screen.getAllByRole("button", { name: "Открыть меню профиля" }).length).toBeGreaterThan(0);
 
     fireEvent.click(document.querySelector(".mobile-menu-backdrop") as HTMLElement);
@@ -794,6 +797,9 @@ describe("BrightOsApp shell", () => {
     await waitFor(() => expect(screen.getByRole("heading", { name: "Фокус" })).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Открыть меню" }));
     expect(document.querySelector(".mobile-menu-backdrop")).toBeInTheDocument();
+    expect(document.querySelector(".mobile-profile-drawer")).toHaveTextContent("Меню страницы");
+    expect(document.querySelector(".mobile-profile-drawer")).toHaveTextContent("Фокус");
+    expect(document.querySelector(".mobile-profile-drawer")).not.toHaveTextContent("Действия");
   });
 });
 
