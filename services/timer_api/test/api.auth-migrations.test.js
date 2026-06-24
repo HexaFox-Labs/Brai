@@ -121,7 +121,7 @@ test('migration seeds unified build version ledger', async () => {
     const versions = fixture.store.db
       .prepare('SELECT * FROM build_versions ORDER BY version_type_id, version')
       .all();
-    assert.equal(versions.length, 8);
+    assert.equal(versions.length, 10);
 
     const baselineApk = versions.find((version) => version.version_type_id === 'apk' && version.version === '0.0.1.1');
     assert.ok(baselineApk);
@@ -206,8 +206,28 @@ test('migration seeds unified build version ledger', async () => {
     assert.match(sixthTaskBuild.detailed_changes, /production Android web\/OTA bundles use the public API endpoint/);
     assert.equal(sixthTaskBuild.reason, 'Accepted production Android OTA API endpoint fix into dev.');
 
+    const seventhTaskBuild = versions.find((version) => version.version_type_id === 'build' && version.version === '0.0.8.1');
+    assert.ok(seventhTaskBuild);
+    assert.equal(seventhTaskBuild.major_version, 0);
+    assert.equal(seventhTaskBuild.release_version, 0);
+    assert.equal(seventhTaskBuild.build_version, 8);
+    assert.equal(seventhTaskBuild.apk_version, 1);
+    assert.equal(seventhTaskBuild.released_at_utc, '2026-06-24T21:10:59Z');
+    assert.match(seventhTaskBuild.detailed_changes, /desktop rail navigation no longer duplicates the dock/);
+    assert.equal(seventhTaskBuild.reason, 'Accepted split left menu by page into dev.');
+
+    const eighthTaskBuild = versions.find((version) => version.version_type_id === 'build' && version.version === '0.0.9.1');
+    assert.ok(eighthTaskBuild);
+    assert.equal(eighthTaskBuild.major_version, 0);
+    assert.equal(eighthTaskBuild.release_version, 0);
+    assert.equal(eighthTaskBuild.build_version, 9);
+    assert.equal(eighthTaskBuild.apk_version, 1);
+    assert.equal(eighthTaskBuild.released_at_utc, '2026-06-24T21:17:09Z');
+    assert.match(eighthTaskBuild.detailed_changes, /recheck GitHub CLI authentication outside the sandbox/);
+    assert.equal(eighthTaskBuild.reason, 'Accepted GitHub CLI sandbox auth guidance into dev.');
+
     fixture.store.migrate();
-    assert.equal(fixture.store.db.prepare('SELECT COUNT(*) AS count FROM build_versions').get().count, 8);
+    assert.equal(fixture.store.db.prepare('SELECT COUNT(*) AS count FROM build_versions').get().count, 10);
   } finally {
     await fixture.close();
   }

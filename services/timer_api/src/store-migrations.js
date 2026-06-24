@@ -106,6 +106,16 @@ export const migrationMethods = {
       this.seedProductionAndroidOtaApiBuildVersion();
       this.recordMigration(16, 'record production Android OTA API endpoint fix');
     }
+
+    if (!this.hasMigration(17)) {
+      this.seedSplitLeftMenuBuildVersion();
+      this.recordMigration(17, 'record split left menu task');
+    }
+
+    if (!this.hasMigration(18)) {
+      this.seedGithubCliSandboxAuthBuildVersion();
+      this.recordMigration(18, 'record GitHub CLI sandbox auth guidance');
+    }
   }
 ,
 
@@ -776,6 +786,74 @@ export const migrationMethods = {
       'Recorded the sixth accepted public task: production Android web/OTA bundles use the public API endpoint while browser web keeps same-origin /api, and OTA manifests are prepared for cache-safe publication.',
       'Accepted production Android OTA API endpoint fix into dev.',
       '2026-06-24T18:20:00Z',
+      now
+    );
+  }
+,
+
+  seedSplitLeftMenuBuildVersion() {
+    const now = new Date().toISOString();
+    this.db.prepare(`
+        INSERT INTO build_versions (
+          version_type_id,
+          major_version,
+          release_version,
+          build_version,
+          apk_version,
+          version,
+          short_changes,
+          detailed_changes,
+          reason,
+          released_at_utc,
+          created_at_utc
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(version_type_id, version) DO NOTHING
+      `).run(
+      'build',
+      0,
+      0,
+      8,
+      1,
+      '0.0.8.1',
+      'Accepted split left menu by page.',
+      'Recorded the seventh accepted public task: desktop rail navigation no longer duplicates the dock and instead shows page-specific menu actions with regression coverage.',
+      'Accepted split left menu by page into dev.',
+      '2026-06-24T21:10:59Z',
+      now
+    );
+  }
+,
+
+  seedGithubCliSandboxAuthBuildVersion() {
+    const now = new Date().toISOString();
+    this.db.prepare(`
+        INSERT INTO build_versions (
+          version_type_id,
+          major_version,
+          release_version,
+          build_version,
+          apk_version,
+          version,
+          short_changes,
+          detailed_changes,
+          reason,
+          released_at_utc,
+          created_at_utc
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(version_type_id, version) DO NOTHING
+      `).run(
+      'build',
+      0,
+      0,
+      9,
+      1,
+      '0.0.9.1',
+      'Accepted GitHub CLI sandbox auth guidance.',
+      'Recorded the eighth accepted public task: Codex agents must recheck GitHub CLI authentication outside the sandbox before treating gh token errors as real authentication failures.',
+      'Accepted GitHub CLI sandbox auth guidance into dev.',
+      '2026-06-24T21:17:09Z',
       now
     );
   }
