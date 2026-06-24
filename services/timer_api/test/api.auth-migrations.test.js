@@ -121,7 +121,7 @@ test('migration seeds unified build version ledger', async () => {
     const versions = fixture.store.db
       .prepare('SELECT * FROM build_versions ORDER BY version_type_id, version')
       .all();
-    assert.equal(versions.length, 3);
+    assert.equal(versions.length, 4);
 
     const baselineApk = versions.find((version) => version.version_type_id === 'apk' && version.version === '0.0.1.1');
     assert.ok(baselineApk);
@@ -156,8 +156,18 @@ test('migration seeds unified build version ledger', async () => {
     assert.match(firstTaskBuild.detailed_changes, /dev promotions to main increment Y/);
     assert.equal(firstTaskBuild.reason, 'Accepted first public task into dev.');
 
+    const secondTaskBuild = versions.find((version) => version.version_type_id === 'build' && version.version === '0.0.3.1');
+    assert.ok(secondTaskBuild);
+    assert.equal(secondTaskBuild.major_version, 0);
+    assert.equal(secondTaskBuild.release_version, 0);
+    assert.equal(secondTaskBuild.build_version, 3);
+    assert.equal(secondTaskBuild.apk_version, 1);
+    assert.equal(secondTaskBuild.released_at_utc, '2026-06-24T14:05:00Z');
+    assert.match(secondTaskBuild.detailed_changes, /codex task branches deploy to isolated preview slots/);
+    assert.equal(secondTaskBuild.reason, 'Accepted clean task finish workflow into dev.');
+
     fixture.store.migrate();
-    assert.equal(fixture.store.db.prepare('SELECT COUNT(*) AS count FROM build_versions').get().count, 3);
+    assert.equal(fixture.store.db.prepare('SELECT COUNT(*) AS count FROM build_versions').get().count, 4);
   } finally {
     await fixture.close();
   }

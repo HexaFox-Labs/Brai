@@ -11,6 +11,7 @@
 - Branch protection requires `public-guard` and `checks`.
 - Public baseline version is `0.0.1.1`.
 - First accepted `dev` task version is `0.0.2.1`.
+- Second accepted `dev` task version is `0.0.3.1`.
 
 ## Current State
 
@@ -19,3 +20,4 @@
 - Accepted task merges into `dev` add a `build` ledger row and increment `Z`.
 - Promotions from `dev` to `main` add a `build` ledger row and increment `Y`.
 - Shipped APK releases add an `apk` ledger row and increment `S`.
+- Implementation tasks must finish with clean tracked status, committed and pushed, unless explicitly local-only.
