@@ -121,6 +121,11 @@ export const migrationMethods = {
       this.realignBuildVersionLedger();
       this.recordMigration(19, 'realign build version ledger with pull request number');
     }
+
+    if (!this.hasMigration(20)) {
+      this.seedAcceptedPrLedgerBackfill();
+      this.recordMigration(20, 'record accepted PR 9 and 10 build versions');
+    }
   }
 ,
 
@@ -903,6 +908,58 @@ export const migrationMethods = {
     this.db
       .prepare("DELETE FROM build_versions WHERE version_type_id = 'build' AND version = '0.0.9.1'")
       .run();
+  }
+,
+
+  seedAcceptedPrLedgerBackfill() {
+    const now = new Date().toISOString();
+    const insert = this.db.prepare(`
+        INSERT INTO build_versions (
+          version_type_id,
+          major_version,
+          release_version,
+          build_version,
+          apk_version,
+          version,
+          short_changes,
+          detailed_changes,
+          reason,
+          released_at_utc,
+          created_at_utc
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(version_type_id, version) DO UPDATE SET
+          short_changes = excluded.short_changes,
+          detailed_changes = excluded.detailed_changes,
+          reason = excluded.reason,
+          released_at_utc = excluded.released_at_utc
+      `);
+    insert.run(
+      'build',
+      0,
+      0,
+      9,
+      1,
+      '0.0.9.1',
+      'Accepted PR #9 into dev.',
+      'Recorded accepted PR #9: mobile edge menu swipe, bottom-dock-only page swipes, and 80 percent left menu width.',
+      'Accepted PR #9 into dev.',
+      '2026-06-24T22:52:31.873Z',
+      now
+    );
+    insert.run(
+      'build',
+      0,
+      0,
+      10,
+      1,
+      '0.0.10.1',
+      'Accepted PR #10 into dev.',
+      'Recorded accepted PR #10: preview slot release now uses a deploy-readable checkout, full preview pools queue FIFO, and acceptance release frees the slot automatically.',
+      'Accepted PR #10 into dev.',
+      '2026-06-24T23:10:19.023Z',
+      now
+    );
   }
 ,
 

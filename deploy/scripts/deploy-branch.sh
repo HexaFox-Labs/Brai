@@ -56,6 +56,18 @@ if [[ "$ENVIRONMENT" == preview-* && "$ALLOCATED_NEW" == "true" && "${BRIGHT_OS_
   esac
 fi
 
+if [[ "$ENVIRONMENT" == "dev" && -n "${BRIGHT_OS_ACCEPTED_PR_NUMBER:-}" ]]; then
+  "$NODE_BIN" "$SCRIPT_DIR/record-accepted-build-version.mjs" \
+    --db "$DB_PATH" \
+    --pr-number "$BRIGHT_OS_ACCEPTED_PR_NUMBER" \
+    --source-branch "$BRANCH" \
+    --source-commit "$COMMIT" \
+    --target-branch "$BRANCH" \
+    --target-commit "$COMMIT" \
+    --source-details "Automated dev deployment from accepted PR #$BRIGHT_OS_ACCEPTED_PR_NUMBER." \
+    --released-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+fi
+
 SOURCE_VERSION="$("$NODE_BIN" -e '
 const fs = require("node:fs");
 const path = require("node:path");
@@ -63,7 +75,22 @@ const root = process.argv[1];
 const parsed = JSON.parse(fs.readFileSync(path.join(root, "apps/bright_os_app/public/version.json"), "utf8"));
 console.log(parsed.version);
 ' "$ROOT")"
-VERSION="${BRIGHT_OS_APP_VERSION:-$SOURCE_VERSION}"
+LEDGER_VERSION=""
+if [[ "$ENVIRONMENT" == "dev" && -z "${BRIGHT_OS_APP_VERSION:-}" ]]; then
+  LEDGER_VERSION="$("$NODE_BIN" -e '
+import { TimerStore } from "./services/timer_api/src/store.js";
+const store = new TimerStore(process.argv[1]);
+try {
+  const row = store.db
+    .prepare("SELECT version FROM build_versions WHERE version_type_id = ? ORDER BY build_version DESC LIMIT 1")
+    .get("build");
+  if (row?.version) console.log(row.version);
+} finally {
+  store.close();
+}
+' "$DB_PATH")"
+fi
+VERSION="${BRIGHT_OS_APP_VERSION:-${LEDGER_VERSION:-$SOURCE_VERSION}}"
 
 if [[ "$ENVIRONMENT" == preview-* && -z "${BRIGHT_OS_APP_VERSION:-}" && -f "$ENVS_ROOT/dev/web/version.json" ]]; then
   VERSION="$("$NODE_BIN" -e '

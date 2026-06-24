@@ -42,4 +42,5 @@ fi
   --target-branch "$TARGET_BRANCH" \
   --target-commit "$TARGET_COMMIT" \
   --target-domain "$TARGET_DOMAIN" \
+  --accepted-pr-number "${BRIGHT_OS_ACCEPTED_PR_NUMBER:-}" \
   --reason "${BRIGHT_OS_PROMOTE_REASON:-Accepted branch promotion}"
