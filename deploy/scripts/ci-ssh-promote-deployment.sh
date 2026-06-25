@@ -52,7 +52,11 @@ process.exit(1);
     echo "No preview slot found for $BRIGHT_OS_SOURCE_BRANCH; skipping metadata promotion."
     exit 0
   fi
-  RUN_ROOT="$ENVS_ROOT/preview-$SLOT/source"
+  if [[ -r "$ENVS_ROOT/dev/source/deploy/scripts/promote-accepted-deployment.sh" ]]; then
+    RUN_ROOT="$ENVS_ROOT/dev/source"
+  else
+    RUN_ROOT="$ENVS_ROOT/preview-$SLOT/source"
+  fi
 elif [[ "$BRIGHT_OS_TARGET_ENVIRONMENT" == "prod" ]]; then
   RUN_ROOT="$ENVS_ROOT/dev/source"
   export BRIGHT_OS_DB="$DEPLOY_REPO/data/bright_os.sqlite"

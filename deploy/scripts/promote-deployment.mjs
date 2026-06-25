@@ -2,34 +2,23 @@ import process from "node:process";
 import { BrightOsStore } from "../../services/bright_os_api/src/store.js";
 
 const args = parseArgs(process.argv.slice(2));
-const source = new BrightOsStore(required(args, "source-db"));
+const sourceBranch = required(args, "source-branch");
+const targetEnvironment = required(args, "target-environment");
+const targetBranch = required(args, "target-branch");
+const targetCommit = required(args, "target-commit");
+const deployedAtUtc = args["deployed-at"] || new Date().toISOString();
+const ledgerOnly = args["ledger-only"] === "true";
 const target = new BrightOsStore(required(args, "target-db"));
+let source = null;
 
 try {
-  const sourceBranch = required(args, "source-branch");
-  const targetEnvironment = required(args, "target-environment");
-  const targetBranch = required(args, "target-branch");
-  const targetCommit = required(args, "target-commit");
-  const deployedAtUtc = args["deployed-at"] || new Date().toISOString();
-  const ledgerOnly = args["ledger-only"] === "true";
-  let sourceRecord = source
-    .listDeploymentRecords()
-    .find((record) => record.branch === sourceBranch);
-  if (!sourceRecord && targetEnvironment === "dev" && args["source-commit"]) {
-    sourceRecord = {
-      environment: "preview",
-      slot: args["source-slot"] || null,
-      branch: sourceBranch,
-      commit_sha: args["source-commit"],
-      web_ota_version: args["web-ota-version"] || null,
-      apk_version: args["apk-version"] || null,
-      short_changes: args["source-short-changes"] || `Accepted ${sourceBranch}.`,
-      detailed_changes: args["source-details"] || `Accepted ${sourceBranch}@${args["source-commit"]} without preview deployment metadata.`,
-    };
-  }
+  source = openSourceStore(args, targetEnvironment);
+  const sourceRecord = source?.listDeploymentRecords().find((record) => record.branch === sourceBranch)
+    ?? fallbackSourceRecord(args, sourceBranch, targetEnvironment);
   if (!sourceRecord) throw new Error(`no deployment metadata for ${sourceBranch}`);
 
   if (targetEnvironment === "prod") {
+    if (!source) throw new Error("production promotion requires readable source deployment metadata");
     promoteBuildVersions(source, target);
   }
 
@@ -67,8 +56,36 @@ try {
     releasedAtUtc: deployedAtUtc,
   });
 } finally {
-  source.close();
+  source?.close();
   target.close();
+}
+
+function openSourceStore(values, targetEnvironment) {
+  const sourceDb = required(values, "source-db");
+  try {
+    return new BrightOsStore(sourceDb);
+  } catch (error) {
+    if (targetEnvironment === "dev" && values["source-commit"]) {
+      console.error(`Warning: preview deployment metadata is unavailable; using branch and commit fallback. ${error.message}`);
+      return null;
+    }
+    throw error;
+  }
+}
+
+function fallbackSourceRecord(values, sourceBranch, targetEnvironment) {
+  if (targetEnvironment !== "dev" || !values["source-commit"]) return null;
+  return {
+    environment: "preview",
+    slot: values["source-slot"] || null,
+    branch: sourceBranch,
+    commit_sha: values["source-commit"],
+    web_ota_version: values["web-ota-version"] || null,
+    apk_version: values["apk-version"] || null,
+    short_changes: values["source-short-changes"] || `Accepted ${sourceBranch}.`,
+    detailed_changes:
+      values["source-details"] || `Accepted ${sourceBranch}@${values["source-commit"]} without preview deployment metadata.`,
+  };
 }
 
 function promoteBuildVersions(source, target) {

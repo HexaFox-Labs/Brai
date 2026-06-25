@@ -172,3 +172,49 @@ test('accepted preview promotion falls back to branch commit metadata', () => {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('accepted preview promotion falls back when source database cannot be opened', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bright-promote-unreadable-source-'));
+  const sourceDb = path.join(tmp, 'missing', 'source.sqlite');
+  const targetDb = path.join(tmp, 'target.sqlite');
+  const target = new BrightOsStore(targetDb);
+  target.close();
+
+  const repoRoot = path.resolve(import.meta.dirname, '../../..');
+  execFileSync(process.execPath, [
+    path.join(repoRoot, 'deploy/scripts/promote-deployment.mjs'),
+    '--source-db',
+    sourceDb,
+    '--target-db',
+    targetDb,
+    '--source-branch',
+    'codex/unreadable-preview-db',
+    '--source-commit',
+    'abc-unreadable',
+    '--source-details',
+    'Accepted preview branch codex/unreadable-preview-db@abc-unreadable.',
+    '--target-environment',
+    'dev',
+    '--target-branch',
+    'dev',
+    '--target-commit',
+    'merge-unreadable',
+    '--target-domain',
+    'dev.brightos.world',
+    '--reason',
+    'Promote preview with unreadable source database'
+  ], { cwd: repoRoot });
+
+  const promoted = new BrightOsStore(targetDb);
+  try {
+    const version = promoted.db
+      .prepare("SELECT build_version, version, detailed_changes FROM build_versions WHERE version_type_id = 'build' ORDER BY build_version DESC LIMIT 1")
+      .get();
+    assert.equal(version.build_version, 12);
+    assert.equal(version.version, '0.0.12.1');
+    assert.match(version.detailed_changes, /codex\/unreadable-preview-db@abc-unreadable/);
+  } finally {
+    promoted.close();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
