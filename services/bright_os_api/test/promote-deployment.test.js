@@ -6,14 +6,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { BrightOsStore } from '../src/store.js';
 
-test('accepted preview promotion records a PR-matched build version once', () => {
+test('accepted preview promotion records the next dev build version once', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bright-promote-ledger-'));
   const targetDb = path.join(tmp, 'target.sqlite');
   const store = new BrightOsStore(targetDb);
 
   try {
     const accepted = {
-      prNumber: '11',
       sourceBranch: 'codex/example',
       sourceCommit: 'abc123',
       sourceDetails: 'Automated preview deploy.',
@@ -25,16 +24,16 @@ test('accepted preview promotion records a PR-matched build version once', () =>
     store.recordAcceptedBuildVersion({ ...accepted, releasedAtUtc: '2026-06-24T22:10:00.000Z' });
 
     const version = store.db
-      .prepare("SELECT * FROM build_versions WHERE version_type_id = 'build' AND version = '0.0.11.1'")
+      .prepare("SELECT * FROM build_versions WHERE version_type_id = 'build' AND version = '0.0.12.1'")
       .get();
     assert.ok(version);
-    assert.equal(version.build_version, 11);
-    assert.equal(version.reason, 'Accepted PR #11 into dev.');
+    assert.equal(version.build_version, 12);
+    assert.equal(version.reason, 'Accepted dev build 0.0.12.1.');
     assert.equal(version.released_at_utc, '2026-06-24T22:10:00.000Z');
-    assert.match(version.detailed_changes, /codex\/example@abc123 promoted to dev@def456/);
+    assert.match(version.detailed_changes, /source codex\/example@abc123; target dev@def456/);
     assert.equal(
       store.db.prepare("SELECT COUNT(*) AS count FROM build_versions WHERE version_type_id = 'build'").get().count,
-      11
+      12
     );
   } finally {
     store.close();
@@ -51,19 +50,17 @@ test('production promotion copies accepted dev build ledger', () => {
 
   try {
     source.recordAcceptedBuildVersion({
-      prNumber: '12',
       sourceBranch: 'codex/example-12',
       sourceCommit: 'abc12',
-      sourceDetails: 'Accepted PR 12.',
+      sourceDetails: 'Accepted dev build 12.',
       targetBranch: 'dev',
       targetCommit: 'def12',
       releasedAtUtc: '2026-06-25T12:00:00.000Z'
     });
     source.recordAcceptedBuildVersion({
-      prNumber: '13',
       sourceBranch: 'codex/example-13',
       sourceCommit: 'abc13',
-      sourceDetails: 'Accepted PR 13.',
+      sourceDetails: 'Accepted dev build 13.',
       targetBranch: 'dev',
       targetCommit: 'def13',
       releasedAtUtc: '2026-06-25T13:00:00.000Z'
@@ -101,6 +98,8 @@ test('production promotion copies accepted dev build ledger', () => {
     'mainsha',
     '--target-domain',
     'app.brightos.world',
+    '--ledger-only',
+    'true',
     '--reason',
     'Promote dev to production'
   ], { cwd: repoRoot });
@@ -108,18 +107,66 @@ test('production promotion copies accepted dev build ledger', () => {
   const promoted = new BrightOsStore(targetDb);
   try {
     const latest = promoted.db
-      .prepare("SELECT build_version, version FROM build_versions WHERE version_type_id = 'build' ORDER BY build_version DESC LIMIT 1")
+      .prepare("SELECT release_version, build_version, version, detailed_changes FROM build_versions WHERE version_type_id = 'build' ORDER BY release_version DESC, build_version DESC LIMIT 1")
       .get();
-    assert.deepEqual(latest, { build_version: 13, version: '0.0.13.1' });
+    assert.equal(latest.release_version, 1);
+    assert.equal(latest.build_version, 13);
+    assert.equal(latest.version, '0.1.13.1');
+    assert.match(latest.detailed_changes, /0\.0\.12\.1/);
+    assert.match(latest.detailed_changes, /0\.0\.13\.1/);
 
     const prodRecord = promoted.db
       .prepare("SELECT environment, branch, web_ota_version FROM deployment_records WHERE environment = 'prod' ORDER BY id DESC LIMIT 1")
       .get();
-    assert.deepEqual(prodRecord, {
-      environment: 'prod',
-      branch: 'main',
-      web_ota_version: '0.0.13.1.20260625130000'
-    });
+    assert.equal(prodRecord, undefined);
+  } finally {
+    promoted.close();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('accepted preview promotion falls back to branch commit metadata', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bright-promote-fallback-'));
+  const sourceDb = path.join(tmp, 'source.sqlite');
+  const targetDb = path.join(tmp, 'target.sqlite');
+  const source = new BrightOsStore(sourceDb);
+  const target = new BrightOsStore(targetDb);
+  source.close();
+  target.close();
+
+  const repoRoot = path.resolve(import.meta.dirname, '../../..');
+  execFileSync(process.execPath, [
+    path.join(repoRoot, 'deploy/scripts/promote-deployment.mjs'),
+    '--source-db',
+    sourceDb,
+    '--target-db',
+    targetDb,
+    '--source-branch',
+    'codex/no-preview-metadata',
+    '--source-commit',
+    'abc-fallback',
+    '--source-details',
+    'Accepted preview branch codex/no-preview-metadata@abc-fallback.',
+    '--target-environment',
+    'dev',
+    '--target-branch',
+    'dev',
+    '--target-commit',
+    'merge-fallback',
+    '--target-domain',
+    'dev.brightos.world',
+    '--reason',
+    'Promote preview without deployment metadata'
+  ], { cwd: repoRoot });
+
+  const promoted = new BrightOsStore(targetDb);
+  try {
+    const version = promoted.db
+      .prepare("SELECT build_version, version, detailed_changes FROM build_versions WHERE version_type_id = 'build' ORDER BY build_version DESC LIMIT 1")
+      .get();
+    assert.equal(version.build_version, 12);
+    assert.equal(version.version, '0.0.12.1');
+    assert.match(version.detailed_changes, /codex\/no-preview-metadata@abc-fallback/);
   } finally {
     promoted.close();
     fs.rmSync(tmp, { recursive: true, force: true });

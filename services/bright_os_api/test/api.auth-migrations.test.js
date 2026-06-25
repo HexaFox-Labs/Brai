@@ -224,23 +224,23 @@ test('migration seeds unified build version ledger', async () => {
     assert.equal(eighthTaskBuild.build_version, 8);
     assert.equal(eighthTaskBuild.apk_version, 1);
     assert.equal(eighthTaskBuild.released_at_utc, '2026-06-24T21:40:47Z');
-    assert.match(eighthTaskBuild.detailed_changes, /Z now matches the accepted GitHub PR number/);
-    assert.equal(eighthTaskBuild.reason, 'Accepted PR/version ledger alignment into dev.');
+    assert.match(eighthTaskBuild.detailed_changes, /Z follows the accepted dev build sequence/);
+    assert.equal(eighthTaskBuild.reason, 'Accepted dev build ledger alignment into dev.');
 
     const ninthTaskBuild = versions.find((version) => version.version_type_id === 'build' && version.version === '0.0.9.1');
     assert.ok(ninthTaskBuild);
     assert.equal(ninthTaskBuild.build_version, 9);
-    assert.equal(ninthTaskBuild.reason, 'Accepted PR #9 into dev.');
+    assert.equal(ninthTaskBuild.reason, 'Accepted dev build 0.0.9.1 into dev.');
 
     const tenthTaskBuild = versions.find((version) => version.version_type_id === 'build' && version.version === '0.0.10.1');
     assert.ok(tenthTaskBuild);
     assert.equal(tenthTaskBuild.build_version, 10);
-    assert.equal(tenthTaskBuild.reason, 'Accepted PR #10 into dev.');
+    assert.equal(tenthTaskBuild.reason, 'Accepted dev build 0.0.10.1 into dev.');
 
     const eleventhTaskBuild = versions.find((version) => version.version_type_id === 'build' && version.version === '0.0.11.1');
     assert.ok(eleventhTaskBuild);
     assert.equal(eleventhTaskBuild.build_version, 11);
-    assert.equal(eleventhTaskBuild.reason, 'Accepted PR #11 into dev.');
+    assert.equal(eleventhTaskBuild.reason, 'Accepted dev build 0.0.11.1 into dev.');
 
     fixture.store.migrate();
     assert.equal(fixture.store.db.prepare('SELECT COUNT(*) AS count FROM build_versions').get().count, 12);

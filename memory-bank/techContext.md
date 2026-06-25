@@ -22,14 +22,15 @@ npm --prefix services/bright_os_api test
 
 Public version baseline:
 
-- App/web/OTA version: `0.0.10.1`
 - Baseline version: `0.0.1.1`
 - Android `versionCode`: `1`
 - Release ledger table: `build_versions`
+- Runtime `build_versions` is the source of truth for current app/web/OTA versions.
 - Initial ledger rows: `build` = `0.0.1.1`, `apk` = `0.0.1.1`
-- Next accepted task merge into `dev`: increment `Z`
-- Next promotion from `dev` to `main`: increment `Y`
+- Accepted working-branch merge into `dev`: increment `Z`, with `release_version = 0`
+- Promotion from `dev` to `main`: increment `Y`, keep latest included `Z`, and reference included accepted dev build rows
 - Next shipped APK release: increment `S`
-- Example: `0.0.10.1` on `dev` promotes to `0.1.10.1` on `main`
+- GitHub PR numbers are review metadata and do not define version numbers.
+- Example: accepted dev build `0.0.10.1` promotes to production release `0.1.10.1`.
 
 Do not commit SQLite files, APKs, OTA bundles, keystores, `.env` files, private keys, or generated deploy output.

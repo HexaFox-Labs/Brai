@@ -10,6 +10,8 @@
 
 Preview deployments are review environments, not accepted build versions. They record deployment metadata in `deployment_records`, but their visible app/web version must stay on the current accepted `dev` version with a preview OTA bundle suffix. A new public build version becomes real only after the change is accepted into `dev` and `deploy-dev` succeeds.
 
+GitHub PRs are review and merge records, not version numbers. Version numbers come from the `build_versions` ledger: accepted working-branch merges into `dev` create `Z`, and `dev` to `main` production promotions create `Y`.
+
 Before the first project-file change for a task, branch from the latest accepted base. Ordinary future task work starts from `origin/dev` unless another base is explicitly requested.
 
 Read-only questions, planning, and investigation without project-file changes do not need a branch or preview slot.

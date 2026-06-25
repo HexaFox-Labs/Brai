@@ -25,10 +25,18 @@ process.exit(1);
   SOURCE_DB="$ENVS_ROOT/preview-${SLOT,,}/data/bright_os.sqlite"
   TARGET_DB="$ENVS_ROOT/dev/data/bright_os.sqlite"
   TARGET_DOMAIN="dev.brightos.world"
+  SOURCE_COMMIT="$("$NODE_BIN" -e '
+const fs = require("node:fs");
+const path = process.env.BRIGHT_OS_PREVIEW_REGISTRY || `${process.env.BRIGHT_OS_ENVS_ROOT || "/srv/projects/bright-os-envs"}/preview-slots.json`;
+const slot = process.argv[1];
+const registry = JSON.parse(fs.readFileSync(path, "utf8"));
+console.log(registry[slot]?.commit || "");
+' "$SLOT")"
 elif [[ "$TARGET_ENVIRONMENT" == "prod" ]]; then
   SOURCE_DB="$ENVS_ROOT/dev/data/bright_os.sqlite"
   TARGET_DB="${BRIGHT_OS_DB:-$ROOT/data/bright_os.sqlite}"
   TARGET_DOMAIN="app.brightos.world"
+  SOURCE_COMMIT=""
 else
   echo "Unsupported target environment: $TARGET_ENVIRONMENT" >&2
   exit 1
@@ -42,5 +50,6 @@ fi
   --target-branch "$TARGET_BRANCH" \
   --target-commit "$TARGET_COMMIT" \
   --target-domain "$TARGET_DOMAIN" \
-  --accepted-pr-number "${BRIGHT_OS_ACCEPTED_PR_NUMBER:-}" \
+  --source-commit "$SOURCE_COMMIT" \
+  --source-details "Accepted preview branch $SOURCE_BRANCH@$SOURCE_COMMIT." \
   --reason "${BRIGHT_OS_PROMOTE_REASON:-Accepted branch promotion}"

@@ -13,13 +13,6 @@ ENVS_ROOT="${BRIGHT_OS_ENVS_ROOT:-/srv/projects/bright-os-envs}"
 UPLOAD_ROOT="${BRIGHT_DEPLOY_UPLOAD_ROOT:-$ENVS_ROOT/ci-uploads}"
 SAFE_BRANCH="$(printf '%s' "$BRIGHT_OS_BRANCH" | tr -c 'A-Za-z0-9._-' '-')"
 REMOTE_UPLOAD="$UPLOAD_ROOT/$SAFE_BRANCH"
-ACCEPTED_PR_NUMBER="${BRIGHT_OS_ACCEPTED_PR_NUMBER:-}"
-if [[ -z "$ACCEPTED_PR_NUMBER" && "$BRIGHT_OS_BRANCH" == "dev" ]]; then
-  HEAD_MESSAGE="$(git log -1 --pretty=%B 2>/dev/null || true)"
-  if [[ "$HEAD_MESSAGE" =~ Merge[[:space:]]pull[[:space:]]request[[:space:]]#([0-9]+) ]]; then
-    ACCEPTED_PR_NUMBER="${BASH_REMATCH[1]}"
-  fi
-fi
 KEY_FILE="$(mktemp "${TMPDIR:-/tmp}/bright-deploy-key.XXXXXX")"
 cleanup() {
   rm -f "$KEY_FILE"
@@ -60,13 +53,12 @@ tar \
     tar -xzf - -C "$REMOTE_UPLOAD"
 
 ssh -i "$KEY_FILE" -p "$SSH_PORT" -o StrictHostKeyChecking=accept-new "$BRIGHT_DEPLOY_USER@$BRIGHT_DEPLOY_HOST" \
-  bash -s -- "$DEPLOY_REPO" "$REMOTE_UPLOAD" "$BRIGHT_OS_BRANCH" "$BRIGHT_OS_COMMIT" "$ACCEPTED_PR_NUMBER" <<'REMOTE'
+  bash -s -- "$DEPLOY_REPO" "$REMOTE_UPLOAD" "$BRIGHT_OS_BRANCH" "$BRIGHT_OS_COMMIT" <<'REMOTE'
 set -euo pipefail
 DEPLOY_REPO="$1"
 REMOTE_UPLOAD="$2"
 BRIGHT_OS_BRANCH="$3"
 BRIGHT_OS_COMMIT="$4"
-BRIGHT_OS_ACCEPTED_PR_NUMBER="${5:-}"
 ENVS_ROOT="${BRIGHT_OS_ENVS_ROOT:-/srv/projects/bright-os-envs}"
 NODE_PREFIX="${BRIGHT_OS_NODE_PREFIX:-/srv/opt/node-v22.16.0/bin}"
 if [[ -d "$NODE_PREFIX" ]]; then
@@ -141,7 +133,6 @@ npm ci
 npm --prefix apps/bright_os_app ci
 npm --prefix services/bright_os_api ci
 export BRIGHT_OS_BRANCH BRIGHT_OS_COMMIT
-export BRIGHT_OS_ACCEPTED_PR_NUMBER
 export BRIGHT_OS_ROOT="$SOURCE_ROOT"
 deploy/scripts/deploy-branch.sh
 REMOTE

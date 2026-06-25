@@ -56,7 +56,6 @@ export const deploymentMethods = {
   },
 
   recordAcceptedBuildVersion({
-    prNumber,
     sourceBranch,
     sourceCommit,
     sourceDetails,
@@ -64,12 +63,120 @@ export const deploymentMethods = {
     targetCommit,
     releasedAtUtc,
   }) {
-    const buildVersion = Number(prNumber);
-    if (!Number.isInteger(buildVersion) || buildVersion <= 0) {
-      throw new Error(`invalid accepted PR number: ${prNumber}`);
-    }
+    const existing = this.findBuildVersionByTargetCommit({ targetCommit, releaseOnly: false });
+    const buildVersion = existing?.build_version ?? this.nextAcceptedBuildVersion();
     const version = `0.0.${buildVersion}.1`;
-    const now = new Date().toISOString();
+    this.upsertBuildVersion({
+      majorVersion: 0,
+      releaseVersion: 0,
+      buildVersion,
+      apkVersion: 1,
+      version,
+      shortChanges: `Accepted dev build ${version}.`,
+      detailedChanges: `Accepted dev build ${version}: source ${sourceBranch}@${sourceCommit}; target ${targetBranch}@${targetCommit}. ${sourceDetails}`,
+      reason: `Accepted dev build ${version}.`,
+      releasedAtUtc,
+    });
+    return { buildVersion, version };
+  },
+
+  recordProductionReleaseVersion({
+    sourceBranch,
+    sourceCommit,
+    sourceDetails,
+    targetBranch,
+    targetCommit,
+    releasedAtUtc,
+  }) {
+    const existing = this.findBuildVersionByTargetCommit({ targetCommit, releaseOnly: true });
+    if (existing) {
+      return {
+        releaseVersion: existing.release_version,
+        buildVersion: existing.build_version,
+        version: existing.version,
+      };
+    }
+    const acceptedBuilds = this.db
+      .prepare(`
+        SELECT *
+        FROM build_versions
+        WHERE version_type_id = 'build' AND release_version = 0
+        ORDER BY build_version
+      `)
+      .all();
+    const latest = acceptedBuilds.at(-1);
+    if (!latest) throw new Error('cannot create production release without accepted dev builds');
+
+    const previousRelease = this.db
+      .prepare(`
+        SELECT release_version, build_version
+        FROM build_versions
+        WHERE version_type_id = 'build' AND release_version > 0
+        ORDER BY release_version DESC
+        LIMIT 1
+      `)
+      .get() ?? { release_version: 0, build_version: 0 };
+    const releaseVersion = previousRelease.release_version + 1;
+    const includedBuilds = acceptedBuilds.filter((row) => row.build_version > previousRelease.build_version);
+    const referencedBuilds = includedBuilds.length > 0 ? includedBuilds : [latest];
+    const version = `0.${releaseVersion}.${latest.build_version}.${latest.apk_version}`;
+
+    this.upsertBuildVersion({
+      majorVersion: 0,
+      releaseVersion,
+      buildVersion: latest.build_version,
+      apkVersion: latest.apk_version,
+      version,
+      shortChanges: `Production release ${version}.`,
+      detailedChanges: [
+        `Production release ${version}: source ${sourceBranch}@${sourceCommit}; target ${targetBranch}@${targetCommit}.`,
+        `Included accepted dev builds: ${referencedBuilds.map((row) => `${row.version} - ${row.short_changes}`).join('; ')}.`,
+        sourceDetails,
+      ].filter(Boolean).join(' '),
+      reason: `Promoted dev to production release ${version}.`,
+      releasedAtUtc,
+    });
+    return { releaseVersion, buildVersion: latest.build_version, version };
+  },
+
+  findBuildVersionByTargetCommit({ targetCommit, releaseOnly }) {
+    if (!targetCommit) return null;
+    const releaseFilter = releaseOnly ? 'release_version > 0' : 'release_version = 0';
+    return this.db
+      .prepare(`
+        SELECT *
+        FROM build_versions
+        WHERE version_type_id = 'build'
+          AND instr(detailed_changes, ?) > 0
+          AND ${releaseFilter}
+        ORDER BY release_version DESC, build_version DESC
+        LIMIT 1
+      `)
+      .get(`@${targetCommit}`);
+  },
+
+  nextAcceptedBuildVersion() {
+    const row = this.db
+      .prepare(`
+        SELECT COALESCE(MAX(build_version), 0) + 1 AS next
+        FROM build_versions
+        WHERE version_type_id = 'build' AND release_version = 0
+      `)
+      .get();
+    return row.next;
+  },
+
+  upsertBuildVersion({
+    majorVersion,
+    releaseVersion,
+    buildVersion,
+    apkVersion,
+    version,
+    shortChanges,
+    detailedChanges,
+    reason,
+    releasedAtUtc,
+  }) {
     this.db
       .prepare(`
         INSERT INTO build_versions (
@@ -93,28 +200,17 @@ export const deploymentMethods = {
           released_at_utc = excluded.released_at_utc
       `)
       .run(
-        "build",
-        0,
-        0,
+        'build',
+        majorVersion,
+        releaseVersion,
         buildVersion,
-        1,
+        apkVersion,
         version,
-        `Accepted PR #${buildVersion} into dev.`,
-        `Recorded accepted PR #${buildVersion}: ${sourceBranch}@${sourceCommit} promoted to ${targetBranch}@${targetCommit}. ${sourceDetails}`,
-        `Accepted PR #${buildVersion} into dev.`,
+        shortChanges,
+        detailedChanges,
+        reason,
         releasedAtUtc,
-        now,
+        new Date().toISOString(),
       );
-
-    const ledger = this.db
-      .prepare(`
-        SELECT COUNT(*) AS count, MAX(build_version) AS max
-        FROM build_versions
-        WHERE version_type_id = 'build'
-      `)
-      .get();
-    if (ledger.count !== buildVersion || ledger.max !== buildVersion) {
-      throw new Error(`build_versions ledger mismatch: expected ${buildVersion} build rows ending at ${buildVersion}, got ${ledger.count} ending at ${ledger.max}`);
-    }
   },
 };

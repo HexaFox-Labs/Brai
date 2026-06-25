@@ -119,17 +119,22 @@ export const migrationMethods = {
 
     if (!this.hasMigration(19)) {
       this.realignBuildVersionLedger();
-      this.recordMigration(19, 'realign build version ledger with pull request number');
+      this.recordMigration(19, 'realign build version ledger sequence');
     }
 
     if (!this.hasMigration(20)) {
-      this.seedAcceptedPrLedgerBackfill();
-      this.recordMigration(20, 'record accepted PR 9 and 10 build versions');
+      this.seedAcceptedDevBuildLedgerBackfill();
+      this.recordMigration(20, 'record accepted dev build versions 9 and 10');
     }
 
     if (!this.hasMigration(21)) {
-      this.seedAcceptedPr11LedgerBackfill();
-      this.recordMigration(21, 'record accepted PR 11 build version');
+      this.seedAcceptedDevBuild11LedgerBackfill();
+      this.recordMigration(21, 'record accepted dev build version 11');
+    }
+
+    if (!this.hasMigration(22)) {
+      this.removePrVersionCouplingFromBuildLedger();
+      this.recordMigration(22, 'remove pull request coupling from version ledger');
     }
   }
 ,
@@ -540,7 +545,7 @@ export const migrationMethods = {
     insertType.run(
       'build',
       'Сборочная версия',
-      'Обычный релиз Bright OS: увеличивает только Z в версии X.Y.Z.S.',
+      'Web/OTA ledger: accepted dev builds increment Z; production releases increment Y.',
       now
     );
     insertType.run(
@@ -903,9 +908,9 @@ export const migrationMethods = {
       8,
       1,
       '0.0.8.1',
-      'Aligned dev build ledger with PR numbering.',
-      'Recorded the eighth accepted public task: dev build Z now matches the accepted GitHub PR number, the build ledger has exactly Z build rows, and the current dev source keeps the accepted menu and GitHub CLI sandbox-auth fixes.',
-      'Accepted PR/version ledger alignment into dev.',
+      'Aligned dev build ledger sequence.',
+      'Recorded accepted dev build 0.0.8.1: dev build Z follows the accepted dev build sequence, and the current dev source keeps the accepted menu and GitHub CLI sandbox-auth fixes.',
+      'Accepted dev build ledger alignment into dev.',
       '2026-06-24T21:40:47Z',
       now
     );
@@ -916,7 +921,7 @@ export const migrationMethods = {
   }
 ,
 
-  seedAcceptedPrLedgerBackfill() {
+  seedAcceptedDevBuildLedgerBackfill() {
     const now = new Date().toISOString();
     const insert = this.db.prepare(`
         INSERT INTO build_versions (
@@ -946,9 +951,9 @@ export const migrationMethods = {
       9,
       1,
       '0.0.9.1',
-      'Accepted PR #9 into dev.',
-      'Recorded accepted PR #9: mobile edge menu swipe, bottom-dock-only page swipes, and 80 percent left menu width.',
-      'Accepted PR #9 into dev.',
+      'Accepted dev build 0.0.9.1.',
+      'Recorded accepted dev build 0.0.9.1: mobile edge menu swipe, bottom-dock-only page swipes, and 80 percent left menu width.',
+      'Accepted dev build 0.0.9.1 into dev.',
       '2026-06-24T22:52:31.873Z',
       now
     );
@@ -959,16 +964,16 @@ export const migrationMethods = {
       10,
       1,
       '0.0.10.1',
-      'Accepted PR #10 into dev.',
-      'Recorded accepted PR #10: preview slot release now uses a deploy-readable checkout, full preview pools queue FIFO, and acceptance release frees the slot automatically.',
-      'Accepted PR #10 into dev.',
+      'Accepted dev build 0.0.10.1.',
+      'Recorded accepted dev build 0.0.10.1: preview slot release now uses a deploy-readable checkout, full preview pools queue FIFO, and acceptance release frees the slot automatically.',
+      'Accepted dev build 0.0.10.1 into dev.',
       '2026-06-24T23:10:19.023Z',
       now
     );
   }
 ,
 
-  seedAcceptedPr11LedgerBackfill() {
+  seedAcceptedDevBuild11LedgerBackfill() {
     const now = new Date().toISOString();
     this.db.prepare(`
         INSERT INTO build_versions (
@@ -997,12 +1002,53 @@ export const migrationMethods = {
       11,
       1,
       '0.0.11.1',
-      'Accepted PR #11 into dev.',
-      'Recorded accepted PR #11: build ledger acceptance flow records PR-matched dev build versions idempotently before future dev deployments.',
-      'Accepted PR #11 into dev.',
+      'Accepted dev build 0.0.11.1.',
+      'Recorded accepted dev build 0.0.11.1: build ledger acceptance flow records dev build versions idempotently before future dev deployments.',
+      'Accepted dev build 0.0.11.1 into dev.',
       '2026-06-25T00:08:24Z',
       now
     );
+  }
+,
+
+  removePrVersionCouplingFromBuildLedger() {
+    this.db
+      .prepare("UPDATE version_types SET description = ? WHERE id = 'build'")
+      .run('Web/OTA ledger: accepted dev builds increment Z; production releases increment Y.');
+    const updates = [
+      [
+        '0.0.8.1',
+        'Aligned dev build ledger sequence.',
+        'Recorded accepted dev build 0.0.8.1: dev build Z follows the accepted dev build sequence, and the current dev source keeps the accepted menu and GitHub CLI sandbox-auth fixes.',
+        'Accepted dev build ledger alignment into dev.',
+      ],
+      [
+        '0.0.9.1',
+        'Accepted dev build 0.0.9.1.',
+        'Recorded accepted dev build 0.0.9.1: mobile edge menu swipe, bottom-dock-only page swipes, and 80 percent left menu width.',
+        'Accepted dev build 0.0.9.1 into dev.',
+      ],
+      [
+        '0.0.10.1',
+        'Accepted dev build 0.0.10.1.',
+        'Recorded accepted dev build 0.0.10.1: preview slot release now uses a deploy-readable checkout, full preview pools queue FIFO, and acceptance release frees the slot automatically.',
+        'Accepted dev build 0.0.10.1 into dev.',
+      ],
+      [
+        '0.0.11.1',
+        'Accepted dev build 0.0.11.1.',
+        'Recorded accepted dev build 0.0.11.1: build ledger acceptance flow records dev build versions idempotently before future dev deployments.',
+        'Accepted dev build 0.0.11.1 into dev.',
+      ],
+    ];
+    const update = this.db.prepare(`
+      UPDATE build_versions
+      SET short_changes = ?, detailed_changes = ?, reason = ?
+      WHERE version_type_id = 'build' AND version = ?
+    `);
+    for (const [version, shortChanges, detailedChanges, reason] of updates) {
+      update.run(shortChanges, detailedChanges, reason, version);
+    }
   }
 ,
 

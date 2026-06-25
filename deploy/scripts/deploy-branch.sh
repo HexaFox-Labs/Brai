@@ -47,6 +47,7 @@ fi
 if [[ "$ENVIRONMENT" == preview-* && "$ALLOCATED_NEW" == "true" && "${BRIGHT_OS_RESET_NEW_PREVIEW_DB:-true}" != "false" ]]; then
   case "$TARGET_ROOT" in
     "$ENVS_ROOT"/preview-*)
+      find "$TARGET_ROOT" -user "$(id -u)" -exec chmod u+rwX,g+rwX {} + || true
       rm -f "$TARGET_ROOT/data/bright_os.sqlite" "$TARGET_ROOT/data/bright_os.sqlite-shm" "$TARGET_ROOT/data/bright_os.sqlite-wal"
       ;;
     *)
@@ -56,16 +57,28 @@ if [[ "$ENVIRONMENT" == preview-* && "$ALLOCATED_NEW" == "true" && "${BRIGHT_OS_
   esac
 fi
 
-if [[ "$ENVIRONMENT" == "dev" && -n "${BRIGHT_OS_ACCEPTED_PR_NUMBER:-}" ]]; then
+if [[ "$ENVIRONMENT" == "dev" ]]; then
   "$NODE_BIN" "$SCRIPT_DIR/record-accepted-build-version.mjs" \
     --db "$DB_PATH" \
-    --pr-number "$BRIGHT_OS_ACCEPTED_PR_NUMBER" \
     --source-branch "$BRANCH" \
     --source-commit "$COMMIT" \
     --target-branch "$BRANCH" \
     --target-commit "$COMMIT" \
-    --source-details "Automated dev deployment from accepted PR #$BRIGHT_OS_ACCEPTED_PR_NUMBER." \
+    --source-details "Automated dev deployment from $BRANCH@$COMMIT." \
     --released-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+fi
+
+if [[ "$ENVIRONMENT" == "prod" ]]; then
+  "$NODE_BIN" "$SCRIPT_DIR/promote-deployment.mjs" \
+    --source-db "$ENVS_ROOT/dev/data/bright_os.sqlite" \
+    --target-db "$DB_PATH" \
+    --source-branch dev \
+    --target-environment prod \
+    --target-branch "$BRANCH" \
+    --target-commit "$COMMIT" \
+    --target-domain "$DOMAIN" \
+    --ledger-only true \
+    --reason "Promote dev to production release"
 fi
 
 SOURCE_VERSION="$("$NODE_BIN" -e '
@@ -90,13 +103,27 @@ try {
 }
 ' "$DB_PATH")"
 fi
-if [[ "$ENVIRONMENT" == "prod" && -z "${BRIGHT_OS_APP_VERSION:-}" && -f "$ENVS_ROOT/dev/data/bright_os.sqlite" ]]; then
+if [[ "$ENVIRONMENT" == "prod" && -z "${BRIGHT_OS_APP_VERSION:-}" ]]; then
   LEDGER_VERSION="$("$NODE_BIN" -e '
 import { BrightOsStore } from "./services/bright_os_api/src/store.js";
 const store = new BrightOsStore(process.argv[1]);
 try {
   const row = store.db
-    .prepare("SELECT version FROM build_versions WHERE version_type_id = ? ORDER BY build_version DESC LIMIT 1")
+    .prepare("SELECT version FROM build_versions WHERE version_type_id = ? ORDER BY release_version DESC, build_version DESC LIMIT 1")
+    .get("build");
+  if (row?.version) console.log(row.version);
+} finally {
+  store.close();
+}
+' "$DB_PATH")"
+fi
+if [[ "$ENVIRONMENT" == "prod" && -z "${BRIGHT_OS_APP_VERSION:-}" && -z "$LEDGER_VERSION" && -f "$ENVS_ROOT/dev/data/bright_os.sqlite" ]]; then
+  LEDGER_VERSION="$("$NODE_BIN" -e '
+import { BrightOsStore } from "./services/bright_os_api/src/store.js";
+const store = new BrightOsStore(process.argv[1]);
+try {
+  const row = store.db
+    .prepare("SELECT version FROM build_versions WHERE version_type_id = ? AND release_version = 0 ORDER BY build_version DESC LIMIT 1")
     .get("build");
   if (row?.version) console.log(row.version);
 } finally {
@@ -146,7 +173,7 @@ if [[ "$ENVIRONMENT" != "prod" ]]; then
   find "$TARGET_ROOT" -user "$(id -u)" -exec chmod u+rwX,g+rwX {} +
 fi
 
-"$NODE_BIN" "$SCRIPT_DIR/record-deployment.mjs" \
+if ! "$NODE_BIN" "$SCRIPT_DIR/record-deployment.mjs" \
   --db "$DB_PATH" \
   --environment "$ENVIRONMENT" \
   --slot "$SLOT" \
@@ -156,7 +183,12 @@ fi
   --web-ota-version "$BUNDLE_VERSION" \
   --short-changes "${BRIGHT_OS_DEPLOY_SHORT_CHANGES:-Branch deployment}" \
   --detailed-changes "${BRIGHT_OS_DEPLOY_DETAILED_CHANGES:-Automated deployment from $BRANCH@$COMMIT to $DOMAIN.}" \
-  --reason "${BRIGHT_OS_DEPLOY_REASON:-Automated branch delivery}"
+  --reason "${BRIGHT_OS_DEPLOY_REASON:-Automated branch delivery}"; then
+  if [[ "$ENVIRONMENT" != preview-* ]]; then
+    exit 1
+  fi
+  echo "Warning: preview deployment metadata was not recorded; acceptance will use branch and commit fallback metadata." >&2
+fi
 
 if [[ "$ENVIRONMENT" != "prod" ]]; then
   find "$TARGET_ROOT" -user "$(id -u)" -exec chmod u+rwX,g+rwX {} +
