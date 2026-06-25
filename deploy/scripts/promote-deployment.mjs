@@ -16,6 +16,10 @@ try {
     .find((record) => record.branch === sourceBranch);
   if (!sourceRecord) throw new Error(`no deployment metadata for ${sourceBranch}`);
 
+  if (targetEnvironment === "prod") {
+    promoteBuildVersions(source, target);
+  }
+
   target.recordDeployment({
     environment: targetEnvironment,
     slot: args["target-slot"] || null,
@@ -42,6 +46,51 @@ try {
 } finally {
   source.close();
   target.close();
+}
+
+function promoteBuildVersions(source, target) {
+  const rows = source.db
+    .prepare("SELECT * FROM build_versions WHERE version_type_id = ? ORDER BY build_version")
+    .all("build");
+  const insert = target.db.prepare(`
+    INSERT INTO build_versions (
+      version_type_id,
+      major_version,
+      release_version,
+      build_version,
+      apk_version,
+      version,
+      short_changes,
+      detailed_changes,
+      reason,
+      released_at_utc,
+      created_at_utc
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(version_type_id, version) DO UPDATE SET
+      short_changes = excluded.short_changes,
+      detailed_changes = excluded.detailed_changes,
+      reason = excluded.reason,
+      released_at_utc = excluded.released_at_utc
+  `);
+  const copy = target.db.transaction(() => {
+    for (const row of rows) {
+      insert.run(
+        row.version_type_id,
+        row.major_version,
+        row.release_version,
+        row.build_version,
+        row.apk_version,
+        row.version,
+        row.short_changes,
+        row.detailed_changes,
+        row.reason,
+        row.released_at_utc,
+        row.created_at_utc,
+      );
+    }
+  });
+  copy();
 }
 
 function recordAcceptedBuildVersion(

@@ -16,8 +16,8 @@
 - Fourth accepted `dev` task version is `0.0.5.1`.
 - Fifth accepted `dev` task version is `0.0.6.1`.
 - Sixth accepted `dev` task version is `0.0.7.1`.
-- Current accepted `dev` build version is `0.0.10.1`.
-- The `build_versions` ledger has exactly 10 `build` rows; `Z` must match the build row count and accepted GitHub PR number.
+- Current accepted `dev` build version is `0.0.13.1`.
+- The `build_versions` ledger has exactly 13 `build` rows; `Z` must match the build row count and accepted GitHub PR number.
 
 ## Current State
 
