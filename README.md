@@ -1,13 +1,13 @@
 # Bright OS
 
-Bright OS is a local-first productivity app with a Next.js web client, a Capacitor Android shell, and a self-hosted Timer API.
+Bright OS is a local-first productivity app with a Next.js web client, a Capacitor Android shell, and a self-hosted Bright OS API.
 
 The repository is designed to be public from this baseline forward. It contains source code, accepted product specifications, development documentation, and deployment automation. It must not contain runtime databases, APK/OTA artifacts, signing materials, server secrets, private keys, local backups, or personal workspace notes.
 
 ## Architecture
 
 - `apps/bright_os_app/` - Next.js 16, React 19, Tailwind CSS, shadcn-compatible UI, and Capacitor Android.
-- `services/timer_api/` - Node.js Timer API with SQLite storage and offline-first sync endpoints.
+- `services/bright_os_api/` - Node.js Bright OS API with SQLite storage and offline-first sync endpoints.
 - `deploy/` - source-owned deployment scripts, Ansible templates, and environment mapping.
 - `docs/` - development rules, checklists, and operations notes.
 - `openspec/specs/` - accepted product and workflow requirements.
@@ -27,11 +27,11 @@ Generated output is intentionally ignored: `data/`, `deploy/web/`, `deploy/mobil
 ```bash
 npm ci
 npm --prefix apps/bright_os_app ci
-npm --prefix services/timer_api ci
+npm --prefix services/bright_os_api ci
 
 npm run app:lint
 npm run app:test
-npm --prefix services/timer_api test
+npm --prefix services/bright_os_api test
 npm run openspec:validate
 npm run public:guard
 ```
@@ -59,7 +59,7 @@ Release APK signing is env-only. Set `BRIGHT_OS_ANDROID_KEYSTORE_PATH`, `BRIGHT_
 - `dev` is shared development source and deploys to `dev.brightos.world`.
 - `codex/*` branches deploy to preview slots `A` through `E`.
 
-GitHub Actions run public hygiene checks, app lint/tests, Timer API tests, and branch-class deployment. Deployment credentials live in GitHub Secrets/Variables and on the server, never in source.
+GitHub Actions run public hygiene checks, app lint/tests, Bright OS API tests, and branch-class deployment. Deployment credentials live in GitHub Secrets/Variables and on the server, never in source.
 
 Required GitHub values:
 

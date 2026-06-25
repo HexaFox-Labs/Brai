@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { TimerApi } from "@/shared/api/timerApi";
+import { BrightOsApi } from "@/shared/api/brightOsApi";
 import type { PendingActionEvent } from "@/shared/types/activities";
 import type { PendingTimerEvent } from "@/shared/types/timer";
 
-describe("TimerApi", () => {
+describe("BrightOsApi", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -27,7 +27,7 @@ describe("TimerApi", () => {
       ),
     );
 
-    await new TimerApi("https://api.example.test").syncEvents({
+    await new BrightOsApi("https://api.example.test").syncEvents({
       deviceId: "device",
       platform: "android",
       events: [
@@ -73,7 +73,7 @@ describe("TimerApi", () => {
       ),
     );
 
-    await new TimerApi("https://api.example.test").syncActionEvents({
+    await new BrightOsApi("https://api.example.test").syncActionEvents({
       deviceId: "device",
       platform: "web",
       events: [
@@ -125,7 +125,7 @@ describe("TimerApi", () => {
       ),
     );
 
-    await new TimerApi("https://api.example.test").syncActionEvents({
+    await new BrightOsApi("https://api.example.test").syncActionEvents({
       deviceId: "device",
       platform: "web",
       events: [
@@ -178,7 +178,7 @@ describe("TimerApi", () => {
       ),
     );
 
-    await new TimerApi("https://api.example.test").syncActionEvents({
+    await new BrightOsApi("https://api.example.test").syncActionEvents({
       deviceId: "device",
       platform: "web",
       events: [
@@ -230,7 +230,7 @@ describe("TimerApi", () => {
       ),
     );
 
-    await new TimerApi("https://api.example.test").syncActionEvents({
+    await new BrightOsApi("https://api.example.test").syncActionEvents({
       deviceId: "device",
       platform: "web",
       events: [
@@ -279,7 +279,7 @@ describe("TimerApi", () => {
       ),
     );
 
-    await new TimerApi("https://api.example.test").syncActionEvents({
+    await new BrightOsApi("https://api.example.test").syncActionEvents({
       deviceId: "device",
       platform: "web",
       events: [

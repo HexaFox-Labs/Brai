@@ -12,9 +12,9 @@ interface RequestOptions extends RequestInit {
 }
 
 /**
- * Wraps the Bright OS timer and activity HTTP API with typed client methods.
+ * Wraps the Bright OS HTTP API with typed client methods.
  */
-export class TimerApi {
+export class BrightOsApi {
   constructor(private readonly baseUrl: string) {}
 
   async session(): Promise<{ authenticated: boolean }> {
@@ -124,8 +124,8 @@ export class TimerApi {
     });
 
     if (!response.ok) {
-      const error = new Error(`timer_api_${response.status}`);
-      error.name = response.status === 401 ? "UnauthorizedError" : "TimerApiError";
+      const error = new Error(`bright_os_api_${response.status}`);
+      error.name = response.status === 401 ? "UnauthorizedError" : "BrightOsApiError";
       throw error;
     }
 

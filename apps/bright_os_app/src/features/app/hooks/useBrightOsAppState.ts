@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { TimerApi } from "@/shared/api/timerApi";
+import { BrightOsApi } from "@/shared/api/brightOsApi";
 import { defaultApiBase } from "@/shared/config/runtime";
 import { consumeAndroidTimerStopRequest, startAndroidTimerNotification, stopAndroidTimerNotification } from "@/shared/platform/androidTimerNotification";
 import { acknowledgeActionEvents, loadActionsState, markActionAttempt, markActionFailure, pendingActionEvents, projectActionsState, saveActionsState } from "@/shared/storage/activityStore";
@@ -32,9 +32,9 @@ export function useBrightOsAppState(initialSection: SectionId) {
     useBrightOsOta();
   const [todayKey] = useState(() => moscowTodayKey());
   const [apiBase, setApiBase] = useState(defaultApiBase());
-  const api = useMemo(() => new TimerApi(apiBase), [apiBase]);
+  const api = useMemo(() => new BrightOsApi(apiBase), [apiBase]);
   const apiRef = useRef(api);
-  const refreshAllRef = useRef<(sourceApi?: TimerApi) => Promise<void>>(async () => undefined);
+  const refreshAllRef = useRef<(sourceApi?: BrightOsApi) => Promise<void>>(async () => undefined);
   const refreshStateAndFlushRef = useRef<() => Promise<void>>(async () => undefined);
   const applyServerStateRef = useRef<(state: TimerState) => Promise<void>>(async () => undefined);
   const applyActionsStateRef = useRef<(state: ActionsState) => Promise<void>>(async () => undefined);
@@ -378,7 +378,7 @@ export function useBrightOsAppState(initialSection: SectionId) {
       if (cachedActions) actionsRevisionRef.current = cachedActions.server_revision;
       setActionsSnapshot(projectActionsState(cachedActions, queuedActions));
       setLocalSnapshotReady(true);
-      await refreshAllRef.current(new TimerApi(resolvedApiBase));
+      await refreshAllRef.current(new BrightOsApi(resolvedApiBase));
     }
 
     void boot();
