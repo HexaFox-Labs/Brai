@@ -26,10 +26,8 @@ codex/* accepted -> accept-preview.sh -> PR/merge queue into dev -> deploy dev -
 dev accepted     -> merge into main -> production release/deploy
 ```
 
-Temporal records this flow as a durable state tracker. See
-[Temporal CI/CD Orchestration](temporal-ci-cd.md). Temporal signals are best-effort in the first phase:
-failed Temporal reporting must not replace or weaken the existing GitHub Actions checks, deploy jobs,
-slot registry, or branch protection rules.
+Temporal is the required CI/CD control ledger for this flow. See
+[Temporal CI/CD Orchestration](temporal-ci-cd.md). GitHub Actions still runs the existing checks and deploy scripts, but strict Temporal signals gate the critical transitions. Failed Temporal recording is a blocker, not a reason to bypass checks, deploy jobs, slot registry, or branch protection.
 
 Acceptance trigger:
 

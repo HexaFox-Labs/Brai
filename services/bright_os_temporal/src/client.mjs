@@ -1,7 +1,9 @@
 import { Client, Connection } from "@temporalio/client";
 import {
   EVENT_SIGNAL,
+  PREVIEW_EVENTS,
   PREVIEW_TASK_QUEUE,
+  PROMOTION_EVENTS,
   PROMOTION_TASK_QUEUE,
   STATE_QUERY,
   previewWorkflowId,
@@ -49,6 +51,7 @@ async function signalPreview(client, options) {
   const branch = required(options, "branch");
   const sha = options.sha ?? "";
   const event = buildEvent(options.event ?? "branch_pushed", options, sha);
+  if (!PREVIEW_EVENTS.has(event.type)) throw new Error(`Unsupported preview event: ${event.type}`);
   const { handle, started } = await startOrGet(client, "BranchPreviewWorkflow", {
     args: [{ branch, sha, at: event.at, source: event.source }],
     taskQueue: process.env.BRIGHT_TEMPORAL_PREVIEW_TASK_QUEUE ?? PREVIEW_TASK_QUEUE,
@@ -65,6 +68,7 @@ async function signalPromotion(client, options) {
   const target = required(options, "target");
   const sha = required(options, "sha");
   const event = buildEvent(options.event ?? "promotion_started", options, sha);
+  if (!PROMOTION_EVENTS.has(event.type)) throw new Error(`Unsupported promotion event: ${event.type}`);
   const { handle, started } = await startOrGet(client, "PromotionWorkflow", {
     args: [{ target, sha, at: event.at, source: event.source }],
     taskQueue: process.env.BRIGHT_TEMPORAL_PROMOTION_TASK_QUEUE ?? PROMOTION_TASK_QUEUE,

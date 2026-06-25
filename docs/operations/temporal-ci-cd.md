@@ -1,6 +1,6 @@
 # Temporal CI/CD Orchestration
 
-Bright OS uses self-host Temporal as a durable CI/CD state tracker for branch previews and promotions. The first integration phase is reporting-first: GitHub Actions still runs the existing checks and deploy scripts, and Temporal records state by best-effort signals.
+Bright OS uses self-host Temporal as the required CI/CD control ledger for branch previews and promotions. GitHub Actions still runs the existing checks and deploy scripts, but every critical transition must be accepted by Temporal before or after the command that changes deploy state. Temporal is not exposed publicly and no deploy ports are opened.
 
 ## Terms
 
@@ -21,25 +21,29 @@ Preview slots are still allocated and released by the existing slot scripts:
 2. GitHub Actions signals `branch_pushed` and `checks_started`.
 3. Existing `checks` job runs unchanged.
 4. GitHub Actions signals `checks_passed` or `checks_failed`.
-5. Existing `deploy-preview` runs `deploy/scripts/ci-ssh-deploy.sh`.
-6. GitHub Actions signals `preview_deploy_passed` or `preview_deploy_failed`.
-7. A failed check or preview deploy leaves workflow state at `waiting_for_fix`.
-8. Accepted preview completion signals `pr_merged` and `slot_released`.
-9. Manual or delete-triggered release signals `slot_released` or `release_failed`.
+5. `deploy-preview` waits for `temporal-worker-check`.
+6. GitHub Actions signals `preview_deploy_started`.
+7. Existing `deploy-preview` runs `deploy/scripts/ci-ssh-deploy.sh`.
+8. GitHub Actions signals `preview_deploy_passed` or `preview_deploy_failed`.
+9. A failed check or preview deploy leaves workflow state at `waiting_for_fix`.
+10. Accepted preview completion signals `pr_merged`, `accepted_preview_started`, `accepted_preview_promoted` or `accepted_preview_failed`, `slot_release_started`, and `slot_released` or `slot_release_failed`.
+11. Manual release requires a real slot release. Delete-triggered release is idempotent: if the slot was already released, Temporal records `branch_deleted`.
 
-The preview slot registry remains `/srv/projects/bright-os-envs/preview-slots.json`; Temporal does not replace that lock or registry in this phase.
+The preview slot registry remains `/srv/projects/bright-os-envs/preview-slots.json`; Temporal does not replace that lock or registry.
 
 ## BranchPreviewWorkflow
 
-`BranchPreviewWorkflow` keeps a bounded event log and the current state for a `codex/*` branch:
+`BranchPreviewWorkflow` keeps a bounded event log and the current checklist for a `codex/*` branch:
 
 - `branch_pushed`
 - `checks_started`, `checks_passed`, `checks_failed`
 - `preview_deploy_started`, `preview_deploy_passed`, `preview_deploy_failed`
 - `pr_merged`
-- `slot_released`, `released`, `branch_deleted`
+- `accepted_preview_started`, `accepted_preview_promoted`, `accepted_preview_failed`
+- `slot_release_started`, `slot_released`, `slot_release_failed`
+- `released`, `branch_deleted`
 
-`checks_failed` and `preview_deploy_failed` both set `status` to `waiting_for_fix`, so a broken deploy is retained in Temporal UI instead of disappearing into a failed CI log.
+The `state` query exposes `tasks`, `missing`, `blocker`, and `blockers`. A new `branch_pushed` event resets the check/deploy/release checklist for the new SHA so old green state is not inherited. `checks_failed`, `preview_deploy_failed`, `accepted_preview_failed`, and `slot_release_failed` set `status` to `waiting_for_fix` and populate `blocker`.
 
 ## PromotionWorkflow
 
@@ -47,9 +51,12 @@ The preview slot registry remains `/srv/projects/bright-os-envs/preview-slots.js
 
 - Workflow ID for dev deploy: `bright-os:promotion:dev:<sha>`.
 - Workflow ID for production deploy: `bright-os:promotion:prod:<sha>`.
-- Signals: `dev_deploy_started`, `dev_deploy_passed`, `dev_deploy_failed`, `prod_deploy_started`, `prod_deploy_passed`, `prod_deploy_failed`.
+- Dev signals: `dev_deploy_started`, `dev_version_recorded`, `accepted_previews_started`, `accepted_previews_passed`, `accepted_previews_failed`, `dev_deploy_passed`, `dev_deploy_failed`.
+- Prod signals: `prod_deploy_started`, `prod_version_recorded`, `prod_deploy_passed`, `prod_deploy_failed`.
 
-Promotion deploy logic still lives in the existing scripts. Temporal is not the authority for merging, branch protection, ledger writes, or production deployment.
+The dev promotion checklist requires deployment, version/ledger recording, and accepted-preview metadata/slot cleanup. The production checklist requires deployment and production version/ledger recording. `dev_deploy_passed` and `prod_deploy_passed` complete their promotion workflows only after prior required steps have succeeded in GitHub Actions.
+
+Deploy logic still lives in the existing scripts. Temporal is the required control ledger around those scripts; GitHub branch protection, merge queue, preview slot locking, and SQLite ledger writes remain the underlying authorities for their own data.
 
 ## Worker Permissions
 
@@ -80,7 +87,7 @@ Do not add those values to repository docs.
 
 GitHub Actions uses `deploy/scripts/ci-temporal-signal.sh`. The helper opens an SSH tunnel to `127.0.0.1:7233` through the existing deploy SSH boundary, runs the local Temporal client, then closes the tunnel. It does not open Temporal or Postgres ports externally.
 
-By default the helper is best-effort: if Temporal, SSH tunnel setup, or the client call fails, it exits successfully and logs the skipped signal. Set `BRIGHT_TEMPORAL_REQUIRED=true` only for a dedicated Temporal check or manual strict run.
+The delivery workflow sets `BRIGHT_TEMPORAL_REQUIRED=true`. If Temporal, SSH tunnel setup, or the client call fails, the relevant CI/CD job fails and the deploy/release must be retried after the Temporal blocker is fixed. The helper default remains best-effort only for ad hoc local/manual commands that do not set `BRIGHT_TEMPORAL_REQUIRED=true`.
 
 ## Manual Smoke Test
 
@@ -106,8 +113,10 @@ Then open `https://temporal.brightos.world` with the unified Caddy basic auth an
 
 ## Failure And Manual Recovery
 
-- Temporal unavailable: CI/deploy continues; rerun the failed signal command later if state must be backfilled.
+- Temporal unavailable: the strict CI/CD job fails. Restart or repair `brightos-temporal.service` / `brightos-temporal-worker.service`, then rerun the failed GitHub Actions job.
 - Worker stopped: workflows remain in Temporal; restart `brightos-temporal-worker.service`.
-- Failed preview deploy: query the workflow state and inspect the `waiting_for_fix` event, then fix and push the same `codex/*` branch.
+- Failed preview deploy: query the workflow state and inspect `status`, `blocker`, `blockers`, and `tasks`, then fix and push the same `codex/*` branch.
+- Failed dev acceptance cleanup: query both `bright-os:promotion:dev:<sha>` and the affected `bright-os:preview:<branch>` workflow. Fix metadata promotion or slot release, then rerun the failed `deploy-dev` job.
+- Failed production deploy: query `bright-os:promotion:prod:<sha>`, fix the deploy or ledger issue, then rerun the failed production job.
 - Stuck slot release: use `deploy/scripts/preview-slots.sh status` on the VPS source checkout, then rerun the existing release workflow or `deploy/scripts/ci-ssh-release-slot.sh`.
 - Wrong or sensitive event data: do not mutate Temporal history. Start a new corrected workflow only if the old history contains no secrets; if a secret was signaled, rotate it and treat the Temporal DB as exposed for that secret.
