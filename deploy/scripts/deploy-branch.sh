@@ -90,6 +90,20 @@ try {
 }
 ' "$DB_PATH")"
 fi
+if [[ "$ENVIRONMENT" == "prod" && -z "${BRIGHT_OS_APP_VERSION:-}" && -f "$ENVS_ROOT/dev/data/bright_os.sqlite" ]]; then
+  LEDGER_VERSION="$("$NODE_BIN" -e '
+import { BrightOsStore } from "./services/bright_os_api/src/store.js";
+const store = new BrightOsStore(process.argv[1]);
+try {
+  const row = store.db
+    .prepare("SELECT version FROM build_versions WHERE version_type_id = ? ORDER BY build_version DESC LIMIT 1")
+    .get("build");
+  if (row?.version) console.log(row.version);
+} finally {
+  store.close();
+}
+' "$ENVS_ROOT/dev/data/bright_os.sqlite")"
+fi
 VERSION="${BRIGHT_OS_APP_VERSION:-${LEDGER_VERSION:-$SOURCE_VERSION}}"
 
 if [[ "$ENVIRONMENT" == preview-* && -z "${BRIGHT_OS_APP_VERSION:-}" && -f "$ENVS_ROOT/dev/web/version.json" ]]; then
