@@ -12,6 +12,8 @@ Preview deployments are review environments, not accepted build versions. They r
 
 GitHub PRs are review and merge records, not version numbers. Version numbers come from the `build_versions` ledger: accepted working-branch merges into `dev` create `Z`, and `dev` to `main` production promotions create `Y`.
 
+Temporal is the required CI/CD control ledger. If a delivery/versioning process changes, update the Temporal workflow state, signals, tests, and `docs/operations/temporal-ci-cd.md` in the same branch. Required delivery work must not live only in GitHub Actions or shell scripts.
+
 Before the first project-file change for a task, branch from the latest accepted base. Ordinary future task work starts from `origin/dev` unless another base is explicitly requested.
 
 Read-only questions, planning, and investigation without project-file changes do not need a branch or preview slot.

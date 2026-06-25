@@ -28,6 +28,7 @@ dev accepted     -> merge into main -> production release/deploy
 
 Temporal is the required CI/CD control ledger for this flow. See
 [Temporal CI/CD Orchestration](temporal-ci-cd.md). GitHub Actions still runs the existing checks and deploy scripts, but strict Temporal signals gate the critical transitions. Failed Temporal recording is a blocker, not a reason to bypass checks, deploy jobs, slot registry, or branch protection.
+If this flow changes, update the Temporal workflow state, signals, tests, and the Temporal CI/CD document in the same branch; required delivery work must not live only in GitHub Actions or shell scripts.
 
 Acceptance trigger:
 

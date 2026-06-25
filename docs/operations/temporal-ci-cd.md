@@ -2,6 +2,20 @@
 
 Bright OS uses self-host Temporal as the required CI/CD control ledger for branch previews and promotions. GitHub Actions still runs the existing checks and deploy scripts, but every critical transition must be accepted by Temporal before or after the command that changes deploy state. Temporal is not exposed publicly and no deploy ports are opened.
 
+## Process Change Rule
+
+Any change to Bright OS CI/CD must update the Temporal contract in the same branch when the change adds, removes, reorders, or changes an operation that must always happen, can block delivery, or needs manual recovery. Do not add a hidden deploy side effect only inside a shell script or GitHub Actions step.
+
+For a new required operation, add the matching Temporal event/state before shipping the process change:
+
+- workflow state task in `services/bright_os_temporal/src/state.mjs`;
+- allowlisted client event in `services/bright_os_temporal/src/client.mjs`;
+- GitHub Actions or helper-script signal around the existing command;
+- state test in `services/bright_os_temporal/test/state.test.mjs`;
+- docs in this file and, when agent behavior changes, `docs/operations/branch-preview-environments.md`.
+
+Use started/passed/failed events for operations that can block delivery. Examples: publishing an accepted version to another system, uploading an artifact, adding a manual approval gate, changing slot release semantics, or adding a production verification step. If the operation is optional telemetry, document why it is not a Temporal gate.
+
 ## Terms
 
 - Temporal address: `127.0.0.1:7233` on the VPS. It is not exposed publicly.
