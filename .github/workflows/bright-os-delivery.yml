@@ -135,7 +135,8 @@ jobs:
           BRIGHT_DEPLOY_SSH_KEY: ${{ secrets.BRIGHT_DEPLOY_SSH_KEY }}
           BRIGHT_OS_BRANCH: ${{ github.ref_name }}
           BRIGHT_OS_COMMIT: ${{ github.sha }}
-      - run: deploy/scripts/ci-ssh-deploy.sh
+      - id: deploy_preview
+        run: deploy/scripts/ci-ssh-deploy.sh
         env:
           BRIGHT_DEPLOY_HOST: ${{ vars.BRIGHT_DEPLOY_HOST }}
           BRIGHT_DEPLOY_USER: ${{ vars.BRIGHT_DEPLOY_USER }}
@@ -146,7 +147,7 @@ jobs:
           BRIGHT_OS_COMMIT: ${{ github.sha }}
       - name: Temporal preview deploy passed
         if: success()
-        run: deploy/scripts/ci-temporal-signal.sh preview --branch "$BRIGHT_OS_BRANCH" --sha "$BRIGHT_OS_COMMIT" --event preview_deploy_passed --source deploy-preview
+        run: deploy/scripts/ci-temporal-signal.sh preview --branch "$BRIGHT_OS_BRANCH" --sha "$BRIGHT_OS_COMMIT" --event preview_deploy_passed --slot "$BRIGHT_OS_PREVIEW_SLOT" --source deploy-preview
         env:
           BRIGHT_DEPLOY_HOST: ${{ vars.BRIGHT_DEPLOY_HOST }}
           BRIGHT_DEPLOY_USER: ${{ vars.BRIGHT_DEPLOY_USER }}
@@ -154,9 +155,10 @@ jobs:
           BRIGHT_DEPLOY_SSH_KEY: ${{ secrets.BRIGHT_DEPLOY_SSH_KEY }}
           BRIGHT_OS_BRANCH: ${{ github.ref_name }}
           BRIGHT_OS_COMMIT: ${{ github.sha }}
+          BRIGHT_OS_PREVIEW_SLOT: ${{ steps.deploy_preview.outputs.preview_slot }}
       - name: Temporal preview deploy failed
         if: failure()
-        run: deploy/scripts/ci-temporal-signal.sh preview --branch "$BRIGHT_OS_BRANCH" --sha "$BRIGHT_OS_COMMIT" --event preview_deploy_failed --source deploy-preview
+        run: deploy/scripts/ci-temporal-signal.sh preview --branch "$BRIGHT_OS_BRANCH" --sha "$BRIGHT_OS_COMMIT" --event preview_deploy_failed --slot "$BRIGHT_OS_PREVIEW_SLOT" --source deploy-preview
         env:
           BRIGHT_DEPLOY_HOST: ${{ vars.BRIGHT_DEPLOY_HOST }}
           BRIGHT_DEPLOY_USER: ${{ vars.BRIGHT_DEPLOY_USER }}
@@ -164,6 +166,7 @@ jobs:
           BRIGHT_DEPLOY_SSH_KEY: ${{ secrets.BRIGHT_DEPLOY_SSH_KEY }}
           BRIGHT_OS_BRANCH: ${{ github.ref_name }}
           BRIGHT_OS_COMMIT: ${{ github.sha }}
+          BRIGHT_OS_PREVIEW_SLOT: ${{ steps.deploy_preview.outputs.preview_slot }}
 
   deploy-dev:
     needs:
