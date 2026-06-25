@@ -134,6 +134,7 @@ jobs:
           BRIGHT_DEPLOY_REPO: ${{ vars.BRIGHT_DEPLOY_REPO || '/srv/projects/bright-os' }}
           BRIGHT_DEPLOY_SSH_KEY: ${{ secrets.BRIGHT_DEPLOY_SSH_KEY }}
           BRIGHT_OS_SOURCE_BRANCH: ${{ github.head_ref }}
+          BRIGHT_OS_ACCEPTED_PR_NUMBER: ${{ github.event.pull_request.number }}
           BRIGHT_OS_TARGET_ENVIRONMENT: dev
           BRIGHT_OS_TARGET_BRANCH: dev
           BRIGHT_OS_TARGET_COMMIT: ${{ github.event.pull_request.merge_commit_sha }}

@@ -121,18 +121,18 @@ test('migration seeds unified build version ledger', async () => {
     const versions = fixture.store.db
       .prepare('SELECT * FROM build_versions ORDER BY version_type_id, version')
       .all();
-    assert.equal(versions.length, 9);
+    assert.equal(versions.length, 11);
 
     const buildVersions = versions
       .filter((version) => version.version_type_id === 'build')
       .sort((left, right) => left.build_version - right.build_version);
-    assert.equal(buildVersions.length, 8);
+    assert.equal(buildVersions.length, 10);
     assert.deepEqual(
       buildVersions.map((version) => version.build_version),
-      [1, 2, 3, 4, 5, 6, 7, 8]
+      [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     );
     assert.equal(buildVersions.at(-1).build_version, buildVersions.length);
-    assert.equal(buildVersions.at(-1).version, '0.0.8.1');
+    assert.equal(buildVersions.at(-1).version, '0.0.10.1');
 
     const baselineApk = versions.find((version) => version.version_type_id === 'apk' && version.version === '0.0.1.1');
     assert.ok(baselineApk);
@@ -227,8 +227,18 @@ test('migration seeds unified build version ledger', async () => {
     assert.match(eighthTaskBuild.detailed_changes, /Z now matches the accepted GitHub PR number/);
     assert.equal(eighthTaskBuild.reason, 'Accepted PR/version ledger alignment into dev.');
 
+    const ninthTaskBuild = versions.find((version) => version.version_type_id === 'build' && version.version === '0.0.9.1');
+    assert.ok(ninthTaskBuild);
+    assert.equal(ninthTaskBuild.build_version, 9);
+    assert.equal(ninthTaskBuild.reason, 'Accepted PR #9 into dev.');
+
+    const tenthTaskBuild = versions.find((version) => version.version_type_id === 'build' && version.version === '0.0.10.1');
+    assert.ok(tenthTaskBuild);
+    assert.equal(tenthTaskBuild.build_version, 10);
+    assert.equal(tenthTaskBuild.reason, 'Accepted PR #10 into dev.');
+
     fixture.store.migrate();
-    assert.equal(fixture.store.db.prepare('SELECT COUNT(*) AS count FROM build_versions').get().count, 9);
+    assert.equal(fixture.store.db.prepare('SELECT COUNT(*) AS count FROM build_versions').get().count, 11);
   } finally {
     await fixture.close();
   }

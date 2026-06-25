@@ -1,11 +1,11 @@
 {
   "name": "Bright OS",
   "client": "next-capacitor",
-  "version": "0.0.8.1",
+  "version": "0.0.10.1",
   "versionParts": {
     "major": 0,
     "release": 0,
-    "build": 8,
+    "build": 10,
     "apk": 1
   },
   "androidVersionCode": 1
