@@ -29,8 +29,9 @@ The starter fetches `origin/dev`, refuses to reuse an existing remote `codex/<ta
 
 Repository Codex hooks are defined in `.codex/hooks.json`:
 
-- `PreToolUse` blocks write-like `exec_command`/`Bash` commands and `apply_patch` unless the checkout is a valid `codex/*` task branch based on `origin/dev`.
-- A pushed existing `codex/*` branch also needs local `.bright-task/` task state, so a new task cannot silently reuse an old preview branch. If the project owner explicitly asks for a direct follow-up on the current branch, run `node scripts/bright-task.mjs follow-up` first.
+- `PreToolUse` fetches current `origin/dev` and blocks write-like `exec_command`/`Bash` commands and `apply_patch` unless the checkout is a valid `codex/*` task branch based on current `origin/dev`.
+- The local `.bright-task/` marker must come from `scripts/bright-task-start.sh` (`mode: new`) or an explicit `node scripts/bright-task.mjs follow-up` (`mode: follow-up`). Automatically created or manual markers are invalid for project-file writes.
+- If the current branch or its remote head is already included in `origin/dev`, it is treated as accepted work and cannot receive more project-file changes. Start a new task branch even if Codex Desktop selected the old branch by default.
 - `Stop` blocks handoff when the working tree is dirty or when project-file writes were made without a verified preview receipt.
 
 Codex requires new or changed repo hooks to be reviewed and trusted through `/hooks`; that trust is local Codex security state and is not committed to Git.

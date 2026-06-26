@@ -6,6 +6,7 @@ import {
   isSensitivePath,
   isWriteLikeCommand,
   parseHookInput,
+  validateTaskMarker,
   validatePushUpdate,
 } from "./bright-task.mjs";
 
@@ -57,6 +58,23 @@ test("pre-push ref updates must stay on matching codex ref", () => {
       validatePushUpdate("refs/heads/codex/foo 1111111111111111111111111111111111111111 refs/heads/codex/bar 0000000000000000000000000000000000000000"),
     /ref mismatch/,
   );
+  assert.throws(
+    () =>
+      validatePushUpdate(
+        "refs/heads/codex/foo 2222222222222222222222222222222222222222 refs/heads/codex/foo 1111111111111111111111111111111111111111",
+        "codex/foo",
+        { isAcceptedRemote: (sha) => sha.startsWith("1111") },
+      ),
+    /already included in origin\/dev/,
+  );
+});
+
+test("task marker must come from task start or explicit follow-up", () => {
+  assert.deepEqual(validateTaskMarker({ branch: "codex/foo", mode: "new" }, "codex/foo"), { ok: true });
+  assert.deepEqual(validateTaskMarker({ branch: "codex/foo", mode: "follow-up" }, "codex/foo"), { ok: true });
+  assert.match(validateTaskMarker(null, "codex/foo").message, /marker is missing/);
+  assert.match(validateTaskMarker({ branch: "codex/foo", mode: "manual" }, "codex/foo").message, /mode manual/);
+  assert.match(validateTaskMarker({ branch: "codex/bar", mode: "new" }, "codex/foo").message, /codex\/bar/);
 });
 
 test("hook input parser is tolerant", () => {

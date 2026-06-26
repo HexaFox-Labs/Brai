@@ -4,6 +4,7 @@
 - [ ] Check current branch.
 - [ ] Inspect `git status --short`.
 - [ ] For new project-file work, start with `scripts/bright-task-start.sh <task-slug>` or confirm this is an explicit follow-up and run `node scripts/bright-task.mjs follow-up`.
+- [ ] Do not continue project-file work on a `codex/*` branch that is already included in `origin/dev`; create a new task branch even if the UI selected the old branch.
 - [ ] Confirm local Git hooks are enabled with `git config core.hooksPath .githooks`.
 - [ ] Stage only intended files.
 - [ ] Do not revert unrelated changes.

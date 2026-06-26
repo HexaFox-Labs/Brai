@@ -25,6 +25,7 @@ export {
   isSensitivePath,
   isWriteLikeCommand,
   parseHookInput,
+  validateTaskMarker,
   validatePushUpdate,
 };
 
@@ -118,6 +119,7 @@ function preToolUse() {
 
   if (!isWrite) return allowHook();
 
+  fetchDev();
   const validation = validateTaskBranch({ requireExpectedUpstream: false });
   if (!validation.ok) {
     return blockHook(`Bright OS blocks project-file writes before a valid task branch exists.\n\n${validation.message}\n\nRun: scripts/bright-task-start.sh <task-slug>`);
@@ -131,6 +133,7 @@ function preToolUse() {
 }
 
 function preCommit() {
+  fetchDev();
   const validation = validateTaskBranch({ requireExpectedUpstream: true });
   if (!validation.ok) throw new Error(validation.message);
 
@@ -157,7 +160,7 @@ function prePush(remoteName) {
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
-  for (const line of updates) validatePushUpdate(line, branch);
+  for (const line of updates) validatePushUpdate(line, branch, { isAcceptedRemote: (sha) => isAncestor(sha, "origin/dev") });
 
   const upstream = gitMaybe("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}");
   if (upstream && upstream !== `origin/${branch}`) {
@@ -263,6 +266,31 @@ function validateBranchReuse() {
   const branch = currentBranch();
   const upstream = gitMaybe("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}");
   const marker = readTaskMarker();
+  const markerValidation = validateTaskMarker(marker, branch);
+  if (!markerValidation.ok) {
+    return {
+      ok: false,
+      message:
+        `${markerValidation.message}\n\n` +
+        `For new work run: scripts/bright-task-start.sh <task-slug>\n` +
+        `Only for an explicit project-owner-approved follow-up run: node scripts/bright-task.mjs follow-up`,
+    };
+  }
+  const currentDev = git("rev-parse", "origin/dev");
+  const freshStartedBranch =
+    marker?.mode === "new" &&
+    marker?.base &&
+    isAncestor(marker.base, currentDev) &&
+    !upstream &&
+    !remoteBranchKnown(branch);
+  if (remoteBranchAccepted(branch) || (isAncestor("HEAD", "origin/dev") && !freshStartedBranch)) {
+    return {
+      ok: false,
+      message:
+        `Bright OS refuses to continue ${branch} because it is already included in origin/dev.\n\n` +
+        `Start a new task branch with: scripts/bright-task-start.sh <task-slug>`,
+    };
+  }
   if (upstream === `origin/${branch}` && marker?.branch !== branch) {
     return {
       ok: false,
@@ -275,8 +303,17 @@ function validateBranchReuse() {
   return { ok: true };
 }
 
-function validatePushUpdate(line, currentBranchName = "") {
-  const [localRef, localSha, remoteRef] = line.split(/\s+/);
+function validateTaskMarker(marker, branch) {
+  if (!marker) return { ok: false, message: "Bright OS task marker is missing; this checkout was not started with scripts/bright-task-start.sh." };
+  if (marker.branch !== branch) return { ok: false, message: `Bright OS task marker is for ${marker.branch || "(missing)"}, not ${branch}.` };
+  if (marker.mode !== "new" && marker.mode !== "follow-up") {
+    return { ok: false, message: `Bright OS task marker mode ${marker.mode || "(missing)"} is not valid for project-file writes.` };
+  }
+  return { ok: true };
+}
+
+function validatePushUpdate(line, currentBranchName = "", { isAcceptedRemote = () => false } = {}) {
+  const [localRef, localSha, remoteRef, remoteSha] = line.split(/\s+/);
   if (!localRef || !localSha || !remoteRef) throw new Error(`Cannot parse pre-push update: ${line}`);
   if (remoteRef === "refs/heads/main" || remoteRef === "refs/heads/dev") {
     throw new Error(`Direct push to ${remoteRef} is blocked. Use PR/accepted preview flow.`);
@@ -291,6 +328,9 @@ function validatePushUpdate(line, currentBranchName = "") {
   }
   if (remoteRef !== localRef) {
     throw new Error(`Push ref mismatch: ${localRef} must push to the same remote ref, got ${remoteRef}`);
+  }
+  if (remoteSha && remoteSha !== ZERO_SHA && isAcceptedRemote(remoteSha)) {
+    throw new Error(`${remoteRef} is already included in origin/dev. Start a new task branch instead of reusing an accepted branch.`);
   }
 }
 
@@ -391,9 +431,19 @@ function remoteBranchExists(branch) {
   return spawnGit(["ls-remote", "--exit-code", "--heads", "origin", branch], { stdio: "ignore" }).status === 0;
 }
 
+function remoteBranchAccepted(branch) {
+  const remote = `origin/${branch}`;
+  if (!remoteBranchKnown(branch)) return false;
+  return isAncestor(remote, "origin/dev");
+}
+
+function remoteBranchKnown(branch) {
+  return Boolean(gitMaybe("rev-parse", "--verify", `origin/${branch}`));
+}
+
 function markWriteIntent() {
   const root = git("rev-parse", "--show-toplevel");
-  const marker = readTaskMarker() ?? { branch: currentBranch(), mode: "manual", createdAt: new Date().toISOString() };
+  const marker = readTaskMarker();
   writeTaskMarker(root, { ...marker, branch: currentBranch(), writeIntentAt: new Date().toISOString() });
 }
 
