@@ -77,13 +77,13 @@ describe("BrightOsApp gestures", () => {
       changedTouches: [{ identifier: 1, clientX: 260, clientY: 724 }],
     });
     const current = document.querySelector('[data-section-page="actions"]');
-    const adjacent = document.querySelector('[data-section-page="focus"]');
+    const adjacent = document.querySelector('[data-section-page="inbox"]');
     expect((current as HTMLElement).style.transform).toBe("translate3d(-80px, 0, 0)");
     expect((adjacent as HTMLElement).style.transform).toBe("translate3d(280px, 0, 0)");
     fireEvent.touchEnd(dock as HTMLElement, {
       changedTouches: [{ identifier: 1, clientX: 180, clientY: 724 }],
     });
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Фокус" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Входящие" })).toBeInTheDocument());
 
     swipe(dock as HTMLElement, { fromX: 20, toX: 160 });
     await waitFor(() => expect(screen.getByRole("heading", { name: "Действия" })).toBeInTheDocument());

@@ -139,7 +139,9 @@ test('migration adds inbox entity schema and metadata', async () => {
         'normalization_text',
         'is_normalized',
         'created_at_utc',
-        'updated_at_utc'
+        'updated_at_utc',
+        'deleted_at_utc',
+        'last_event_id'
       ].filter((column) => !columns.has(column)),
       []
     );
@@ -166,6 +168,15 @@ test('migration adds inbox entity schema and metadata', async () => {
     assert.equal(
       fixture.store.db.prepare('SELECT description FROM schema_migrations WHERE version = 32').get().description,
       'add inbox work entity schema'
+    );
+    assert.equal(
+      fixture.store.db.prepare('SELECT description FROM schema_migrations WHERE version = 33').get().description,
+      'add inbox offline event log'
+    );
+    assert.ok(fixture.store.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'inbox_events'").get());
+    assert.equal(
+      fixture.store.db.prepare("SELECT title FROM table_descriptions WHERE table_name = 'inbox_events'").get().title,
+      'События входящих'
     );
 
     fixture.store.migrate();

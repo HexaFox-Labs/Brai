@@ -194,6 +194,10 @@ export const migrationMethods = {
     if (!this.hasMigration(32)) {
       this.recordMigration(32, 'add inbox work entity schema');
     }
+
+    if (!this.hasMigration(33)) {
+      this.recordMigration(33, 'add inbox offline event log');
+    }
   }
 ,
 
@@ -400,6 +404,7 @@ export const migrationMethods = {
       ['focus_session_sources', 'Источники Focus-сессий', 'Связи Focus-сессий и событий.', 'Связывает итоговые Focus-сессии с timer_events, из которых они получились при deterministic replay.'],
       ['focus_session_versions', 'Версии Focus-сессий', 'История значений Focus-сессий.', 'Хранит версии старта, финиша и длительности Focus-сессий. Только одна версия на сессию может быть текущей.'],
       ['inbox', 'Входящие', 'Список входящих материалов.', 'Хранит входящие материалы Bright OS до нормализации: заголовок, описание, источник, дату, автора, предварительный раздел, срочность, ссылки на вложения, пояснение, текст нормализации и признак нормализации.'],
+      ['inbox_events', 'События входящих', 'Журнал изменений входящих.', 'Хранит клиентские события по входящим для offline-first синхронизации, аудита и восстановления текущей таблицы inbox.'],
       ['items', 'Сущности', 'Реестр рабочих сущностей.', 'Хранит главные рабочие сущности Bright OS как стабильные id для схемы, API и технических решений.'],
       ['schema_migrations', 'Миграции', 'Журнал изменений схемы.', 'Хранит версии уже примененных миграций SQLite, время применения и краткое описание.'],
       ['sqlite_sequence', 'Счётчики', 'Служебные счетчики SQLite.', 'Внутренняя таблица SQLite для AUTOINCREMENT-счетчиков. Это не бизнес-данные Bright OS.'],
@@ -452,7 +457,9 @@ export const migrationMethods = {
         normalization_text TEXT NOT NULL DEFAULT '',
         is_normalized INTEGER NOT NULL DEFAULT 0 CHECK (is_normalized IN (0, 1)),
         created_at_utc TEXT NOT NULL,
-        updated_at_utc TEXT NOT NULL
+        updated_at_utc TEXT NOT NULL,
+        deleted_at_utc TEXT,
+        last_event_id TEXT
       );
 
       CREATE INDEX IF NOT EXISTS idx_inbox_item_date
@@ -460,7 +467,41 @@ export const migrationMethods = {
 
       CREATE INDEX IF NOT EXISTS idx_inbox_normalized_updated
       ON inbox (is_normalized, updated_at_utc);
+
+      CREATE TABLE IF NOT EXISTS inbox_events (
+        event_id TEXT PRIMARY KEY,
+        device_id TEXT NOT NULL,
+        client_sequence INTEGER NOT NULL,
+        server_sequence INTEGER NOT NULL UNIQUE,
+        inbox_id TEXT,
+        type TEXT NOT NULL CHECK (type IN ('create', 'update_title', 'update_description', 'delete', 'invalid')),
+        occurred_at_utc TEXT NOT NULL,
+        received_at_utc TEXT NOT NULL,
+        payload_json TEXT,
+        status TEXT NOT NULL CHECK (status IN ('accepted', 'ignored')),
+        ignore_reason TEXT,
+        payload_version INTEGER NOT NULL,
+        FOREIGN KEY (device_id) REFERENCES timer_devices(device_id)
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_inbox_events_device_sequence
+      ON inbox_events (device_id, client_sequence);
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_inbox_events_server_sequence
+      ON inbox_events (server_sequence);
+
+      CREATE INDEX IF NOT EXISTS idx_inbox_events_occurred
+      ON inbox_events (occurred_at_utc);
+
+      CREATE INDEX IF NOT EXISTS idx_inbox_events_inbox_occurred
+      ON inbox_events (inbox_id, occurred_at_utc, server_sequence);
     `);
+    if (this.tableExists('inbox') && !this.columnExists('inbox', 'deleted_at_utc')) {
+      this.db.exec('ALTER TABLE inbox ADD COLUMN deleted_at_utc TEXT;');
+    }
+    if (this.tableExists('inbox') && !this.columnExists('inbox', 'last_event_id')) {
+      this.db.exec('ALTER TABLE inbox ADD COLUMN last_event_id TEXT;');
+    }
     this.db
       .prepare('INSERT INTO items (id, created_at_utc) VALUES (?, ?) ON CONFLICT(id) DO NOTHING')
       .run('inbox', now);
