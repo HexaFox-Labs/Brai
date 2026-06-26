@@ -169,6 +169,11 @@ export const migrationMethods = {
       this.backfillBuildVersionRefs();
       this.recordMigration(27, 'separate build version audit refs from reasons');
     }
+
+    if (!this.hasMigration(28)) {
+      this.repairAcceptedAuditMetadataBuildVersionDescription();
+      this.recordMigration(28, 'repair accepted audit metadata build description');
+    }
   }
 ,
 
@@ -1585,6 +1590,37 @@ export const migrationMethods = {
         sourceCommit,
         targetBranch,
         targetCommit,
+      });
+    }
+  }
+,
+
+  repairAcceptedAuditMetadataBuildVersionDescription() {
+    this.db
+      .prepare(`
+        UPDATE build_versions
+        SET short_changes = ?,
+            detailed_changes = ?,
+            reason = ?
+        WHERE version_type_id = 'build'
+          AND version = '0.0.26.1'
+      `)
+      .run(
+        'Separated build ledger audit metadata.',
+        'Build version rows now store branch and commit audit references in build_version_refs, repair late accepted release-note rows, and prevent technical Accepted codex fallbacks from entering visible change fields.',
+        'Needed because accepted build metadata still fell back to generic release-note text when the dev checkout could not see the preview source commit.',
+      );
+    const exists = this.db
+      .prepare("SELECT 1 FROM build_versions WHERE version_type_id = 'build' AND version = '0.0.26.1'")
+      .get();
+    if (exists) {
+      this.upsertBuildVersionRef({
+        versionTypeId: 'build',
+        version: '0.0.26.1',
+        sourceBranch: 'codex/repair-late-build-version-descriptions',
+        sourceCommit: 'ca6b2e282d6bbc5f8fd2b2f11817e89c6791fac1',
+        targetBranch: 'dev',
+        targetCommit: 'f3592f7c9adfc492e5920623aefda087532d6015',
       });
     }
   }

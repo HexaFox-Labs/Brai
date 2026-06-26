@@ -44,12 +44,19 @@ fi
 
 SOURCE_SHORT_CHANGES=""
 SOURCE_DETAILS=""
+NOTES_ROOT="$ROOT"
 if [[ -n "$SOURCE_COMMIT" ]]; then
+  if [[ "$TARGET_ENVIRONMENT" == "dev" && -n "${SLOT:-}" ]]; then
+    PREVIEW_SOURCE_ROOT="$ENVS_ROOT/preview-${SLOT,,}/source"
+    if [[ -d "$PREVIEW_SOURCE_ROOT/.git" ]]; then
+      NOTES_ROOT="$PREVIEW_SOURCE_ROOT"
+    fi
+  fi
   NOTES_COMMIT="$SOURCE_COMMIT"
   for _ in 1 2 3 4 5; do
-    SOURCE_SHORT_CHANGES="$(git -C "$ROOT" log -1 --format=%s "$NOTES_COMMIT" 2>/dev/null || true)"
+    SOURCE_SHORT_CHANGES="$(git -C "$NOTES_ROOT" log -1 --format=%s "$NOTES_COMMIT" 2>/dev/null || true)"
     if [[ "$SOURCE_SHORT_CHANGES" == Merge\ branch\ *\ into\ codex/* || "$SOURCE_SHORT_CHANGES" == Merge\ remote-tracking\ branch\ *\ into\ codex/* ]]; then
-      PARENT_COMMIT="$(git -C "$ROOT" rev-parse "$NOTES_COMMIT^1" 2>/dev/null || true)"
+      PARENT_COMMIT="$(git -C "$NOTES_ROOT" rev-parse "$NOTES_COMMIT^1" 2>/dev/null || true)"
       if [[ -n "$PARENT_COMMIT" ]]; then
         NOTES_COMMIT="$PARENT_COMMIT"
         continue
@@ -57,7 +64,7 @@ if [[ -n "$SOURCE_COMMIT" ]]; then
     fi
     break
   done
-  SOURCE_BODY="$(git -C "$ROOT" log -1 --format=%b "$NOTES_COMMIT" 2>/dev/null || true)"
+  SOURCE_BODY="$(git -C "$NOTES_ROOT" log -1 --format=%b "$NOTES_COMMIT" 2>/dev/null || true)"
   if [[ "$SOURCE_SHORT_CHANGES" == Merge\ pull\ request* && -n "$SOURCE_BODY" ]]; then
     while IFS= read -r line; do
       if [[ -n "${line//[[:space:]]/}" ]]; then
