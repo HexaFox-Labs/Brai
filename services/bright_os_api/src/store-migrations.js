@@ -1223,15 +1223,69 @@ export const migrationMethods = {
   repairTechnicalBuildVersionDescriptions() {
     const updates = [
       [
+        '0.0.8.1',
+        'Aligned dev build ledger sequence.',
+        'Dev build Z follows the accepted dev build sequence, and the current dev source keeps the accepted menu and GitHub CLI sandbox-auth fixes.',
+        'Accepted dev build ledger alignment into dev.',
+      ],
+      [
+        '0.0.9.1',
+        'Added mobile edge menu swipe.',
+        'Mobile navigation now opens the left menu from an edge swipe, keeps horizontal page swipes on the bottom dock only, and uses an 80 percent mobile left menu width.',
+        'Accepted dev build 0.0.9.1 into dev.',
+      ],
+      [
+        '0.0.10.1',
+        'Fixed preview slot release and queueing.',
+        'Preview slot release now uses a deploy-readable checkout, full preview pools queue FIFO, and acceptance release frees the slot automatically.',
+        'Accepted dev build 0.0.10.1 into dev.',
+      ],
+      [
+        '0.0.11.1',
+        'Recorded accepted build ledger idempotently.',
+        'The acceptance flow records dev build versions idempotently before future dev deployments.',
+        'Accepted dev build 0.0.11.1 into dev.',
+      ],
+      [
+        '0.0.12.1',
+        'Renamed Bright OS API infrastructure.',
+        'Renamed Bright OS API infrastructure, fixed local-first timer controls during sync, avoided stale OTA checking state, and rewrote the public README.',
+        'Accepted dev build 0.0.12.1: codex/rename-bright-os-api@4eafe83852f9ff3723dd23d3401019a7b6dde233 -> dev@0c57b8f74f4dd8ad2c500bac08714392c932cc1d.',
+      ],
+      [
+        '0.0.13.1',
+        'Backfilled accepted build 0.0.11.1.',
+        'Backfilled the accepted 0.0.11.1 build ledger row and migration tests so existing dev history is represented in build_versions.',
+        'Accepted dev build 0.0.13.1: codex/backfill-pr11-build-ledger@0ae30248632de2c92668d7ad649f71c86cf09008 -> dev@4ba274fed068106057521c319b7b385ce0b0ed45.',
+      ],
+      [
+        '0.0.14.1',
+        'Promoted dev build ledger to production.',
+        'Production promotion now copies accepted dev build ledger rows and creates production release rows that reference the included dev builds.',
+        'Accepted dev build 0.0.14.1: codex/promote-dev-ledger-to-prod@72035952b3cfd243322ea6c4b1d1a28be7e293b3 -> dev@5cbde5ca771201924e72a13d418fa832d266abb3.',
+      ],
+      [
+        '0.0.15.1',
+        'Fixed version ledger semantics.',
+        'Versioning no longer couples dev build numbers to GitHub PR numbers; accepted branches create Z versions and production promotion creates Y releases with included build references.',
+        'Accepted dev build 0.0.15.1: codex/fix-version-ledger-semantics@b743abaaa3e344bd511c959f9963ab9ece096a10 -> dev@a2a8d0cfb8d5f72cbb398de31d60a3a8678eb17c.',
+      ],
+      [
+        '0.0.16.1',
+        'Required preview slot release after dev deploy.',
+        'Accepted preview cleanup now waits for deploy-dev metadata promotion and releases preview slots only after the dev deployment succeeds.',
+        'Accepted dev build 0.0.16.1: codex/require-preview-slot-release@c811cf9c584fa06b58e416118957b68f2066f59b -> dev@1c50f30328f3aaf2b6f8254909dcd37bbda80738.',
+      ],
+      [
         '0.0.17.1',
-        'Require preview slot release after dev deploy.',
-        'Preview acceptance now keeps the slot reserved until deploy-dev completes metadata promotion, then releases it after the dev deployment succeeds.',
-        'Accepted dev build 0.0.17.1: codex/require-preview-slot-release@c811cf9c584fa06b58e416118957b68f2066f59b -> dev@6ae3a7b2c23c561194375d42b49bccdebb49ac77.',
+        'Fixed preview promotion metadata fallback.',
+        'Accepted preview promotion now falls back to branch and commit metadata when the preview database is unavailable and cleans up previously accepted preview slots.',
+        'Accepted dev build 0.0.17.1: codex/fix-preview-promotion-fallback@9a00d6312ef0f963ac81847fae106b2c170a7979 -> dev@6ae3a7b2c23c561194375d42b49bccdebb49ac77.',
       ],
       [
         '0.0.18.1',
-        'Fix accepting updated preview branches.',
-        'Preview acceptance now follows the latest pushed branch head when creating or reusing the acceptance PR.',
+        'Connected Temporal CI/CD delivery gates.',
+        'Delivery now records checks, preview deploys, accepted-preview promotion, slot release, dev deploy, and production deploy in Temporal with strict blocking signals and documented recovery rules.',
         'Accepted dev build 0.0.18.1: codex/fix-preview-promotion-fallback@3329474d5da1b09d5b6930287dbe231a516b1845 -> dev@4c1b5cbd5a26d9bb576ca8a2a3e1a83266dd1758.',
       ],
       [
@@ -1246,13 +1300,24 @@ export const migrationMethods = {
         'Activity sync now applies incremental projection updates for activity events and client command method names instead of relying on full recompute paths.',
         'Accepted dev build 0.0.20.1: codex/incremental-activity-projection@7cd4ee2bccfb34842dab52c1ca8d3012bbaab95a -> dev@e8a58dd2e1df97131189878651808e967a50eaa8.',
       ],
+      [
+        '0.0.21.1',
+        'Implemented focus session versioning.',
+        'Focus history now uses versioned completed focus sessions, completed session start/end edits sync through timer events, and legacy timer sessions migrate into the new versioned model.',
+        'Accepted dev build 0.0.21.1: codex/focus-session-versioning@f80e1bc64f9e3b84ec01088d91e5684901b7f0a8 -> dev@ee0c387eea1b0786c70926058bc257ab25828135.',
+      ],
+      [
+        '0.0.22.1',
+        'Enforced branch preview guard rails.',
+        'Task-start, handoff, git hook, and Codex hook guards now keep implementation work on codex/* branches, require clean committed pushes, and prevent preview handoff without a verified slot.',
+        'Accepted dev build 0.0.22.1: codex/enforce-branch-preview-guards@5b9c621be5dd33c3c4bd3588f702fa69f53fca78 -> dev@f0c71767234ab38b80e5999a0f9fa6cea4877d58.',
+      ],
     ];
     const update = this.db.prepare(`
       UPDATE build_versions
       SET short_changes = ?, detailed_changes = ?, reason = ?
       WHERE version_type_id = 'build'
         AND version = ?
-        AND detailed_changes LIKE 'Accepted dev build%source %target %'
     `);
     for (const [version, shortChanges, detailedChanges, reason] of updates) {
       update.run(shortChanges, detailedChanges, reason, version);

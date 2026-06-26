@@ -235,7 +235,39 @@ test('technical build version descriptions are repaired', () => {
   const store = new BrightOsStore(db);
 
   try {
-    store.db.prepare(`
+    const expectedShortChanges = new Map([
+      ['0.0.8.1', 'Aligned dev build ledger sequence.'],
+      ['0.0.9.1', 'Added mobile edge menu swipe.'],
+      ['0.0.10.1', 'Fixed preview slot release and queueing.'],
+      ['0.0.11.1', 'Recorded accepted build ledger idempotently.'],
+      ['0.0.12.1', 'Renamed Bright OS API infrastructure.'],
+      ['0.0.13.1', 'Backfilled accepted build 0.0.11.1.'],
+      ['0.0.14.1', 'Promoted dev build ledger to production.'],
+      ['0.0.15.1', 'Fixed version ledger semantics.'],
+      ['0.0.16.1', 'Required preview slot release after dev deploy.'],
+      ['0.0.17.1', 'Fixed preview promotion metadata fallback.'],
+      ['0.0.18.1', 'Connected Temporal CI/CD delivery gates.'],
+      ['0.0.19.1', 'Document table_descriptions schema metadata rule.'],
+      ['0.0.20.1', 'Optimize activity projection sync.'],
+      ['0.0.21.1', 'Implemented focus session versioning.'],
+      ['0.0.22.1', 'Enforced branch preview guard rails.'],
+    ]);
+
+    const updateExisting = store.db.prepare(`
+      UPDATE build_versions
+      SET short_changes = ?, detailed_changes = ?, reason = ?
+      WHERE version_type_id = 'build' AND version = ?
+    `);
+    for (const version of ['0.0.8.1', '0.0.9.1', '0.0.10.1', '0.0.11.1']) {
+      updateExisting.run(
+        `Accepted PR #${version.split('.')[2]} into dev.`,
+        `Recorded accepted PR #${version.split('.')[2]}: dev@old promoted to dev@old. Automated dev deployment from accepted PR #${version.split('.')[2]}.`,
+        `Accepted PR #${version.split('.')[2]} into dev.`,
+        version
+      );
+    }
+
+    const insertBroken = store.db.prepare(`
       INSERT INTO build_versions (
         version_type_id,
         major_version,
@@ -250,28 +282,37 @@ test('technical build version descriptions are repaired', () => {
         created_at_utc
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      'build',
-      0,
-      0,
-      17,
-      1,
-      '0.0.17.1',
-      'Accepted dev build 0.0.17.1.',
-      'Accepted dev build 0.0.17.1: source codex/require-preview-slot-release@c811cf9c584fa06b58e416118957b68f2066f59b; target dev@6ae3a7b2c23c561194375d42b49bccdebb49ac77. Accepted preview branch codex/require-preview-slot-release@c811cf9c584fa06b58e416118957b68f2066f59b.',
-      'Accepted dev build 0.0.17.1.',
-      '2026-06-25T19:00:00.000Z',
-      '2026-06-25T19:00:00.000Z'
-    );
+    `);
+    for (const version of Array.from(expectedShortChanges.keys()).slice(4)) {
+      const buildVersion = Number(version.split('.')[2]);
+      insertBroken.run(
+        'build',
+        0,
+        0,
+        buildVersion,
+        1,
+        version,
+        `Accepted dev build ${version}.`,
+        `Accepted dev build ${version}: source codex/example@source-${buildVersion}; target dev@target-${buildVersion}. Automated deployment from codex/example@source-${buildVersion} to a.test.brightos.world.`,
+        `Accepted dev build ${version}.`,
+        '2026-06-25T19:00:00.000Z',
+        '2026-06-25T19:00:00.000Z'
+      );
+    }
 
     store.repairTechnicalBuildVersionDescriptions();
 
     const repaired = store.db
-      .prepare("SELECT short_changes, detailed_changes, reason FROM build_versions WHERE version = '0.0.17.1'")
-      .get();
-    assert.equal(repaired.short_changes, 'Require preview slot release after dev deploy.');
-    assert.match(repaired.detailed_changes, /keeps the slot reserved/);
-    assert.match(repaired.reason, /codex\/require-preview-slot-release@c811cf9/);
+      .prepare("SELECT version, short_changes, detailed_changes, reason FROM build_versions WHERE version_type_id = 'build' AND build_version BETWEEN 8 AND 22 ORDER BY build_version")
+      .all();
+    assert.equal(repaired.length, expectedShortChanges.size);
+    for (const row of repaired) {
+      assert.equal(row.short_changes, expectedShortChanges.get(row.version));
+      assert.doesNotMatch(row.detailed_changes, /Automated deployment|Automated dev deployment|source codex\/example|target dev@target-/);
+    }
+    assert.match(repaired.find((row) => row.version === '0.0.17.1').detailed_changes, /falls back to branch and commit metadata/);
+    assert.match(repaired.find((row) => row.version === '0.0.18.1').detailed_changes, /Temporal/);
+    assert.match(repaired.find((row) => row.version === '0.0.22.1').reason, /codex\/enforce-branch-preview-guards@5b9c621/);
   } finally {
     store.close();
     fs.rmSync(tmp, { recursive: true, force: true });
