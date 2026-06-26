@@ -238,6 +238,7 @@ describe("BrightOsApp actions", () => {
     fireEvent.click(activeRow.querySelector(".action-row-surface") as HTMLElement);
     await waitFor(() => expect(screen.getByRole("button", { name: "Закрыть редактор" })).toBeInTheDocument());
     expect(activeRow).toHaveClass("selected", "bg-primary/10");
+    expect(activeRow).toHaveClass("rounded-lg");
     expect(activeRow).toContainElement(activeRow.querySelector(".action-delete-button") as HTMLElement);
   });
 

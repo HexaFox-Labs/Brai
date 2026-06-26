@@ -33,16 +33,21 @@ describe("BrightOsApp inbox", () => {
     fireEvent.submit(input.closest("form") as HTMLFormElement);
 
     const title = await screen.findByRole("textbox", { name: "Название входящего: Новое письмо" });
+    const inboxRow = title.closest(".action-row") as HTMLElement;
     expect(screen.queryByRole("checkbox", { name: "Новое письмо" })).not.toBeInTheDocument();
     expect(screen.queryByText("Выполнено")).not.toBeInTheDocument();
     expect(screen.getByText("Тип входящего")).toBeInTheDocument();
 
     fireEvent.click(title);
     await waitFor(() => expect(screen.getByRole("button", { name: "Закрыть редактор" })).toBeInTheDocument());
+    expect(inboxRow).toHaveClass("rounded-lg");
     expect(screen.getByLabelText("Редактирование входящего")).toHaveClass("pr-7");
-    const divider = document.querySelector("[data-inbox-split-divider]") as HTMLElement | null;
-    expect(divider).toBeInTheDocument();
-    expect(divider?.style.left).toBe("50%");
+    const splitSlider = screen.getByRole("slider", { name: "Изменить ширину панелей" });
+    expect(splitSlider).toHaveAttribute("aria-valuenow", "50");
+    fireEvent.keyDown(splitSlider, { key: "End" });
+    expect(splitSlider).toHaveAttribute("aria-valuenow", "70");
+    fireEvent.keyDown(splitSlider, { key: "Home" });
+    expect(splitSlider).toHaveAttribute("aria-valuenow", "30");
     const descriptionEditor = screen.getByRole("textbox", { name: "Описание входящего" });
     fireEvent.change(descriptionEditor, {
       target: { value: "# Контекст\n\n## Источник\n\n**важно**" },

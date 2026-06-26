@@ -1,6 +1,6 @@
 "use client";
 
-import type { FormEvent, KeyboardEvent, MouseEvent, PointerEvent } from "react";
+import type { CSSProperties, FormEvent, KeyboardEvent, MouseEvent, PointerEvent } from "react";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { BookOpen, FileText, Inbox, Link2, Mail, MessageSquare, Pencil, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { useSwipeable } from "react-swipeable";
@@ -14,7 +14,7 @@ import { ScrollArea } from "@/shared/ui/scroll-area";
 import { cx, fitTextareaHeight } from "../../appUtils";
 import { useMobileSheetDrag } from "../../hooks/useMobileSheetDrag";
 import { isMobileNavigationViewport } from "../../navigation/useSectionSwipeNavigation";
-import { ACTION_DELETE_REVEAL_WIDTH, ACTION_ROW_SERVICE_SELECTOR, ACTIONS_SPLIT_DEFAULT_PERCENT, loadActivityMarkdownPreviewMode, saveActivityMarkdownPreviewMode } from "../actions/constants";
+import { ACTION_DELETE_REVEAL_WIDTH, ACTION_ROW_SERVICE_SELECTOR, ACTIONS_SPLIT_DEFAULT_PERCENT, ACTIONS_SPLIT_MIN_PERCENT, clampActionsSplitPercent, loadActivityMarkdownPreviewMode, saveActivityMarkdownPreviewMode } from "../actions/constants";
 
 type DetailTitleFocus = "end" | null;
 
@@ -43,8 +43,11 @@ export function InboxSection({
   const [mobileEditItemId, setMobileEditItemId] = useState<string | null>(null);
   const [mobileDraft, setMobileDraft] = useState("");
   const [openDeleteItemId, setOpenDeleteItemId] = useState<string | null>(null);
+  const [splitPercent, setSplitPercent] = useState(ACTIONS_SPLIT_DEFAULT_PERCENT);
   const [titleDrafts, setTitleDrafts] = useState<Record<string, string>>({});
   const [detailTitleFocusRequest, setDetailTitleFocusRequest] = useState(0);
+  const workspaceRef = useRef<HTMLDivElement | null>(null);
+  const splitDragStyleRef = useRef<{ cursor: string; userSelect: string } | null>(null);
   const desktopInputRef = useRef<HTMLInputElement | null>(null);
   const mobileInputRef = useRef<HTMLInputElement | null>(null);
   const suppressMobileCreatePopRef = useRef(false);
@@ -111,6 +114,7 @@ export function InboxSection({
 
   function openMobileEdit(item: InboxItem) {
     setOpenDeleteItemId(null);
+    setSplitPercent(ACTIONS_SPLIT_DEFAULT_PERCENT);
     setSelectedItemId(item.id);
     setMobileEditItemId(item.id);
   }
@@ -129,6 +133,7 @@ export function InboxSection({
   }
 
   function selectItem(itemId: string, focusDetailTitle: DetailTitleFocus = "end") {
+    if (selectedItemId !== itemId) setSplitPercent(ACTIONS_SPLIT_DEFAULT_PERCENT);
     setSelectedItemId(itemId);
     if (focusDetailTitle === "end") setDetailTitleFocusRequest((current) => current + 1);
   }
@@ -174,6 +179,58 @@ export function InboxSection({
     });
   }, [closeMobileCreate, mobileCreateOpen]);
 
+  function onSplitPointerDown(event: PointerEvent<HTMLButtonElement>) {
+    const workspace = workspaceRef.current;
+    if (!workspace) return;
+    event.preventDefault();
+    splitDragStyleRef.current = {
+      cursor: document.documentElement.style.cursor,
+      userSelect: document.body.style.userSelect,
+    };
+    document.documentElement.style.cursor = "ew-resize";
+    document.body.style.userSelect = "none";
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function onSplitPointerMove(event: PointerEvent<HTMLButtonElement>) {
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+    const workspace = workspaceRef.current;
+    if (!workspace) return;
+    const bounds = workspace.getBoundingClientRect();
+    const rawPercent = ((event.clientX - bounds.left) / bounds.width) * 100;
+    setSplitPercent(clampActionsSplitPercent(rawPercent));
+  }
+
+  function onSplitPointerEnd(event: PointerEvent<HTMLButtonElement>) {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    const previous = splitDragStyleRef.current;
+    if (!previous) return;
+    document.documentElement.style.cursor = previous.cursor;
+    document.body.style.userSelect = previous.userSelect;
+    splitDragStyleRef.current = null;
+  }
+
+  function onSplitKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      setSplitPercent((current) => clampActionsSplitPercent(current - 2));
+    }
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      setSplitPercent((current) => clampActionsSplitPercent(current + 2));
+    }
+    if (event.key === "Home") {
+      event.preventDefault();
+      setSplitPercent(ACTIONS_SPLIT_MIN_PERCENT);
+    }
+    if (event.key === "End") {
+      event.preventDefault();
+      setSplitPercent(100 - ACTIONS_SPLIT_MIN_PERCENT);
+    }
+  }
+
   return (
     <section
       className="actions-section relative grid h-full min-h-0 grid-rows-[minmax(0,1fr)] gap-3.5 max-[860px]:gap-0 max-[860px]:pb-0"
@@ -181,11 +238,20 @@ export function InboxSection({
       onClickCapture={closeOpenDeleteFromOutside}
     >
       <div
+        ref={workspaceRef}
         className={cx(
           "actions-workspace relative grid h-full min-h-0 min-w-0 items-stretch gap-[18px] max-[860px]:block",
-          desktopSidePanelOpen ? "has-detail grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-0 overflow-hidden" : "grid-cols-[minmax(0,1fr)]",
+          desktopSidePanelOpen ? "has-detail grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-0" : "grid-cols-[minmax(0,1fr)]",
+          desktopSidePanelOpen && "overflow-hidden",
         )}
-        style={desktopSidePanelOpen ? { gridTemplateColumns: `${ACTIONS_SPLIT_DEFAULT_PERCENT}% ${100 - ACTIONS_SPLIT_DEFAULT_PERCENT}%` } : undefined}
+        style={
+          desktopSidePanelOpen
+            ? ({
+                "--actions-list-percent": `${splitPercent}%`,
+                gridTemplateColumns: "minmax(0,var(--actions-list-percent)) minmax(0,calc(100% - var(--actions-list-percent)))",
+              } as CSSProperties)
+            : undefined
+        }
       >
         <ScrollArea className="actions-list-pane h-full min-h-0 min-w-0">
           <form className="sticky top-0 z-[4] mb-[18px] max-[860px]:hidden" onSubmit={submitDesktop}>
@@ -232,14 +298,24 @@ export function InboxSection({
 
         {selectedItem && !mobileEditItem ? (
           <>
-            <span
-              className="actions-split-resizer pointer-events-none absolute inset-y-0 z-[5] hidden w-6 -translate-x-1/2 place-items-stretch justify-center px-[11px] py-0 max-[860px]:hidden min-[861px]:grid"
-              style={{ left: `${ACTIONS_SPLIT_DEFAULT_PERCENT}%` }}
-              aria-hidden="true"
+            <button
+              type="button"
+              className="actions-split-resizer group absolute inset-y-0 z-[5] hidden w-6 -translate-x-1/2 touch-none !cursor-ew-resize place-items-stretch justify-center border-0 bg-transparent px-[11px] py-0 max-[860px]:hidden min-[861px]:grid [&_*]:!cursor-ew-resize"
+              style={{ left: `${splitPercent}%` }}
+              aria-label="Изменить ширину панелей"
+              aria-valuemin={ACTIONS_SPLIT_MIN_PERCENT}
+              aria-valuemax={100 - ACTIONS_SPLIT_MIN_PERCENT}
+              aria-valuenow={Math.round(splitPercent)}
+              role="slider"
+              onPointerDown={onSplitPointerDown}
+              onPointerMove={onSplitPointerMove}
+              onPointerUp={onSplitPointerEnd}
+              onPointerCancel={onSplitPointerEnd}
+              onKeyDown={onSplitKeyDown}
               data-inbox-split-divider
             >
-              <span className="block h-full w-px bg-border" aria-hidden="true" />
-            </span>
+              <span className="block h-full w-px bg-border transition-colors group-hover:bg-primary" aria-hidden="true" />
+            </button>
             <InboxDetailEditor
               key={selectedItem.id}
               item={selectedItem}
@@ -427,7 +503,7 @@ function InboxRow({
         deleteOpen && "delete-open",
         dragging && "dragging",
         removing && "removing pointer-events-none max-h-0 border-b-transparent opacity-0",
-        selected && "selected bg-primary/10",
+        selected && "selected rounded-lg bg-primary/10",
       )}
       data-nav-swipe-exclusion
       data-action-row

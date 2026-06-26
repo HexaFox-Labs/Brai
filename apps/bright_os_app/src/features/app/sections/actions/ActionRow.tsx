@@ -153,7 +153,7 @@ export function ActionRow({
         deleteOpen && "delete-open",
         dragging && "dragging",
         removing && "removing pointer-events-none max-h-0 border-b-transparent opacity-0",
-        selected && "selected bg-primary/10",
+        selected && "selected rounded-lg bg-primary/10",
         sortableDragging && "sorting overflow-visible shadow-lg",
       )}
       data-nav-swipe-exclusion
