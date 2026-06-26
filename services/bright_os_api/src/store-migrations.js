@@ -1532,6 +1532,12 @@ export const migrationMethods = {
         'Accepted build version rows now keep human-readable release notes in short_changes and detailed_changes, preserve source changelog text during promotion, repair historical technical descriptions, and keep audit metadata out of the visible change text.',
         'Needed because version rows showed branch, commit, and deploy metadata instead of readable release notes and real change reasons.',
       ],
+      [
+        '0.0.25.1',
+        'Repaired late build version descriptions.',
+        'Late accepted build rows now restore readable release notes for runtime verification and release-note fixes, ignore technical preview metadata during promotion, and keep branch/commit audit data out of visible change fields.',
+        'Needed because a newly accepted build row still showed branch metadata instead of readable release notes.',
+      ],
     ];
     const update = this.db.prepare(`
       UPDATE build_versions
@@ -1567,6 +1573,7 @@ export const migrationMethods = {
       ['0.0.22.1', 'codex/enforce-branch-preview-guards', '5b9c621be5dd33c3c4bd3588f702fa69f53fca78', 'dev', 'f0c71767234ab38b80e5999a0f9fa6cea4877d58'],
       ['0.0.23.1', 'codex/require-runtime-db-verification', '9846d4db644824b20c8f050aff99ea9fef8a3d38', 'dev', '82be3ab928dca8444594f808b3f6fe2a3cb21a55'],
       ['0.0.24.1', 'codex/fix-build-version-descriptions', '5c16c8450e77273d95d327f4792f502b0dfceee8', 'dev', 'd778efdcadfa06af938c91fe1247ab1309ebebf8'],
+      ['0.0.25.1', 'codex/repair-late-build-version-descriptions', '50caeb4c844d0487d04a28de64ced4161c1eaa00', 'dev', 'a1887a755689967b2a892ebc6a8b50ca31072958'],
     ];
     const exists = this.db.prepare("SELECT 1 FROM build_versions WHERE version_type_id = 'build' AND version = ?");
     for (const [version, sourceBranch, sourceCommit, targetBranch, targetCommit] of refs) {

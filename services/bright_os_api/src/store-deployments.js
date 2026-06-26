@@ -68,7 +68,7 @@ export const deploymentMethods = {
     const existing = this.findBuildVersionByTargetCommit({ targetBranch, targetCommit, releaseOnly: false });
     const buildVersion = existing?.build_version ?? this.nextAcceptedBuildVersion();
     const version = `0.0.${buildVersion}.1`;
-    const shortChanges = usefulChanges(sourceShortChanges) || `Accepted ${sourceBranch}.`;
+    const shortChanges = usefulChanges(sourceShortChanges) || 'Accepted preview changes without authored release notes.';
     const detailedChanges = usefulChanges(sourceDetails) || shortChanges;
     this.upsertBuildVersion({
       majorVersion: 0,

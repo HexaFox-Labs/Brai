@@ -309,6 +309,76 @@ test('accepted preview promotion ignores branch deployment metadata when commit 
   }
 });
 
+test('accepted preview promotion does not write branch names when all source notes are technical', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bright-promote-technical-only-source-'));
+  const sourceDb = path.join(tmp, 'source.sqlite');
+  const targetDb = path.join(tmp, 'target.sqlite');
+  const source = new BrightOsStore(sourceDb);
+  const target = new BrightOsStore(targetDb);
+
+  try {
+    source.recordDeployment({
+      environment: 'preview-c',
+      slot: 'C',
+      branch: 'codex/technical-only-source',
+      commit: 'source-technical-only',
+      domain: 'c.test.brightos.world',
+      shortChanges: 'Accepted codex/technical-only-source.',
+      detailedChanges: 'Accepted preview branch codex/technical-only-source@source-technical-only.',
+      reason: 'Automated branch delivery',
+      deployedAtUtc: '2026-06-26T15:30:00.000Z'
+    });
+  } finally {
+    source.close();
+    target.close();
+  }
+
+  const repoRoot = path.resolve(import.meta.dirname, '../../..');
+  execFileSync(process.execPath, [
+    path.join(repoRoot, 'deploy/scripts/promote-deployment.mjs'),
+    '--source-db',
+    sourceDb,
+    '--target-db',
+    targetDb,
+    '--source-branch',
+    'codex/technical-only-source',
+    '--source-commit',
+    'source-technical-only',
+    '--source-short-changes',
+    'Accepted codex/technical-only-source.',
+    '--source-details',
+    'Accepted preview branch codex/technical-only-source@source-technical-only.',
+    '--target-environment',
+    'dev',
+    '--target-branch',
+    'dev',
+    '--target-commit',
+    'merge-technical-only',
+    '--target-domain',
+    'dev.brightos.world',
+    '--reason',
+    'Promote preview with technical-only metadata'
+  ], { cwd: repoRoot });
+
+  const promoted = new BrightOsStore(targetDb);
+  try {
+    const version = promoted.db
+      .prepare("SELECT version, short_changes, detailed_changes, reason FROM build_versions WHERE version_type_id = 'build' ORDER BY build_version DESC LIMIT 1")
+      .get();
+    assert.equal(version.version, '0.0.12.1');
+    assert.equal(version.short_changes, 'Accepted preview changes without authored release notes.');
+    assert.equal(version.detailed_changes, 'No authored preview release notes were available; audit metadata is stored separately.');
+    assert.equal(version.reason, 'Needed because no authored preview release notes were available; audit metadata is stored separately.');
+    assert.doesNotMatch(
+      `${version.short_changes} ${version.detailed_changes} ${version.reason}`,
+      /codex\/technical-only-source|source-technical-only|Accepted codex/
+    );
+  } finally {
+    promoted.close();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('technical build version descriptions are repaired', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bright-ledger-repair-'));
   const db = path.join(tmp, 'target.sqlite');
@@ -449,16 +519,30 @@ test('late technical build version descriptions are repaired', () => {
       '2026-06-26T15:18:00.000Z',
       '2026-06-26T15:18:00.000Z'
     );
+    insertBroken.run(
+      'build',
+      0,
+      0,
+      25,
+      1,
+      '0.0.25.1',
+      'Accepted codex/repair-late-build-version-descriptions.',
+      'Accepted codex/repair-late-build-version-descriptions.',
+      'Accepted dev build 0.0.25.1: codex/repair-late-build-version-descriptions@50caeb4c844d0487d04a28de64ced4161c1eaa00 -> dev@a1887a755689967b2a892ebc6a8b50ca31072958.',
+      '2026-06-26T15:36:00.000Z',
+      '2026-06-26T15:36:00.000Z'
+    );
 
     store.repairLateTechnicalBuildVersionDescriptions();
     store.repairBuildVersionReasonText();
 
     const repaired = store.db
-      .prepare("SELECT version, short_changes, detailed_changes, reason FROM build_versions WHERE version_type_id = 'build' AND build_version BETWEEN 23 AND 24 ORDER BY build_version")
+      .prepare("SELECT version, short_changes, detailed_changes, reason FROM build_versions WHERE version_type_id = 'build' AND build_version BETWEEN 23 AND 25 ORDER BY build_version")
       .all();
     assert.deepEqual(repaired.map((row) => row.short_changes), [
       'Required runtime DB fact verification.',
       'Fixed build version release notes.',
+      'Repaired late build version descriptions.',
     ]);
     for (const row of repaired) {
       assert.doesNotMatch(row.detailed_changes, /Accepted codex\/|Automated deployment|source codex\//);

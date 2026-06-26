@@ -89,10 +89,10 @@ function fallbackSourceRecord(values, sourceBranch, targetEnvironment) {
     commit_sha: values["source-commit"],
     web_ota_version: values["web-ota-version"] || null,
     apk_version: values["apk-version"] || null,
-    short_changes: values["source-short-changes"] || `Accepted ${sourceBranch}.`,
+    short_changes: values["source-short-changes"] || 'Accepted preview changes without authored release notes.',
     reason: values["source-reason"] || values.reason || '',
     detailed_changes:
-      values["source-details"] || `Accepted ${sourceBranch}@${values["source-commit"]} without preview deployment metadata.`,
+      values["source-details"] || 'No authored preview release notes were available; audit metadata is stored separately.',
   };
 }
 
@@ -102,8 +102,8 @@ function normalizeSourceRecord(record, fallbackRecord) {
   const detailedChanges = usefulChanges(record.detailed_changes) || usefulChanges(fallbackRecord?.detailed_changes) || shortChanges;
   return {
     ...record,
-    short_changes: shortChanges || record.short_changes,
-    detailed_changes: detailedChanges || record.detailed_changes,
+    short_changes: shortChanges || 'Accepted preview changes without authored release notes.',
+    detailed_changes: detailedChanges || shortChanges || 'No authored preview release notes were available; audit metadata is stored separately.',
   };
 }
 
