@@ -68,6 +68,24 @@ Agents and maintainers MUST verify actual repository files before relying on Mem
 - **WHEN** Memory Bank or OpenSpec content conflicts with the current repository state
 - **THEN** the repository state is treated as authoritative and the stale documentation is corrected
 
+### Requirement: Runtime facts are verified directly
+Agents and maintainers MUST verify runtime tables, services, deployments, and environment-specific state against the actual target environment before recording rules or reporting completion.
+
+#### Scenario: Runtime database fact is used
+- **WHEN** work depends on a runtime database table, schema, row, migration state, or environment-specific ledger
+- **THEN** the agent verifies the actual target environment and database path with read-only inspection
+- **AND** verifies table presence, schema, indexes, and relevant rows before making claims or changing durable rules
+- **AND** does not infer runtime state from repository code, migrations, screenshots, or user wording alone
+
+#### Scenario: Live SQLite database uses WAL
+- **WHEN** a live SQLite database may have WAL files
+- **THEN** freshness-sensitive verification uses a normal read-only connection that includes WAL state
+- **AND** does not use `immutable=1` as the source of truth for fresh runtime facts
+
+#### Scenario: Non-visual runtime change is handed off
+- **WHEN** a user cannot visually verify a runtime or database change
+- **THEN** the handoff includes the environment, path or system checked, and key query or command results
+
 ### Requirement: Main entities are registered in items
 Bright OS SHALL treat the server SQLite `items` table as the registry of main work entities.
 
