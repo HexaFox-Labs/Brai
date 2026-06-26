@@ -44,6 +44,7 @@ try {
     sourceBranch,
     sourceCommit: sourceRecord.commit_sha,
     sourceShortChanges: sourceRecord.short_changes,
+    sourceReason: sourceRecord.reason || args["source-reason"] || args.reason,
     sourceDetails: sourceRecord.detailed_changes,
     targetBranch,
     targetCommit,
@@ -54,6 +55,7 @@ try {
     sourceBranch,
     sourceCommit: sourceRecord.commit_sha,
     sourceShortChanges: sourceRecord.short_changes,
+    sourceReason: sourceRecord.reason || args["source-reason"] || args.reason,
     sourceDetails: sourceRecord.detailed_changes,
     targetBranch,
     targetCommit,
@@ -88,6 +90,7 @@ function fallbackSourceRecord(values, sourceBranch, targetEnvironment) {
     web_ota_version: values["web-ota-version"] || null,
     apk_version: values["apk-version"] || null,
     short_changes: values["source-short-changes"] || `Accepted ${sourceBranch}.`,
+    reason: values["source-reason"] || values.reason || '',
     detailed_changes:
       values["source-details"] || `Accepted ${sourceBranch}@${values["source-commit"]} without preview deployment metadata.`,
   };
@@ -167,13 +170,14 @@ function promoteBuildVersions(source, target) {
 
 function recordAcceptedBuildVersion(
   target,
-  { sourceBranch, sourceCommit, sourceShortChanges, sourceDetails, targetBranch, targetCommit, targetEnvironment, releasedAtUtc },
+  { sourceBranch, sourceCommit, sourceShortChanges, sourceReason, sourceDetails, targetBranch, targetCommit, targetEnvironment, releasedAtUtc },
 ) {
   if (targetEnvironment !== "dev") return;
   target.recordAcceptedBuildVersion({
     sourceBranch,
     sourceCommit,
     sourceShortChanges,
+    sourceReason,
     sourceDetails,
     targetBranch,
     targetCommit,
@@ -183,13 +187,14 @@ function recordAcceptedBuildVersion(
 
 function recordProductionReleaseVersion(
   target,
-  { sourceBranch, sourceCommit, sourceShortChanges, sourceDetails, targetBranch, targetCommit, targetEnvironment, releasedAtUtc },
+  { sourceBranch, sourceCommit, sourceShortChanges, sourceReason, sourceDetails, targetBranch, targetCommit, targetEnvironment, releasedAtUtc },
 ) {
   if (targetEnvironment !== "prod") return;
   target.recordProductionReleaseVersion({
     sourceBranch,
     sourceCommit,
     sourceShortChanges,
+    sourceReason,
     sourceDetails,
     targetBranch,
     targetCommit,

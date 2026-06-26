@@ -31,8 +31,17 @@ test('accepted preview promotion records the next dev build version once', () =>
     assert.equal(version.build_version, 12);
     assert.equal(version.short_changes, 'Fix version ledger descriptions.');
     assert.equal(version.detailed_changes, 'Accepted build rows now store human-readable release notes.');
-    assert.equal(version.reason, 'Accepted dev build 0.0.12.1: codex/example@abc123 -> dev@def456.');
+    assert.equal(version.reason, 'Needed because accepted build rows now store human-readable release notes.');
     assert.equal(version.released_at_utc, '2026-06-24T22:10:00.000Z');
+    const ref = store.db
+      .prepare("SELECT source_branch, source_commit, target_branch, target_commit FROM build_version_refs WHERE version = '0.0.12.1'")
+      .get();
+    assert.deepEqual(ref, {
+      source_branch: 'codex/example',
+      source_commit: 'abc123',
+      target_branch: 'dev',
+      target_commit: 'def456'
+    });
     assert.equal(
       store.db.prepare("SELECT COUNT(*) AS count FROM build_versions WHERE version_type_id = 'build'").get().count,
       12
@@ -174,7 +183,8 @@ test('accepted preview promotion falls back to branch commit metadata', () => {
     assert.equal(version.version, '0.0.12.1');
     assert.equal(version.short_changes, 'Fix fallback metadata.');
     assert.equal(version.detailed_changes, 'Acceptance uses commit summaries when preview metadata is missing.');
-    assert.match(version.reason, /codex\/no-preview-metadata@abc-fallback/);
+    assert.equal(version.reason, 'Needed because acceptance uses commit summaries when preview metadata is missing.');
+    assert.doesNotMatch(version.reason, /codex\/no-preview-metadata|abc-fallback/);
   } finally {
     promoted.close();
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -224,7 +234,8 @@ test('accepted preview promotion falls back when source database cannot be opene
     assert.equal(version.version, '0.0.12.1');
     assert.equal(version.short_changes, 'Recover unreadable preview metadata.');
     assert.equal(version.detailed_changes, 'Recover unreadable preview metadata from commit fallback.');
-    assert.match(version.reason, /codex\/unreadable-preview-db@abc-unreadable/);
+    assert.equal(version.reason, 'Needed because recover unreadable preview metadata from commit fallback.');
+    assert.doesNotMatch(version.reason, /codex\/unreadable-preview-db|abc-unreadable/);
   } finally {
     promoted.close();
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -290,7 +301,8 @@ test('accepted preview promotion ignores branch deployment metadata when commit 
     assert.equal(version.version, '0.0.12.1');
     assert.equal(version.short_changes, 'Repair accepted build descriptions.');
     assert.equal(version.detailed_changes, 'Accepted build descriptions now use release notes instead of deployment metadata.');
-    assert.match(version.reason, /codex\/branch-deployment-source@source-branch-deployment/);
+    assert.equal(version.reason, 'Needed because accepted build descriptions now use release notes instead of deployment metadata.');
+    assert.doesNotMatch(version.reason, /codex\/branch-deployment-source|source-branch-deployment/);
   } finally {
     promoted.close();
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -369,6 +381,7 @@ test('technical build version descriptions are repaired', () => {
     }
 
     store.repairTechnicalBuildVersionDescriptions();
+    store.repairBuildVersionReasonText();
 
     const repaired = store.db
       .prepare("SELECT version, short_changes, detailed_changes, reason FROM build_versions WHERE version_type_id = 'build' AND build_version BETWEEN 8 AND 22 ORDER BY build_version")
@@ -377,10 +390,11 @@ test('technical build version descriptions are repaired', () => {
     for (const row of repaired) {
       assert.equal(row.short_changes, expectedShortChanges.get(row.version));
       assert.doesNotMatch(row.detailed_changes, /Automated deployment|Automated dev deployment|source codex\/example|target dev@target-/);
+      assert.doesNotMatch(row.reason, /Accepted dev build|Accepted PR|codex\/|@[0-9a-f]|->/);
     }
     assert.match(repaired.find((row) => row.version === '0.0.17.1').detailed_changes, /falls back to branch and commit metadata/);
     assert.match(repaired.find((row) => row.version === '0.0.18.1').detailed_changes, /Temporal/);
-    assert.match(repaired.find((row) => row.version === '0.0.22.1').reason, /codex\/enforce-branch-preview-guards@5b9c621/);
+    assert.match(repaired.find((row) => row.version === '0.0.22.1').reason, /unsafe branches/);
   } finally {
     store.close();
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -437,9 +451,10 @@ test('late technical build version descriptions are repaired', () => {
     );
 
     store.repairLateTechnicalBuildVersionDescriptions();
+    store.repairBuildVersionReasonText();
 
     const repaired = store.db
-      .prepare("SELECT version, short_changes, detailed_changes FROM build_versions WHERE version_type_id = 'build' AND build_version BETWEEN 23 AND 24 ORDER BY build_version")
+      .prepare("SELECT version, short_changes, detailed_changes, reason FROM build_versions WHERE version_type_id = 'build' AND build_version BETWEEN 23 AND 24 ORDER BY build_version")
       .all();
     assert.deepEqual(repaired.map((row) => row.short_changes), [
       'Required runtime DB fact verification.',
@@ -447,7 +462,10 @@ test('late technical build version descriptions are repaired', () => {
     ]);
     for (const row of repaired) {
       assert.doesNotMatch(row.detailed_changes, /Accepted codex\/|Automated deployment|source codex\//);
+      assert.doesNotMatch(row.reason, /Accepted dev build|codex\/|@[0-9a-f]|->/);
     }
+    assert.match(repaired.find((row) => row.version === '0.0.23.1').reason, /checking the real runtime target/);
+    assert.match(repaired.find((row) => row.version === '0.0.24.1').reason, /readable release notes/);
   } finally {
     store.close();
     fs.rmSync(tmp, { recursive: true, force: true });
