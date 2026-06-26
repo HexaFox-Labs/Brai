@@ -563,7 +563,7 @@ describe("BrightOsApp shell", () => {
 
     await waitFor(() => expect(stateRequests).toBeGreaterThan(stateRequestsBeforeFocus));
     await waitFor(() => expect(screen.getByRole("button", { name: "Запустить" })).toBeInTheDocument());
-    expect(document.querySelector(".timer-digits")).toHaveAttribute("aria-label", "00:00:00");
+    await waitFor(() => expect(document.querySelector(".timer-digits")).toHaveAttribute("aria-label", "00:00:00"));
   });
 
   it("applies live activity updates to active Actions and Archive", async () => {
