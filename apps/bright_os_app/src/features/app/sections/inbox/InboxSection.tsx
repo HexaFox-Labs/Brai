@@ -231,16 +231,26 @@ export function InboxSection({
         </ScrollArea>
 
         {selectedItem && !mobileEditItem ? (
-          <InboxDetailEditor
-            key={selectedItem.id}
-            item={selectedItem}
-            titleDraft={titleDrafts[selectedItem.id]}
-            mode="desktop"
-            focusTitleRequest={detailTitleFocusRequest}
-            onClose={() => setSelectedItemId(null)}
-            onTitleDraftChange={setTitleDraft}
-            onAutosaveDetails={onAutosaveDetails}
-          />
+          <>
+            <span
+              className="actions-split-resizer pointer-events-none absolute inset-y-0 z-[5] hidden w-6 -translate-x-1/2 place-items-stretch justify-center px-[11px] py-0 max-[860px]:hidden min-[861px]:grid"
+              style={{ left: `${ACTIONS_SPLIT_DEFAULT_PERCENT}%` }}
+              aria-hidden="true"
+              data-inbox-split-divider
+            >
+              <span className="block h-full w-px bg-border" aria-hidden="true" />
+            </span>
+            <InboxDetailEditor
+              key={selectedItem.id}
+              item={selectedItem}
+              titleDraft={titleDrafts[selectedItem.id]}
+              mode="desktop"
+              focusTitleRequest={detailTitleFocusRequest}
+              onClose={() => setSelectedItemId(null)}
+              onTitleDraftChange={setTitleDraft}
+              onAutosaveDetails={onAutosaveDetails}
+            />
+          </>
         ) : null}
       </div>
 

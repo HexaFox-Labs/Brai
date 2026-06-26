@@ -39,6 +39,9 @@ describe("BrightOsApp inbox", () => {
 
     fireEvent.click(title);
     await waitFor(() => expect(screen.getByRole("button", { name: "Закрыть редактор" })).toBeInTheDocument());
+    const divider = document.querySelector("[data-inbox-split-divider]") as HTMLElement | null;
+    expect(divider).toBeInTheDocument();
+    expect(divider?.style.left).toBe("50%");
     const descriptionEditor = screen.getByRole("textbox", { name: "Описание входящего" });
     fireEvent.change(descriptionEditor, {
       target: { value: "# Контекст\n\n## Источник\n\n**важно**" },
