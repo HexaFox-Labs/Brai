@@ -9,6 +9,7 @@
 - [ ] Continue an existing `codex/*` branch only inside the same Codex thread before acceptance, and run `node scripts/bright-task.mjs follow-up` before new project-file writes.
 - [ ] Do not continue project-file work on a `codex/*` branch that is already included in `origin/dev`; create a new task branch even if the UI selected the old branch.
 - [ ] Confirm local Git hooks are enabled with `git config core.hooksPath .githooks`.
+- [ ] For suspicious guard state, run `node scripts/bright-task.mjs doctor --strict`; nonzero means the task is not ready for handoff.
 - [ ] Stage only intended files.
 - [ ] Do not revert unrelated changes.
 - [ ] Run or report relevant checks.
@@ -17,6 +18,6 @@
 - [ ] Wait for CI/deploy to assign or reuse a preview slot.
 - [ ] Run `scripts/bright-preview-handoff.sh` and use its verified preview letter, URL, branch, and commit.
 - [ ] If all preview slots are occupied, report queued status and queue position/source when available.
-- [ ] If the project owner accepts the preview (`Принято`, `принимаю`, `accepted`, or equivalent, but not negated phrases like `пока не принято`), run `deploy/scripts/accept-preview.sh <codex-branch>` instead of replying with an acknowledgement.
+- [ ] If the project owner accepts the preview (`Принято`, `принимаю`, `accepted`, or equivalent, but not negated phrases like `пока не принято`), run `deploy/scripts/accept-preview.sh <codex-branch>` instead of replying with an acknowledgement; the script must verify the exact branch head before PR or merge actions.
 - [ ] For accepted preview work, verify the successful `deploy-dev` post-step promoted metadata and released the preview slot; treat a missing release as a blocker.
 - [ ] End with clean tracked `git status --short` and report preview letter + URL, or report queued/blocker status explicitly.
