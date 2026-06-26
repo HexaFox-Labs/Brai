@@ -8,8 +8,6 @@ import { pathToFileURL } from "node:url";
 const CODEX_BRANCH_RE = /^codex\/[a-z0-9][a-z0-9._-]*$/;
 const PROTECTED_PATH_RE =
   /(^|\/)(\.env(\.|$)|.*\.(sqlite|sqlite3|db|jks|keystore|pem|key|p12|pfx|apk|aab|zip)$|google-services\.json|.*(service-account|credentials|secrets).*\.json$)|^(data\/|deploy\/(web|mobile-update|releases)\/)/;
-const WRITE_COMMAND_RE =
-  /(^|[;&|]\s*)(apply_patch|git\s+(add|branch|checkout|cherry-pick|clean|commit|merge|mv|push|rebase|reset|restore|stash|switch|tag|worktree)|npm\s+(ci|install|i|run\s+(android:|app:cap|publish:))|pnpm\s+(install|i)|yarn\s+(install|add)|rm\s|mv\s|cp\s|mkdir\s|touch\s|chmod\s|chown\s|ln\s|tee\s|sed\s+-i|perl\s+-pi|python3?\s+.*(write|open\(|Path\().*['"]w|node\s+.*(writeFile|appendFile|rmSync|mkdirSync)|cat\s+[^|]*>|printf\s+[^|]*>|>\s*[^&]|>>\s*)/s;
 const DEPENDENCY_DIRS = [
   "node_modules",
   "apps/bright_os_app/node_modules",
@@ -28,8 +26,12 @@ export {
   CODEX_BRANCH_RE,
   DEPENDENCY_DIRS,
   PROTECTED_PATH_RE,
-  WRITE_COMMAND_RE,
+  analyzeHookInput,
   dependencySourceRoot,
+  deriveTaskState,
+  enableGitHooks,
+  isManualCodexBranchCommand,
+  isReadOnlyShellCommand,
   isSensitivePath,
   isWriteLikeCommand,
   linkDependencyDirs,
@@ -39,6 +41,7 @@ export {
   validateTaskMarker,
   validateTaskThread,
   validatePushUpdate,
+  validatePreviewReceipt,
 };
 
 function runCli([command, ...args]) {
@@ -65,11 +68,14 @@ function runCli([command, ...args]) {
       case "preview":
         previewHandoff(args[0]);
         break;
+      case "require-preview":
+        requirePreviewVerification(args[0], args[1]);
+        break;
       case "doctor":
-        doctor();
+        doctor(args.includes("--strict"));
         break;
       default:
-        throw new Error("usage: bright-task.mjs start <slug>|follow-up [branch]|pre-tool-use|pre-commit|pre-push <remote>|stop|preview [branch]|doctor");
+        throw new Error("usage: bright-task.mjs start <slug>|follow-up [branch]|pre-tool-use|pre-commit|pre-push <remote>|stop|preview [branch]|require-preview [branch] [sha]|doctor [--strict]");
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -110,6 +116,7 @@ function startTask(slug) {
   try {
     fs.mkdirSync(parent, { recursive: true });
     git("worktree", "add", "--no-track", "-b", branch, target, "origin/dev");
+    enableGitHooks(target);
     writeTaskMarker(target, withThreadId({ branch, mode: "new", base: git("rev-parse", "origin/dev"), createdAt: new Date().toISOString() }));
     const linked = linkDependencyDirs(dependencySourceRoot(root), target);
     if (linked.length) console.log(`Linked dependency dirs: ${linked.join(", ")}`);
@@ -147,16 +154,13 @@ function markFollowUp(branchArg) {
 }
 
 function preToolUse() {
-  const input = parseHookInput(readStdin());
-  const tool = input.tool_name ?? input.toolName ?? input.tool ?? "";
-  const toolInput = input.tool_input ?? input.toolInput ?? input.input ?? {};
-
-  const isPatchTool = /(^apply_patch$|^Edit$|^Write$)/.test(tool);
-  const commandText = typeof toolInput === "object" && toolInput ? String(toolInput.cmd ?? toolInput.command ?? "") : "";
-  const isShellTool = tool === "exec_command" || tool === "Bash" || tool.endsWith(".exec_command");
-  const isWrite = isPatchTool || (isShellTool && isWriteLikeCommand(commandText));
-
-  if (!isWrite) return allowHook();
+  const analysis = analyzeHookInput(readStdin());
+  if (!analysis.ok) return blockHook(analysis.reason);
+  if (analysis.manualCodexBranch) {
+    return blockHook(`Manual codex/* branch creation or switching is blocked.\n\n${taskStartGuidance()}`);
+  }
+  if (analysis.officialTaskStarter) return allowHook();
+  if (!analysis.write) return allowHook();
 
   fetchDev();
   const validation = validateTaskBranch({ requireExpectedUpstream: false });
@@ -187,6 +191,7 @@ function preCommit() {
   if (blocked.length) {
     throw new Error(`Refusing to commit generated/runtime/secret-like files:\n${blocked.map((file) => `- ${file}`).join("\n")}`);
   }
+  markWriteIntent();
 }
 
 function prePush(remoteName) {
@@ -223,20 +228,8 @@ function prePush(remoteName) {
 function stopHook() {
   if (!gitMaybe("rev-parse", "--show-toplevel")) return allowHook();
 
-  const status = git("status", "--porcelain");
-  if (status.trim()) {
-    return blockHook(`Bright OS task is not ready for handoff: working tree is not clean.\n\n${status.trim()}\n\nCommit, push, and verify preview with: scripts/bright-preview-handoff.sh`);
-  }
-
-  const marker = readTaskMarker();
-  if (!marker?.writeIntentAt) return allowHook();
-
-  const branch = currentBranch();
-  const head = git("rev-parse", "HEAD");
-  const receipt = readPreviewReceipt();
-  if (!receipt || receipt.branch !== branch || receipt.commit !== head) {
-    return blockHook(`Bright OS implementation work cannot be handed off before preview verification.\n\nRun: scripts/bright-preview-handoff.sh`);
-  }
+  const state = deriveTaskState();
+  if (!state.ok) return blockHook(state.message);
   return allowHook();
 }
 
@@ -255,7 +248,7 @@ function previewHandoff(branchArg) {
   const run = findSuccessfulDeliveryRun(branch, head);
   const slot = readPreviewSlot(branch, head);
   const url = previewUrlForSlot(slot);
-  const receipt = { branch, commit: head, slot, url, runId: run.databaseId, verifiedAt: new Date().toISOString() };
+  const receipt = { branch, commit: head, slot, url, runId: run.databaseId, verifiedAt: new Date().toISOString(), verifiedBy: "bright-task-preview-v1" };
   writePreviewReceipt(receipt);
 
   console.log(`${PREVIEW_SLOT_EMOJI[slot]} Preview`);
@@ -265,20 +258,98 @@ function previewHandoff(branchArg) {
   console.log(`GitHub Actions run: ${run.url ?? `https://github.com/sergobright/Bright-OS/actions/runs/${run.databaseId}`}`);
 }
 
-function doctor() {
-  console.log(
-    JSON.stringify(
-      {
-        branch: currentBranch(),
-        validation: validateTaskBranch({ requireExpectedUpstream: true }),
-        reuse: validateBranchReuse(),
-        marker: readTaskMarker(),
-        receipt: readPreviewReceipt(),
-      },
-      null,
-      2,
-    ),
-  );
+function requirePreviewVerification(branchArg, shaArg) {
+  const branch = branchArg ?? currentBranch();
+  if (!CODEX_BRANCH_RE.test(branch)) throw new Error(`Preview verification requires codex/* branch, got: ${branch}`);
+  const sha = shaArg ?? git("rev-parse", `origin/${branch}`);
+  const receipt = readPreviewReceipt();
+  const validation = validatePreviewReceipt(receipt, branch, sha);
+  if (!validation.ok) throw new Error(validation.message);
+}
+
+function doctor(strict = false) {
+  const state = deriveTaskState();
+  console.log(JSON.stringify(state, null, 2));
+  if (strict && !state.ok) process.exit(1);
+}
+
+function deriveTaskState() {
+  const branch = currentBranch();
+  const head = gitMaybe("rev-parse", "HEAD") ?? "";
+  const status = gitMaybe("status", "--porcelain") ?? "";
+  const marker = readTaskMarker();
+  const receipt = readPreviewReceipt();
+  const changedFiles = gitMaybe("diff", "--name-only", "origin/dev...HEAD")
+    ?.split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean) ?? [];
+  const commitsAhead = Number(gitMaybe("rev-list", "--count", "origin/dev..HEAD") ?? 0);
+  const validation = CODEX_BRANCH_RE.test(branch)
+    ? validateTaskBranch({ requireExpectedUpstream: false })
+    : { ok: false, message: `Implementation work must run on codex/<task-slug>, got: ${branch || "(none)"}` };
+  const reuse = validation.ok ? validateBranchReuse() : { ok: false, message: validation.message };
+  const receiptValidation = validatePreviewReceipt(receipt, branch, head);
+  const hasImplementationWork = Boolean(status.trim() || marker?.writeIntentAt || changedFiles.length || commitsAhead > 0);
+  const remoteSha = CODEX_BRANCH_RE.test(branch) ? gitMaybe("rev-parse", `origin/${branch}`) : "";
+  const pushed = Boolean(remoteSha && remoteSha === head);
+  const markerValid = validateTaskMarker(marker, branch).ok && validateTaskThread(marker, currentThreadId()).ok;
+  const phase = deriveTaskPhase({ markerValid, marker, status, commitsAhead, changedFiles, pushed, receiptValidation });
+  const base = {
+    ok: true,
+    phase,
+    branch,
+    head,
+    validation,
+    reuse,
+    marker,
+    markerValid,
+    receipt,
+    receiptValidation,
+    status,
+    changedFiles,
+    commitsAhead,
+    pushed,
+    hasImplementationWork,
+  };
+
+  if (status.trim()) {
+    return {
+      ...base,
+      ok: false,
+      message: `Bright OS task is not ready for handoff: working tree is not clean.\n\n${status.trim()}\n\nCommit, push, and verify preview with: scripts/bright-preview-handoff.sh`,
+    };
+  }
+  if (!hasImplementationWork) return base;
+  if (!validation.ok) return { ...base, ok: false, message: validation.message };
+  if (!reuse.ok) return { ...base, ok: false, message: reuse.message };
+  if (!receiptValidation.ok) {
+    return {
+      ...base,
+      ok: false,
+      message: `Bright OS implementation work cannot be handed off before preview verification.\n\n${receiptValidation.message}\n\nRun: scripts/bright-preview-handoff.sh`,
+    };
+  }
+  return base;
+}
+
+function deriveTaskPhase({ markerValid, marker, status, commitsAhead, changedFiles, pushed, receiptValidation }) {
+  if (receiptValidation.ok) return "handoff-receipt";
+  if (pushed) return "pushed";
+  if (!status.trim() && commitsAhead > 0) return "committed";
+  if (status.trim() || marker?.writeIntentAt || changedFiles.length) return "write-intent";
+  if (markerValid) return "task-started";
+  return "no-task";
+}
+
+function validatePreviewReceipt(receipt, branch, head) {
+  if (!receipt) return { ok: false, message: "Preview handoff receipt is missing." };
+  if (receipt.branch !== branch) return { ok: false, message: `Preview receipt is for ${receipt.branch || "(missing)"}, not ${branch}.` };
+  if (receipt.commit !== head) return { ok: false, message: `Preview receipt is for ${receipt.commit || "(missing)"}, not ${head}.` };
+  if (!/^[A-E]$/.test(receipt.slot ?? "")) return { ok: false, message: "Preview receipt has no valid slot." };
+  if (!receipt.url || !String(receipt.url).startsWith("https://")) return { ok: false, message: "Preview receipt has no valid URL." };
+  if (!receipt.runId) return { ok: false, message: "Preview receipt has no GitHub Actions run id." };
+  if (!receipt.verifiedAt) return { ok: false, message: "Preview receipt has no verification timestamp." };
+  return { ok: true };
 }
 
 function validateTaskBranch({ requireExpectedUpstream }) {
@@ -361,6 +432,12 @@ function validateTaskMarker(marker, branch) {
   if (marker.mode !== "new" && marker.mode !== "follow-up") {
     return { ok: false, message: `Bright OS task marker mode ${marker.mode || "(missing)"} is not valid for project-file writes.` };
   }
+  if (!/^[0-9a-f]{40}$/.test(marker.base ?? "")) {
+    return { ok: false, message: "Bright OS task marker has no valid origin/dev base; use the official task starter or follow-up command." };
+  }
+  if (!marker.createdAt || Number.isNaN(Date.parse(marker.createdAt))) {
+    return { ok: false, message: "Bright OS task marker has no valid creation timestamp; use the official task starter or follow-up command." };
+  }
   return { ok: true };
 }
 
@@ -432,6 +509,11 @@ function linkDependencyDirs(sourceRoot, targetRoot, dependencyDirs = DEPENDENCY_
   return linked;
 }
 
+function enableGitHooks(root) {
+  const result = spawnSync("git", ["-C", root, "config", "core.hooksPath", ".githooks"], { encoding: "utf8", env: process.env });
+  if (result.status !== 0) throw new Error(`git config core.hooksPath failed:\n${result.stderr || result.stdout || "(no output)"}`);
+}
+
 function ensureTaskWorktreeWritable(parent, target) {
   const probe = fs.existsSync(parent) ? parent : path.dirname(parent);
   fs.accessSync(probe, fs.constants.W_OK);
@@ -443,16 +525,132 @@ function isWritePermissionError(error) {
 }
 
 function parseHookInput(text) {
-  if (!text.trim()) return {};
+  if (!text.trim()) return null;
   try {
     return JSON.parse(text);
   } catch {
-    return {};
+    return null;
   }
 }
 
+function analyzeHookInput(source) {
+  const input = typeof source === "string" ? parseHookInput(source) : source;
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return { ok: false, write: true, reason: "Bright OS hook input was not recognized; blocking fail-closed." };
+  }
+
+  const calls = collectToolCalls(input);
+  if (!calls.length) {
+    return { ok: false, write: true, reason: "Bright OS hook tool shape was not recognized; blocking fail-closed." };
+  }
+
+  let write = false;
+  let officialTaskStarter = false;
+  for (const call of calls) {
+    const classified = classifyToolCall(call);
+    if (!classified.ok) return { ...classified, write: true };
+    if (classified.manualCodexBranch) return { ok: true, write: true, manualCodexBranch: true };
+    officialTaskStarter ||= Boolean(classified.officialTaskStarter);
+    write ||= Boolean(classified.write);
+  }
+  return { ok: true, write, officialTaskStarter: officialTaskStarter && !write, manualCodexBranch: false };
+}
+
+function collectToolCalls(input) {
+  const tool = toolNameFrom(input);
+  const toolInput = toolInputFrom(input);
+  if (tool === "multi_tool_use.parallel" || tool.endsWith(".multi_tool_use.parallel")) {
+    const nested = Array.isArray(toolInput?.tool_uses) ? toolInput.tool_uses : Array.isArray(input?.tool_uses) ? input.tool_uses : [];
+    return nested.flatMap((call) => collectToolCalls(call));
+  }
+  return tool ? [{ tool, input: toolInput }] : [];
+}
+
+function toolNameFrom(input) {
+  for (const key of ["tool_name", "toolName", "tool", "name", "recipient_name"]) {
+    if (typeof input?.[key] === "string" && input[key].trim()) return input[key].trim();
+  }
+  return "";
+}
+
+function toolInputFrom(input) {
+  for (const key of ["tool_input", "toolInput", "input", "parameters", "arguments", "args"]) {
+    if (input && typeof input[key] === "object" && input[key]) return input[key];
+  }
+  return input && typeof input === "object" ? input : {};
+}
+
+function classifyToolCall({ tool, input }) {
+  const nestedName = typeof input?.name === "string" ? input.name : "";
+  const effectiveTool = tool === "custom_tool_call" && nestedName ? nestedName : tool;
+  if (isPatchTool(effectiveTool)) return { ok: true, write: true };
+  if (isShellTool(effectiveTool)) {
+    const commandText = String(input?.cmd ?? input?.command ?? "");
+    if (!commandText.trim()) return { ok: false, reason: `Shell tool ${effectiveTool} did not include a command; blocking fail-closed.` };
+    if (isManualCodexBranchCommand(commandText)) return { ok: true, write: true, manualCodexBranch: true };
+    if (isOfficialTaskStarterCommand(commandText)) return { ok: true, write: false, officialTaskStarter: true };
+    return { ok: true, write: isWriteLikeCommand(commandText) };
+  }
+  return { ok: false, reason: `Bright OS does not recognize hook tool ${tool}; blocking fail-closed.` };
+}
+
+function isPatchTool(tool) {
+  return tool === "apply_patch" || tool.endsWith(".apply_patch") || tool === "Edit" || tool === "Write";
+}
+
+function isShellTool(tool) {
+  return tool === "exec_command" || tool === "Bash" || tool.endsWith(".exec_command");
+}
+
 function isWriteLikeCommand(commandText) {
-  return WRITE_COMMAND_RE.test(commandText);
+  return !isOfficialTaskStarterCommand(commandText) && !isReadOnlyShellCommand(commandText);
+}
+
+function isOfficialTaskStarterCommand(commandText) {
+  const segments = splitShellSegments(commandText);
+  return segments.length > 0 && segments.every((segment) =>
+    /^(?:scripts\/bright-task-start\.sh|(?:\S+\/)?scripts\/bright-task-start\.sh|scripts\/use-node22\.sh\s+node\s+scripts\/bright-task\.mjs\s+start|node\s+scripts\/bright-task\.mjs\s+start)\s+[a-z0-9][a-z0-9._-]*$/.test(segment),
+  );
+}
+
+function isReadOnlyShellCommand(commandText) {
+  const segments = splitShellSegments(commandText);
+  return segments.length > 0 && segments.every(isReadOnlyShellSegment);
+}
+
+function splitShellSegments(commandText) {
+  const text = String(commandText ?? "").trim();
+  if (!text) return [];
+  if (/[<>`$]/.test(text)) return [text];
+  return text
+    .split(/\s*(?:&&|\|\||;|\|)\s*/g)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+}
+
+function isReadOnlyShellSegment(segment) {
+  if (/[<>`$]/.test(segment)) return false;
+  return [
+    /^pwd$/,
+    /^ls(?:\s+[-A-Za-z0-9_./*=:@]+)*$/,
+    /^rg(?:\s+[-A-Za-z0-9_./*=:@]+)*(?:\s+"[^"]*")?(?:\s+'[^']*')?$/,
+    /^(?:cat|nl|wc|head|tail)(?:\s+[-A-Za-z0-9_./*=:@]+)*$/,
+    /^sed\s+-n\b.+$/,
+    /^git\s+(?:status|diff|log|show|rev-parse|ls-files|merge-base)(?:\s+.+)?$/,
+    /^git\s+branch\s+--show-current$/,
+    /^git\s+config\s+(?:--get|get)\s+[A-Za-z0-9_.-]+$/,
+    /^node\s+scripts\/bright-task\.mjs\s+doctor(?:\s+--strict)?$/,
+    /^scripts\/use-node22\.sh\s+node\s+scripts\/bright-task\.mjs\s+doctor(?:\s+--strict)?$/,
+  ].some((pattern) => pattern.test(segment));
+}
+
+function isManualCodexBranchCommand(commandText) {
+  return splitShellSegments(commandText).some((segment) =>
+    /^git\s+(?:switch|checkout)\b.*(?:\s|=)codex\/[A-Za-z0-9._/-]+/.test(segment) ||
+    /^git\s+(?:switch|checkout)\b.*\s-(?:c|C|b|B)\s+codex\/[A-Za-z0-9._/-]+/.test(segment) ||
+    /^git\s+branch\s+(?!--show-current\b).*codex\/[A-Za-z0-9._/-]+/.test(segment) ||
+    /^git\s+worktree\s+add\b.*(?:\s|=)codex\/[A-Za-z0-9._/-]+/.test(segment),
+  );
 }
 
 function isSensitivePath(file) {

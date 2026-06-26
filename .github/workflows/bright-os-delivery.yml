@@ -74,6 +74,7 @@ jobs:
       - run: npm ci
       - run: npm --prefix apps/bright_os_app ci
       - run: npm --prefix services/bright_os_api ci
+      - run: node --test scripts/*.test.mjs
       - run: npm --prefix apps/bright_os_app run lint
       - run: npm --prefix apps/bright_os_app run test -- --fileParallelism=false
       - run: node --test

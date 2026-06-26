@@ -1,12 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
 import {
   CODEX_BRANCH_RE,
+  analyzeHookInput,
   dependencySourceRoot,
+  deriveTaskState,
+  enableGitHooks,
+  isManualCodexBranchCommand,
+  isReadOnlyShellCommand,
   isSensitivePath,
   isWriteLikeCommand,
   linkDependencyDirs,
@@ -15,6 +21,7 @@ import {
   taskWorktreeParent,
   validateTaskMarker,
   validateTaskThread,
+  validatePreviewReceipt,
   validatePushUpdate,
 } from "./bright-task.mjs";
 
@@ -26,11 +33,63 @@ test("valid codex task branch names are strict", () => {
 });
 
 test("write-like shell commands are detected", () => {
+  assert.equal(isReadOnlyShellCommand("git status --short"), true);
+  assert.equal(isReadOnlyShellCommand("rg Preview docs"), true);
+  assert.equal(isReadOnlyShellCommand("sed -n '1,20p' scripts/bright-task.mjs"), true);
   assert.equal(isWriteLikeCommand("git status --short"), false);
   assert.equal(isWriteLikeCommand("rg Preview docs"), false);
   assert.equal(isWriteLikeCommand("git commit -m guard"), true);
   assert.equal(isWriteLikeCommand("sed -i 's/a/b/' file"), true);
   assert.equal(isWriteLikeCommand("node -e \"fs.writeFileSync('x','y')\""), true);
+  assert.equal(isWriteLikeCommand("some-new-cli --maybe-write"), true);
+});
+
+test("manual codex branch commands are hard blocked", () => {
+  assert.equal(isManualCodexBranchCommand("git switch -c codex/foo origin/dev"), true);
+  assert.equal(isManualCodexBranchCommand("git checkout -b codex/foo origin/dev"), true);
+  assert.equal(isManualCodexBranchCommand("git branch codex/foo"), true);
+  assert.equal(isManualCodexBranchCommand("git worktree add ../foo -b codex/foo origin/dev"), true);
+  assert.equal(isManualCodexBranchCommand("git branch --show-current"), false);
+});
+
+test("hook analysis detects namespaced custom and nested write tools", () => {
+  for (const input of [
+    { tool_name: "functions.apply_patch", tool_input: { patch: "*** Begin Patch" } },
+    { tool: "custom_tool_call", name: "apply_patch" },
+    {
+      tool_name: "multi_tool_use.parallel",
+      tool_input: {
+        tool_uses: [{ recipient_name: "functions.exec_command", parameters: { cmd: "touch x" } }],
+      },
+    },
+  ]) {
+    const result = analyzeHookInput(JSON.stringify(input));
+    assert.equal(result.ok, true);
+    assert.equal(result.write, true);
+  }
+});
+
+test("hook analysis fails closed for bad input and unknown tool shapes", () => {
+  assert.equal(analyzeHookInput("not-json").ok, false);
+  assert.equal(analyzeHookInput(JSON.stringify({ tool_name: "mystery_writer", tool_input: {} })).ok, false);
+  assert.equal(analyzeHookInput(JSON.stringify({ tool_name: "multi_tool_use.parallel", tool_input: { tool_uses: [] } })).ok, false);
+});
+
+test("hook analysis allows read-only shell and official task starter", () => {
+  assert.deepEqual(analyzeHookInput(JSON.stringify({ tool_name: "functions.exec_command", tool_input: { cmd: "git status --short" } })), {
+    ok: true,
+    write: false,
+    officialTaskStarter: false,
+    manualCodexBranch: false,
+  });
+
+  const starter = analyzeHookInput(JSON.stringify({ tool_name: "functions.exec_command", tool_input: { cmd: "scripts/bright-task-start.sh guard-task" } }));
+  assert.equal(starter.ok, true);
+  assert.equal(starter.write, false);
+  assert.equal(starter.officialTaskStarter, true);
+
+  const manual = analyzeHookInput(JSON.stringify({ tool_name: "functions.exec_command", tool_input: { cmd: "git switch -c codex/foo origin/dev" } }));
+  assert.equal(manual.manualCodexBranch, true);
 });
 
 test("sensitive paths are rejected for commits", () => {
@@ -78,11 +137,19 @@ test("pre-push ref updates must stay on matching codex ref", () => {
 });
 
 test("task marker must come from task start or explicit follow-up", () => {
-  assert.deepEqual(validateTaskMarker({ branch: "codex/foo", mode: "new" }, "codex/foo"), { ok: true });
-  assert.deepEqual(validateTaskMarker({ branch: "codex/foo", mode: "follow-up" }, "codex/foo"), { ok: true });
+  const marker = {
+    branch: "codex/foo",
+    mode: "new",
+    base: "1111111111111111111111111111111111111111",
+    createdAt: "2026-06-26T00:00:00.000Z",
+  };
+  assert.deepEqual(validateTaskMarker(marker, "codex/foo"), { ok: true });
+  assert.deepEqual(validateTaskMarker({ ...marker, mode: "follow-up" }, "codex/foo"), { ok: true });
   assert.match(validateTaskMarker(null, "codex/foo").message, /marker is missing/);
   assert.match(validateTaskMarker({ branch: "codex/foo", mode: "manual" }, "codex/foo").message, /mode manual/);
-  assert.match(validateTaskMarker({ branch: "codex/bar", mode: "new" }, "codex/foo").message, /codex\/bar/);
+  assert.match(validateTaskMarker({ ...marker, branch: "codex/bar" }, "codex/foo").message, /codex\/bar/);
+  assert.match(validateTaskMarker({ ...marker, base: "" }, "codex/foo").message, /base/);
+  assert.match(validateTaskMarker({ ...marker, createdAt: "" }, "codex/foo").message, /timestamp/);
 });
 
 test("task marker is bound to the current Codex thread when one exists", () => {
@@ -102,7 +169,12 @@ test("task start guidance requires escalation and forbids manual branch fallback
 test("task starter creates sibling worktrees from repo and task worktree roots", () => {
   assert.equal(taskWorktreeParent("/srv/projects/bright-os"), "/srv/projects/bright-os-worktrees");
   assert.equal(taskWorktreeParent("/srv/projects/bright-os-worktrees/existing-task"), "/srv/projects/bright-os-worktrees");
-  assert.equal(dependencySourceRoot("/srv/projects/bright-os-worktrees/existing-task"), "/srv/projects/bright-os");
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "bright-task-source-"));
+  const canonical = path.join(tmp, "bright-os");
+  const worktree = path.join(tmp, "bright-os-worktrees", "existing-task");
+  fs.mkdirSync(canonical, { recursive: true });
+  fs.writeFileSync(path.join(canonical, "package.json"), "{}\n");
+  assert.equal(dependencySourceRoot(worktree), canonical);
 });
 
 test("task starter links existing dependency dirs into new worktrees", () => {
@@ -116,7 +188,98 @@ test("task starter links existing dependency dirs into new worktrees", () => {
   assert.equal(fs.lstatSync(path.join(target, "services/bright_os_api/node_modules")).isSymbolicLink(), true);
 });
 
+test("task starter can enable checked-in git hooks", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "bright-task-hooks-"));
+  git(["init"], tmp);
+  enableGitHooks(tmp);
+  assert.equal(git(["config", "core.hooksPath"], tmp).stdout.trim(), ".githooks");
+});
+
 test("hook input parser is tolerant", () => {
   assert.deepEqual(parseHookInput("{\"tool_name\":\"exec_command\"}"), { tool_name: "exec_command" });
-  assert.deepEqual(parseHookInput("not-json"), {});
+  assert.equal(parseHookInput("not-json"), null);
 });
+
+test("preview receipts must match exact branch and head", () => {
+  const receipt = {
+    branch: "codex/foo",
+    commit: "1111111111111111111111111111111111111111",
+    slot: "A",
+    url: "https://a.test.brightos.world",
+    runId: 123,
+    verifiedAt: "2026-06-26T00:00:00.000Z",
+  };
+  assert.deepEqual(validatePreviewReceipt(receipt, "codex/foo", receipt.commit), { ok: true });
+  assert.match(validatePreviewReceipt(null, "codex/foo", receipt.commit).message, /missing/);
+  assert.match(validatePreviewReceipt({ ...receipt, commit: "2222" }, "codex/foo", receipt.commit).message, /2222/);
+  assert.match(validatePreviewReceipt({ ...receipt, runId: "" }, "codex/foo", receipt.commit).message, /run id/);
+});
+
+test("task state blocks local implementation work without exact preview receipt", () => {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "bright-task-state-"));
+  const previous = process.cwd();
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "test@example.invalid"], repo);
+    git(["config", "user.name", "Bright Test"], repo);
+    fs.writeFileSync(path.join(repo, ".gitignore"), ".bright-task/\n");
+    fs.writeFileSync(path.join(repo, "base.txt"), "base\n");
+    git(["add", ".gitignore", "base.txt"], repo);
+    git(["commit", "-m", "base"], repo);
+    git(["checkout", "-b", "codex/foo"], repo);
+    const base = git(["rev-parse", "HEAD"], repo).stdout.trim();
+    git(["update-ref", "refs/remotes/origin/dev", base], repo);
+    fs.mkdirSync(path.join(repo, ".bright-task"));
+    fs.writeFileSync(
+      path.join(repo, ".bright-task", "task.json"),
+      `${JSON.stringify({
+        branch: "codex/foo",
+        mode: "new",
+        base,
+        createdAt: "2026-06-26T00:00:00.000Z",
+        ...(process.env.CODEX_THREAD_ID ? { threadId: process.env.CODEX_THREAD_ID } : {}),
+      })}\n`,
+    );
+    fs.writeFileSync(path.join(repo, "change.txt"), "change\n");
+    git(["add", "change.txt"], repo);
+    git(["commit", "-m", "change"], repo);
+    process.chdir(repo);
+
+    const blocked = deriveTaskState();
+    assert.equal(blocked.ok, false);
+    assert.match(blocked.message, /preview verification/);
+
+    const head = git(["rev-parse", "HEAD"], repo).stdout.trim();
+    fs.writeFileSync(
+      path.join(repo, ".bright-task", "preview-handoff.json"),
+      `${JSON.stringify({ branch: "codex/foo", commit: base, slot: "A", url: "https://a.test.brightos.world", runId: 123, verifiedAt: "2026-06-26T00:00:00.000Z" })}\n`,
+    );
+    assert.equal(deriveTaskState().ok, false);
+
+    fs.writeFileSync(
+      path.join(repo, ".bright-task", "preview-handoff.json"),
+      `${JSON.stringify({ branch: "codex/foo", commit: head, slot: "A", url: "https://a.test.brightos.world", runId: 123, verifiedAt: "2026-06-26T00:00:00.000Z" })}\n`,
+    );
+    assert.equal(deriveTaskState().ok, true);
+
+    fs.writeFileSync(path.join(repo, "dirty.txt"), "dirty\n");
+    assert.equal(deriveTaskState().ok, false);
+  } finally {
+    process.chdir(previous);
+  }
+});
+
+test("accept preview checks verified preview before PR actions", () => {
+  const script = fs.readFileSync(path.join(process.cwd(), "deploy/scripts/accept-preview.sh"), "utf8");
+  assert.ok(script.indexOf("require-preview") > 0);
+  assert.ok(script.indexOf("require-preview") < script.indexOf("gh pr list"));
+  assert.ok(script.indexOf("require-preview") < script.indexOf("gh pr merge"));
+});
+
+function git(args, cwd) {
+  const result = spawnSync("git", args, { cwd, encoding: "utf8" });
+  if (result.status !== 0) {
+    throw new Error(`git ${args.join(" ")} failed:\n${result.stderr || result.stdout || "(no output)"}`);
+  }
+  return result;
+}
