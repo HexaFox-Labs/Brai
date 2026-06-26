@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BrightOsApi } from "@/shared/api/brightOsApi";
-import type { PendingActionEvent } from "@/shared/types/activities";
+import type { PendingActivityEvent } from "@/shared/types/activities";
 import type { PendingTimerEvent } from "@/shared/types/timer";
 
 describe("BrightOsApi", () => {
@@ -147,7 +147,7 @@ describe("BrightOsApi", () => {
       ),
     );
 
-    await new BrightOsApi("https://api.example.test").syncActionEvents({
+    await new BrightOsApi("https://api.example.test").syncActivityEvents({
       deviceId: "device",
       platform: "web",
       events: [
@@ -166,7 +166,7 @@ describe("BrightOsApi", () => {
           lastError: null,
           enqueuedAtUtc: "2026-06-16T08:00:00.000Z",
           lastSyncAttemptAtUtc: null,
-        } satisfies PendingActionEvent,
+        } satisfies PendingActivityEvent,
       ],
     });
 
@@ -199,7 +199,7 @@ describe("BrightOsApi", () => {
       ),
     );
 
-    await new BrightOsApi("https://api.example.test").syncActionEvents({
+    await new BrightOsApi("https://api.example.test").syncActivityEvents({
       deviceId: "device",
       platform: "web",
       events: [
@@ -218,7 +218,7 @@ describe("BrightOsApi", () => {
           lastError: null,
           enqueuedAtUtc: "2026-06-16T08:05:00.000Z",
           lastSyncAttemptAtUtc: null,
-        } satisfies PendingActionEvent,
+        } satisfies PendingActivityEvent,
       ],
     });
 
@@ -252,7 +252,7 @@ describe("BrightOsApi", () => {
       ),
     );
 
-    await new BrightOsApi("https://api.example.test").syncActionEvents({
+    await new BrightOsApi("https://api.example.test").syncActivityEvents({
       deviceId: "device",
       platform: "web",
       events: [
@@ -271,7 +271,7 @@ describe("BrightOsApi", () => {
           lastError: null,
           enqueuedAtUtc: "2026-06-16T08:06:00.000Z",
           lastSyncAttemptAtUtc: null,
-        } satisfies PendingActionEvent,
+        } satisfies PendingActivityEvent,
       ],
     });
 
@@ -304,7 +304,7 @@ describe("BrightOsApi", () => {
       ),
     );
 
-    await new BrightOsApi("https://api.example.test").syncActionEvents({
+    await new BrightOsApi("https://api.example.test").syncActivityEvents({
       deviceId: "device",
       platform: "web",
       events: [
@@ -323,7 +323,7 @@ describe("BrightOsApi", () => {
           lastError: null,
           enqueuedAtUtc: "2026-06-16T08:06:00.000Z",
           lastSyncAttemptAtUtc: null,
-        } satisfies PendingActionEvent,
+        } satisfies PendingActivityEvent,
       ],
     });
 
@@ -353,7 +353,7 @@ describe("BrightOsApi", () => {
       ),
     );
 
-    await new BrightOsApi("https://api.example.test").syncActionEvents({
+    await new BrightOsApi("https://api.example.test").syncActivityEvents({
       deviceId: "device",
       platform: "web",
       events: [
@@ -372,7 +372,7 @@ describe("BrightOsApi", () => {
           lastError: null,
           enqueuedAtUtc: "2026-06-16T08:07:00.000Z",
           lastSyncAttemptAtUtc: null,
-        } satisfies PendingActionEvent,
+        } satisfies PendingActivityEvent,
       ],
     });
 
