@@ -14,11 +14,13 @@ GitHub PRs are review and merge records, not version numbers. Version numbers co
 
 Temporal is the required CI/CD control ledger. If a delivery/versioning process changes, update the Temporal workflow state, signals, tests, and `docs/operations/temporal-ci-cd.md` in the same branch. Required delivery work must not live only in GitHub Actions or shell scripts.
 
-Before the first project-file change for a task, branch from the latest accepted base. Ordinary future task work starts from `origin/dev` unless another base is explicitly requested.
+Before the first project-file change in every new Codex thread, branch from the latest accepted base. Ordinary future task work starts from `origin/dev` unless another base is explicitly requested.
+
+The branch selected by Codex Desktop is not permission to continue that branch. If a new thread will change any project file, start a new `codex/*` branch first, regardless of whether the UI selected `main`, `dev`, or the last used task branch. Existing task branches may receive more project-file changes only from the same Codex thread before the branch is accepted into `dev`; after acceptance, any follow-up or refinement starts another new task branch.
 
 Read-only questions, planning, and investigation without project-file changes do not need a branch or preview slot.
 
-Use `scripts/bright-task-start.sh <task-slug>` for normal implementation starts. It creates a separate worktree from `origin/dev` and prevents accidental upstream tracking of `origin/dev`. Repository Codex hooks in `.codex/hooks.json` block write-like tool use and handoff when this rule is violated, after the hook definition has been locally trusted through Codex `/hooks`.
+Use `scripts/bright-task-start.sh <task-slug>` for normal implementation starts. It creates a separate worktree from `origin/dev`, records the current Codex thread id in `.bright-task/`, and prevents accidental upstream tracking of `origin/dev`. Repository Codex hooks in `.codex/hooks.json` block write-like tool use, commits, pushes, and handoff when this rule is violated, after the hook definition has been locally trusted through Codex `/hooks`.
 
 Implementation work that changes project files is not complete until the task branch is pushed, CI/deploy has assigned or reused a preview slot, and the user-facing handoff names the preview letter and URL. When the current branch/commit is actually deployed to a preview slot, the single final handoff response must start with the slot emoji plus `Preview`, for example `🅰️ Preview` (`🅰️`, `🅱️`, `🅲`, `🅳`, or `🅴`); skip the emoji line for intermediary updates, status replies, questions, acceptance monitoring, and any reply where the slot or deployed commit is unverified. If all five preview slots are occupied, the branch is queued for the next released slot; report the queued status and position/source if available, but do not describe the task as complete until a slot letter and URL exist.
 

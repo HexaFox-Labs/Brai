@@ -26,6 +26,7 @@ export {
   isWriteLikeCommand,
   parseHookInput,
   validateTaskMarker,
+  validateTaskThread,
   validatePushUpdate,
 };
 
@@ -88,7 +89,7 @@ function startTask(slug) {
 
   fs.mkdirSync(parent, { recursive: true });
   git("worktree", "add", "--no-track", "-b", branch, target, "origin/dev");
-  writeTaskMarker(target, { branch, mode: "new", base: git("rev-parse", "origin/dev"), createdAt: new Date().toISOString() });
+  writeTaskMarker(target, withThreadId({ branch, mode: "new", base: git("rev-parse", "origin/dev"), createdAt: new Date().toISOString() }));
   console.log(`Created ${branch} at ${target}`);
 }
 
@@ -98,12 +99,21 @@ function markFollowUp(branchArg) {
   if (branch !== currentBranch()) throw new Error(`Current branch is ${currentBranch()}, not ${branch}`);
   const validation = validateTaskBranch({ requireExpectedUpstream: false });
   if (!validation.ok) throw new Error(validation.message);
-  writeTaskMarker(git("rev-parse", "--show-toplevel"), {
+  const marker = readTaskMarker();
+  const markerValidation = validateTaskMarker(marker, branch);
+  if (!markerValidation.ok) {
+    throw new Error(`${markerValidation.message}\n\nNew Codex threads must start a new task branch with: scripts/bright-task-start.sh <task-slug>`);
+  }
+  const threadValidation = validateTaskThread(marker, currentThreadId());
+  if (!threadValidation.ok) {
+    throw new Error(`${threadValidation.message}\n\nNew Codex threads must start a new task branch with: scripts/bright-task-start.sh <task-slug>`);
+  }
+  writeTaskMarker(git("rev-parse", "--show-toplevel"), withThreadId({
     branch,
     mode: "follow-up",
     base: git("rev-parse", "origin/dev"),
     createdAt: new Date().toISOString(),
-  });
+  }));
   console.log(`Marked explicit follow-up for ${branch}`);
 }
 
@@ -136,6 +146,8 @@ function preCommit() {
   fetchDev();
   const validation = validateTaskBranch({ requireExpectedUpstream: true });
   if (!validation.ok) throw new Error(validation.message);
+  const reuse = validateBranchReuse();
+  if (!reuse.ok) throw new Error(reuse.message);
 
   const staged = git("diff", "--cached", "--name-only")
     .split("\n")
@@ -151,11 +163,13 @@ function preCommit() {
 function prePush(remoteName) {
   if (remoteName !== "origin") throw new Error(`Bright OS task branches must push to origin, got: ${remoteName || "(empty)"}`);
 
+  fetchDev();
   const validation = validateTaskBranch({ requireExpectedUpstream: true });
   if (!validation.ok) throw new Error(validation.message);
+  const reuse = validateBranchReuse();
+  if (!reuse.ok) throw new Error(reuse.message);
 
   const branch = currentBranch();
-  fetchDev();
   const updates = readStdin()
     .split("\n")
     .map((line) => line.trim())
@@ -273,7 +287,17 @@ function validateBranchReuse() {
       message:
         `${markerValidation.message}\n\n` +
         `For new work run: scripts/bright-task-start.sh <task-slug>\n` +
-        `Only for an explicit project-owner-approved follow-up run: node scripts/bright-task.mjs follow-up`,
+        `Only for a same-thread follow-up run: node scripts/bright-task.mjs follow-up`,
+    };
+  }
+  const threadValidation = validateTaskThread(marker, currentThreadId());
+  if (!threadValidation.ok) {
+    return {
+      ok: false,
+      message:
+        `${threadValidation.message}\n\n` +
+        `New Codex threads must start a new task branch before changing project files:\n` +
+        `scripts/bright-task-start.sh <task-slug>`,
     };
   }
   const currentDev = git("rev-parse", "origin/dev");
@@ -297,7 +321,7 @@ function validateBranchReuse() {
       message:
         `Bright OS refuses to reuse an existing pushed task branch without an explicit local marker.\n\n` +
         `For new work run: scripts/bright-task-start.sh <task-slug>\n` +
-        `Only for an explicit project-owner-approved follow-up run: node scripts/bright-task.mjs follow-up`,
+        `Only for a same-thread follow-up run: node scripts/bright-task.mjs follow-up`,
     };
   }
   return { ok: true };
@@ -308,6 +332,17 @@ function validateTaskMarker(marker, branch) {
   if (marker.branch !== branch) return { ok: false, message: `Bright OS task marker is for ${marker.branch || "(missing)"}, not ${branch}.` };
   if (marker.mode !== "new" && marker.mode !== "follow-up") {
     return { ok: false, message: `Bright OS task marker mode ${marker.mode || "(missing)"} is not valid for project-file writes.` };
+  }
+  return { ok: true };
+}
+
+function validateTaskThread(marker, threadId) {
+  if (!threadId) return { ok: true };
+  if (!marker?.threadId) {
+    return { ok: false, message: "Bright OS task marker has no Codex thread id, so this thread cannot change project files on this branch." };
+  }
+  if (marker.threadId !== threadId) {
+    return { ok: false, message: `Bright OS task branch belongs to Codex thread ${marker.threadId}, not current thread ${threadId}.` };
   }
   return { ok: true };
 }
@@ -444,7 +479,16 @@ function remoteBranchKnown(branch) {
 function markWriteIntent() {
   const root = git("rev-parse", "--show-toplevel");
   const marker = readTaskMarker();
-  writeTaskMarker(root, { ...marker, branch: currentBranch(), writeIntentAt: new Date().toISOString() });
+  writeTaskMarker(root, withThreadId({ ...marker, branch: currentBranch(), writeIntentAt: new Date().toISOString() }));
+}
+
+function withThreadId(marker) {
+  const threadId = currentThreadId();
+  return threadId ? { ...marker, threadId } : marker;
+}
+
+function currentThreadId() {
+  return process.env.CODEX_THREAD_ID || "";
 }
 
 function readTaskMarker() {

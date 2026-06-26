@@ -11,7 +11,7 @@ Bright OS uses one VPS for seven environments:
 
 Read-only questions, planning, investigation without project-file changes, and environment setup outside the project do not need a branch or preview slot. Before the first project-file change for a new task, start from `origin/dev` and create `codex/<task-slug>` unless the project owner explicitly chooses another branch/base.
 
-Agents must not reuse an existing unrelated `codex/*` branch just because it is the current checkout. Direct follow-ups may continue the same branch, and explicit project-owner branch instructions override the default.
+Agents must not reuse an existing `codex/*` branch just because Codex Desktop selected it by default. A new Codex thread must start a new task branch before changing project files, regardless of which branch the UI selected. Direct follow-ups may continue the same branch only inside the same Codex thread while the branch is not accepted into `dev`; explicit project-owner branch instructions do not override this thread boundary for project-file writes.
 
 A pushed `codex/*` branch allocates or reuses a preview slot through `deploy/scripts/preview-slots.sh`, deploys that slot, and reports the slot URL. If all slots `A` through `E` are occupied, the branch enters the preview queue until a slot is released. No push means no slot/deploy/queue.
 
@@ -25,12 +25,13 @@ Use the checked-in task starter before the first project-file change:
 scripts/bright-task-start.sh <task-slug>
 ```
 
-The starter fetches `origin/dev`, refuses to reuse an existing remote `codex/<task-slug>`, creates a separate worktree under `../bright-os-worktrees/<task-slug>`, creates `codex/<task-slug>` with `--no-track`, and writes ignored local task state under `.bright-task/`.
+The starter fetches `origin/dev`, refuses to reuse an existing remote `codex/<task-slug>`, creates a separate worktree under `../bright-os-worktrees/<task-slug>`, creates `codex/<task-slug>` with `--no-track`, and writes ignored local task state under `.bright-task/` including the current Codex thread id.
 
 Repository Codex hooks are defined in `.codex/hooks.json`:
 
 - `PreToolUse` fetches current `origin/dev` and blocks write-like `exec_command`/`Bash` commands and `apply_patch` unless the checkout is a valid `codex/*` task branch based on current `origin/dev`.
-- The local `.bright-task/` marker must come from `scripts/bright-task-start.sh` (`mode: new`) or an explicit `node scripts/bright-task.mjs follow-up` (`mode: follow-up`). Automatically created or manual markers are invalid for project-file writes.
+- The local `.bright-task/` marker must come from `scripts/bright-task-start.sh` (`mode: new`) or an explicit same-thread `node scripts/bright-task.mjs follow-up` (`mode: follow-up`). Automatically created or manual markers are invalid for project-file writes.
+- When Codex provides a thread id, the marker must match the current thread. A different or missing thread id blocks project-file writes, commits, and pushes; start a new task branch instead of continuing the auto-selected branch.
 - If the current branch or its remote head is already included in `origin/dev`, it is treated as accepted work and cannot receive more project-file changes. Start a new task branch even if Codex Desktop selected the old branch by default.
 - `Stop` blocks handoff when the working tree is dirty or when project-file writes were made without a verified preview receipt.
 
@@ -42,7 +43,7 @@ Git hooks live in `.githooks/`. Enable them in each local clone/worktree:
 git config core.hooksPath .githooks
 ```
 
-`pre-commit` blocks commits outside valid `codex/*` task branches and rejects staged generated/runtime/secret-like files. `pre-push` blocks direct `main`/`dev` pushes, ref mismatches, branches not based on `origin/dev`, and pushes that fail the public guard. CI/CD-sensitive pushes also run the Temporal test suite before leaving the machine.
+`pre-commit` blocks commits outside valid same-thread `codex/*` task branches and rejects staged generated/runtime/secret-like files. `pre-push` blocks direct `main`/`dev` pushes, ref mismatches, wrong-thread branches, accepted branches, branches not based on `origin/dev`, and pushes that fail the public guard. CI/CD-sensitive pushes also run the Temporal test suite before leaving the machine.
 
 Before a final implementation handoff, run:
 

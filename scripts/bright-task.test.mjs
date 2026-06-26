@@ -7,6 +7,7 @@ import {
   isWriteLikeCommand,
   parseHookInput,
   validateTaskMarker,
+  validateTaskThread,
   validatePushUpdate,
 } from "./bright-task.mjs";
 
@@ -75,6 +76,13 @@ test("task marker must come from task start or explicit follow-up", () => {
   assert.match(validateTaskMarker(null, "codex/foo").message, /marker is missing/);
   assert.match(validateTaskMarker({ branch: "codex/foo", mode: "manual" }, "codex/foo").message, /mode manual/);
   assert.match(validateTaskMarker({ branch: "codex/bar", mode: "new" }, "codex/foo").message, /codex\/bar/);
+});
+
+test("task marker is bound to the current Codex thread when one exists", () => {
+  assert.deepEqual(validateTaskThread({ threadId: "thread-a" }, ""), { ok: true });
+  assert.deepEqual(validateTaskThread({ threadId: "thread-a" }, "thread-a"), { ok: true });
+  assert.match(validateTaskThread({}, "thread-a").message, /no Codex thread id/);
+  assert.match(validateTaskThread({ threadId: "thread-b" }, "thread-a").message, /thread-b/);
 });
 
 test("hook input parser is tolerant", () => {
