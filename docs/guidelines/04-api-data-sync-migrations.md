@@ -12,6 +12,13 @@
 - Main work entities регистрируются в таблице `items`; сейчас основной entity - `activities`.
 - Server SQLite schema metadata регистрируется в таблице `table_descriptions`.
 
+## Runtime schema verification
+
+- Перед правилом, миграцией, утверждением или handoff про runtime SQLite таблицу проверь реальное целевое окружение: DB path, наличие таблицы, `.schema`, `PRAGMA table_info`, индексы и релевантные строки.
+- Не выводи состояние dev/preview/prod из кода, миграций, скриншота или слов Сергея. Если не проверил живую базу, так и скажи.
+- Для live SQLite в WAL mode используй обычный read-only connection (`mode=ro`), а не `immutable=1`, иначе свежие данные из `-wal` можно не увидеть.
+- В невизуальном handoff укажи проверенные environment, DB path, SQL/команду и ключевые строки результата.
+
 ## Main entities
 
 - Bright OS main work entities регистрируются в server SQLite таблице `items`.
@@ -22,6 +29,7 @@
 
 - Каждое server-side schema изменение получает migration marker в `schema_migrations`.
 - Любое server-side schema metadata изменение обновляет `table_descriptions` в том же change: новые/изменённые таблицы, столбцы, индексы, связи, зависимости и назначение. Content-only изменения строк этого не требуют.
+- `table_descriptions` имеет поля `table_name`, `title`, `short_description`, `long_description`, `updated_at_utc`; перед обновлением проверь эти поля в целевой DB.
 - Перед live migration или destructive-risk изменением делай SQLite backup.
 - Migration должна быть idempotent для повторного запуска.
 - Не меняй canonical data shape без проверки API consumers и client cache projection.

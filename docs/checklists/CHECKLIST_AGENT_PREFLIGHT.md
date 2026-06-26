@@ -8,6 +8,7 @@
 - [ ] Найден релевантный guideline в `docs/guidelines/`.
 - [ ] Найден релевантный OpenSpec spec/change.
 - [ ] Проверено реальное состояние кода через `rg` или file reads.
+- [ ] Если задача касается runtime DB/service/deploy фактов, проверены реальные target environment, path/schema/data; если доступа нет, это blocker, а не допущение.
 - [ ] Проверен `git status --short`.
 - [ ] Если работа read-only или меняет только внешнее окружение без project-file changes, новая ветка не нужна.
 - [ ] Перед первым изменением файлов проекта создана/выбрана правильная branch: новая `codex/<task-slug>` для новой задачи, текущая `codex/*` только для прямого follow-up или по явному указанию Сергея.
