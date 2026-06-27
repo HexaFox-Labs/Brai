@@ -32,24 +32,45 @@ Use started/passed/failed events for operations that can block delivery. Example
 Preview slots are still allocated and released by the existing slot scripts:
 
 1. A `codex/*` push starts or signals `BranchPreviewWorkflow`.
-2. GitHub Actions signals `branch_pushed` and `checks_started`.
-3. Existing `checks` job runs unchanged.
-4. GitHub Actions signals `checks_passed` or `checks_failed`.
-5. `deploy-preview` waits for `temporal-worker-check`.
-6. GitHub Actions signals `preview_deploy_started`.
-7. Existing `deploy-preview` runs `deploy/scripts/ci-ssh-deploy.sh`.
-8. GitHub Actions signals `preview_deploy_passed` or `preview_deploy_failed`.
-9. A failed check or preview deploy leaves workflow state at `waiting_for_fix`.
-10. Accepted preview completion signals `pr_merged`, `accepted_preview_started`, `accepted_preview_promoted` or `accepted_preview_failed`, `slot_release_started`, and `slot_released` or `slot_release_failed`.
-11. Manual release requires a real slot release. Delete-triggered release is idempotent: if the slot was already released, Temporal records `branch_deleted`.
+2. GitHub Actions signals `branch_pushed`, then `delivery_classified` or `delivery_classification_failed`.
+3. GitHub Actions signals `checks_started`.
+4. Existing `checks` job runs unchanged.
+5. GitHub Actions signals `checks_passed` or `checks_failed`.
+6. Preview-class branches continue to `deploy-preview`, which waits for `temporal-worker-check`.
+7. GitHub Actions signals `preview_deploy_started`.
+8. Existing `deploy-preview` runs `deploy/scripts/ci-ssh-deploy.sh`.
+9. GitHub Actions signals `preview_deploy_passed` or `preview_deploy_failed`.
+10. A failed classification, check, or preview deploy leaves workflow state at `waiting_for_fix`.
+11. Accepted preview completion signals `pr_merged`, `accepted_preview_started`, `accepted_preview_promoted` or `accepted_preview_failed`, `slot_release_started`, and `slot_released` or `slot_release_failed`.
+12. Manual release requires a real slot release. Delete-triggered release is idempotent: if the slot was already released, Temporal records `branch_deleted`.
 
 The preview slot registry remains `/srv/projects/bright-os-envs/preview-slots.json`; Temporal does not replace that lock or registry.
+
+## Infra Docs No-preview Path
+
+Infrastructure/documentation-only branches can be classified as `deliveryClass=infra-docs`.
+That class signals `no_preview_required`; Temporal marks `preview_deploy`,
+`accepted_preview_promotion`, and `slot_release` as `not_applicable`, clears `slot`, and keeps
+the branch in the same `BranchPreviewWorkflow` ledger. The state query exposes the
+`deliveryClass`, `handoff`, and `autoMerge` fields for this path.
+
+The no-preview path records delivery handoff with `delivery_handoff_started`,
+`delivery_handoff_passed`, or `delivery_handoff_failed`, and records PR auto-merge setup with
+`auto_merge_started`, `auto_merge_enabled`, or `auto_merge_failed`. Failed classification,
+handoff, or auto-merge events set `status=waiting_for_fix` and populate `blocker`.
+
+For `infra-docs`, `pr_merged` marks `accepted_for_dev` as passed and completes the preview
+lifecycle without requiring an accepted-preview metadata promotion or preview slot release.
 
 ## BranchPreviewWorkflow
 
 `BranchPreviewWorkflow` keeps a bounded event log and the current checklist for a `codex/*` branch:
 
 - `branch_pushed`
+- `delivery_classified`, `delivery_classification_failed`
+- `delivery_handoff_started`, `delivery_handoff_passed`, `delivery_handoff_failed`
+- `auto_merge_started`, `auto_merge_enabled`, `auto_merge_failed`
+- `no_preview_required`
 - `checks_started`, `checks_passed`, `checks_failed`
 - `preview_deploy_started`, `preview_deploy_passed`, `preview_deploy_failed`
 - `pr_merged`
@@ -57,7 +78,7 @@ The preview slot registry remains `/srv/projects/bright-os-envs/preview-slots.js
 - `slot_release_started`, `slot_released`, `slot_release_failed`
 - `released`, `branch_deleted`
 
-The `state` query exposes `tasks`, `missing`, `blocker`, and `blockers`. A new `branch_pushed` event resets the check/deploy/release checklist for the new SHA so old green state is not inherited. `checks_failed`, `preview_deploy_failed`, `accepted_preview_failed`, and `slot_release_failed` set `status` to `waiting_for_fix` and populate `blocker`.
+The `state` query exposes `deliveryClass`, `handoff`, `autoMerge`, `tasks`, `missing`, `blocker`, and `blockers`. A new `branch_pushed` event resets the check/deploy/release checklist for the new SHA so old green state is not inherited. `delivery_classification_failed`, `delivery_handoff_failed`, `auto_merge_failed`, `checks_failed`, `preview_deploy_failed`, `accepted_preview_failed`, and `slot_release_failed` set `status` to `waiting_for_fix` and populate `blocker`.
 
 ## PromotionWorkflow
 

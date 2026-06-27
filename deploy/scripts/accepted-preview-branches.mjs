@@ -2,6 +2,8 @@ import process from "node:process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+export const INFRA_DOCS_LABEL = "bright-delivery:infra-docs";
+
 if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
   const recentMerged = process.argv[2] === "--recent-merged";
   const commit = recentMerged ? null : process.argv[2] || process.env.BRIGHT_OS_TARGET_COMMIT || process.env.GITHUB_SHA;
@@ -24,11 +26,16 @@ export function acceptedPreviewBranches(pulls, targetBranch = "dev") {
     const base = pull?.base?.ref ?? pull?.baseRefName ?? pull?.base_ref;
     const head = pull?.head?.ref ?? pull?.headRefName ?? pull?.head_ref;
     const merged = Boolean(pull?.merged_at ?? pull?.mergedAt) || pull?.merged === true || pull?.state === "MERGED";
-    if (base !== targetBranch || !merged || !head?.startsWith("codex/") || seen.has(head)) continue;
+    if (base !== targetBranch || !merged || !head?.startsWith("codex/") || hasLabel(pull, INFRA_DOCS_LABEL) || seen.has(head)) continue;
     seen.add(head);
     branches.push(head);
   }
   return branches;
+}
+
+function hasLabel(pull, labelName) {
+  const labels = Array.isArray(pull?.labels?.nodes) ? pull.labels.nodes : Array.isArray(pull?.labels) ? pull.labels : [];
+  return labels.some((label) => (typeof label === "string" ? label : label?.name) === labelName);
 }
 
 async function fetchAssociatedPulls(commitSha) {

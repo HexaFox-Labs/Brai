@@ -8,6 +8,8 @@ import path from "node:path";
 import {
   CODEX_BRANCH_RE,
   analyzeHookInput,
+  classifyDelivery,
+  deliveryClassForFile,
   dependencySourceRoot,
   deriveTaskState,
   enableGitHooks,
@@ -22,9 +24,11 @@ import {
   taskWorktreeParent,
   validateTaskMarker,
   validateTaskThread,
+  validateDeliveryReceipt,
   validatePreviewReceipt,
   validatePushUpdate,
 } from "./bright-task.mjs";
+import { acceptedPreviewBranches } from "../deploy/scripts/accepted-preview-branches.mjs";
 
 test("valid codex task branch names are strict", () => {
   assert.equal(CODEX_BRANCH_RE.test("codex/enforce-branch-preview-guards"), true);
@@ -99,6 +103,26 @@ test("sensitive paths are rejected for commits", () => {
   assert.equal(isSensitivePath("data/bright_os.sqlite"), true);
   assert.equal(isSensitivePath(".env.local"), true);
   assert.equal(isSensitivePath("android/release.keystore"), true);
+});
+
+test("delivery classifier separates infra-docs from runtime preview", () => {
+  assert.equal(deliveryClassForFile("apps/bright_os_app/src/app/page.tsx"), "runtime");
+  assert.equal(deliveryClassForFile("services/bright_os_api/src/server.js"), "runtime");
+  assert.equal(deliveryClassForFile("docs/operations/branch-preview-environments.md"), "docs");
+  assert.equal(deliveryClassForFile("openspec/specs/repository-operations/spec.md"), "docs");
+  assert.equal(deliveryClassForFile(".github/workflows/bright-os-delivery.yml"), "infra");
+  assert.equal(deliveryClassForFile("deploy/scripts/classify-delivery.mjs"), "infra");
+  assert.equal(deliveryClassForFile("scripts/bright-task.mjs"), "infra");
+  assert.equal(deliveryClassForFile("services/bright_os_temporal/src/state.mjs"), "infra");
+  assert.equal(deliveryClassForFile("deploy/web/index.html"), "blocked");
+  assert.equal(deliveryClassForFile("package.json"), "unknown");
+
+  assert.equal(classifyDelivery(["docs/foo.md"]).deliveryClass, "infra-docs");
+  assert.equal(classifyDelivery([".github/workflows/bright-os-delivery.yml"]).deliveryClass, "infra-docs");
+  assert.equal(classifyDelivery(["apps/bright_os_app/src/app/page.tsx"]).deliveryClass, "runtime-preview");
+  assert.equal(classifyDelivery(["docs/foo.md", "apps/bright_os_app/src/app/page.tsx"]).deliveryClass, "runtime-preview");
+  assert.equal(classifyDelivery(["package.json"]).fallback, "unknown_path");
+  assert.equal(classifyDelivery(["deploy/web/index.html"]).deliveryClass, "blocked");
 });
 
 test("pre-push ref updates must stay on matching codex ref", () => {
@@ -245,6 +269,22 @@ test("preview receipts must match exact branch and head", () => {
   assert.match(validatePreviewReceipt({ ...receipt, runId: "" }, "codex/foo", receipt.commit).message, /run id/);
 });
 
+test("delivery receipts must match exact branch, head, and class", () => {
+  const receipt = {
+    receiptType: "bright-delivery-handoff-v1",
+    branch: "codex/foo",
+    commit: "1111111111111111111111111111111111111111",
+    deliveryClass: "infra-docs",
+    runId: 123,
+    verifiedAt: "2026-06-26T00:00:00.000Z",
+  };
+  assert.deepEqual(validateDeliveryReceipt(receipt, "codex/foo", receipt.commit), { ok: true });
+  assert.match(validateDeliveryReceipt(null, "codex/foo", receipt.commit).message, /missing/);
+  assert.match(validateDeliveryReceipt({ ...receipt, branch: "codex/bar" }, "codex/foo", receipt.commit).message, /codex\/bar/);
+  assert.match(validateDeliveryReceipt({ ...receipt, commit: "2222" }, "codex/foo", receipt.commit).message, /2222/);
+  assert.match(validateDeliveryReceipt({ ...receipt, deliveryClass: "runtime-preview" }, "codex/foo", receipt.commit).message, /runtime-preview/);
+});
+
 test("task state blocks local implementation work without exact preview receipt", () => {
   const repo = fs.mkdtempSync(path.join(os.tmpdir(), "bright-task-state-"));
   const previous = process.cwd();
@@ -277,7 +317,7 @@ test("task state blocks local implementation work without exact preview receipt"
 
     const blocked = deriveTaskState();
     assert.equal(blocked.ok, false);
-    assert.match(blocked.message, /preview verification/);
+    assert.match(blocked.message, /delivery verification/);
 
     const head = git(["rev-parse", "HEAD"], repo).stdout.trim();
     fs.writeFileSync(
@@ -299,6 +339,115 @@ test("task state blocks local implementation work without exact preview receipt"
   }
 });
 
+test("task state allows infra-docs work with exact delivery receipt", () => {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "bright-task-docs-state-"));
+  const previous = process.cwd();
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "test@example.invalid"], repo);
+    git(["config", "user.name", "Bright Test"], repo);
+    fs.writeFileSync(path.join(repo, ".gitignore"), ".bright-task/\n");
+    fs.writeFileSync(path.join(repo, "base.txt"), "base\n");
+    git(["add", ".gitignore", "base.txt"], repo);
+    git(["commit", "-m", "base"], repo);
+    git(["checkout", "-b", "codex/foo"], repo);
+    const base = git(["rev-parse", "HEAD"], repo).stdout.trim();
+    git(["update-ref", "refs/remotes/origin/dev", base], repo);
+    fs.mkdirSync(path.join(repo, ".bright-task"));
+    fs.writeFileSync(
+      path.join(repo, ".bright-task", "task.json"),
+      `${JSON.stringify({
+        branch: "codex/foo",
+        mode: "new",
+        base,
+        createdAt: "2026-06-26T00:00:00.000Z",
+        ...(process.env.CODEX_THREAD_ID ? { threadId: process.env.CODEX_THREAD_ID } : {}),
+      })}\n`,
+    );
+    fs.mkdirSync(path.join(repo, "docs"), { recursive: true });
+    fs.writeFileSync(path.join(repo, "docs", "change.md"), "change\n");
+    git(["add", "docs/change.md"], repo);
+    git(["commit", "-m", "docs change"], repo);
+    process.chdir(repo);
+
+    const blocked = deriveTaskState();
+    assert.equal(blocked.ok, false);
+    assert.match(blocked.message, /Delivery handoff receipt/);
+
+    const head = git(["rev-parse", "HEAD"], repo).stdout.trim();
+    fs.writeFileSync(
+      path.join(repo, ".bright-task", "delivery-handoff.json"),
+      `${JSON.stringify({
+        receiptType: "bright-delivery-handoff-v1",
+        branch: "codex/foo",
+        commit: head,
+        deliveryClass: "infra-docs",
+        runId: 123,
+        verifiedAt: "2026-06-26T00:00:00.000Z",
+      })}\n`,
+    );
+    assert.equal(deriveTaskState().ok, true);
+  } finally {
+    process.chdir(previous);
+  }
+});
+
+test("task state allows exact delivery receipt after infra-docs branch is already in dev", () => {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "bright-task-docs-accepted-"));
+  const previous = process.cwd();
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "test@example.invalid"], repo);
+    git(["config", "user.name", "Bright Test"], repo);
+    fs.writeFileSync(path.join(repo, ".gitignore"), ".bright-task/\n");
+    fs.writeFileSync(path.join(repo, "base.txt"), "base\n");
+    git(["add", ".gitignore", "base.txt"], repo);
+    git(["commit", "-m", "base"], repo);
+    git(["checkout", "-b", "codex/foo"], repo);
+    const base = git(["rev-parse", "HEAD"], repo).stdout.trim();
+    git(["update-ref", "refs/remotes/origin/dev", base], repo);
+    fs.mkdirSync(path.join(repo, ".bright-task"));
+    fs.writeFileSync(
+      path.join(repo, ".bright-task", "task.json"),
+      `${JSON.stringify({
+        branch: "codex/foo",
+        mode: "new",
+        base,
+        createdAt: "2026-06-26T00:00:00.000Z",
+        ...(process.env.CODEX_THREAD_ID ? { threadId: process.env.CODEX_THREAD_ID } : {}),
+      })}\n`,
+    );
+    fs.mkdirSync(path.join(repo, "docs"), { recursive: true });
+    fs.writeFileSync(path.join(repo, "docs", "change.md"), "change\n");
+    git(["add", "docs/change.md"], repo);
+    git(["commit", "-m", "docs change"], repo);
+    const head = git(["rev-parse", "HEAD"], repo).stdout.trim();
+    git(["checkout", "-b", "dev", base], repo);
+    git(["merge", "--no-ff", "codex/foo", "-m", "merge infra docs"], repo);
+    git(["update-ref", "refs/remotes/origin/dev", "HEAD"], repo);
+    git(["update-ref", "refs/remotes/origin/codex/foo", head], repo);
+    git(["checkout", "codex/foo"], repo);
+    fs.writeFileSync(
+      path.join(repo, ".bright-task", "delivery-handoff.json"),
+      `${JSON.stringify({
+        receiptType: "bright-delivery-handoff-v1",
+        branch: "codex/foo",
+        commit: head,
+        deliveryClass: "infra-docs",
+        runId: 123,
+        verifiedAt: "2026-06-26T00:00:00.000Z",
+      })}\n`,
+    );
+    process.chdir(repo);
+
+    const state = deriveTaskState();
+    assert.equal(state.ok, true);
+    assert.equal(state.classification.deliveryClass, "infra-docs");
+  } finally {
+    process.chdir(previous);
+  }
+});
+
 test("accept preview checks verified preview before PR actions", () => {
   const script = fs.readFileSync(path.join(process.cwd(), "deploy/scripts/accept-preview.sh"), "utf8");
   assert.ok(script.indexOf("require-preview") > 0);
@@ -306,8 +455,26 @@ test("accept preview checks verified preview before PR actions", () => {
   assert.ok(script.indexOf("require-preview") < script.indexOf("gh pr merge"));
 });
 
+test("accepted preview branch lookup skips infra docs delivery PRs", () => {
+  assert.deepEqual(acceptedPreviewBranches([
+    {
+      base: { ref: "dev" },
+      head: { ref: "codex/infra-docs" },
+      merged_at: "2026-06-25T10:00:00Z",
+      labels: [{ name: "bright-delivery:infra-docs" }],
+    },
+    {
+      base: { ref: "dev" },
+      head: { ref: "codex/runtime" },
+      merged_at: "2026-06-25T10:00:00Z",
+      labels: [],
+    },
+  ]), ["codex/runtime"]);
+});
+
 function git(args, cwd) {
-  const result = spawnSync("git", args, { cwd, encoding: "utf8" });
+  const { GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE, ...env } = process.env;
+  const result = spawnSync("git", args, { cwd, encoding: "utf8", env });
   if (result.status !== 0) {
     throw new Error(`git ${args.join(" ")} failed:\n${result.stderr || result.stdout || "(no output)"}`);
   }

@@ -3,6 +3,7 @@ set -euo pipefail
 
 BASE_BRANCH="${BRIGHT_OS_ACCEPT_BASE:-dev}"
 BRANCH="${1:-}"
+INFRA_DOCS_LABEL="bright-delivery:infra-docs"
 
 usage() {
   cat <<'USAGE'
@@ -47,19 +48,54 @@ if git merge-base --is-ancestor "$HEAD_SHA" "origin/$BASE_BRANCH"; then
   exit 0
 fi
 
-"$ROOT/scripts/use-node22.sh" node "$ROOT/scripts/bright-task.mjs" require-preview "$BRANCH" "$HEAD_SHA"
+DELIVERY_CLASS=""
+REQUIRES_PREVIEW=""
+while IFS='=' read -r key value; do
+  case "$key" in
+    delivery_class) DELIVERY_CLASS="$value" ;;
+    requires_preview) REQUIRES_PREVIEW="$value" ;;
+  esac
+done < <("$ROOT/scripts/use-node22.sh" node "$ROOT/deploy/scripts/classify-delivery.mjs" \
+  --base-ref "origin/$BASE_BRANCH" \
+  --head-ref "origin/$BRANCH" \
+  --event-name push \
+  --ref "refs/heads/$BRANCH")
+
+if [[ "${BRIGHT_OS_ACCEPT_INFRA_DOCS_ONLY:-false}" == "true" && "$DELIVERY_CLASS" != "infra-docs" ]]; then
+  echo "Expected infra-docs delivery branch, got: $DELIVERY_CLASS" >&2
+  exit 1
+fi
+
+if [[ "$REQUIRES_PREVIEW" == "true" ]]; then
+  "$ROOT/scripts/use-node22.sh" node "$ROOT/scripts/bright-task.mjs" require-preview "$BRANCH" "$HEAD_SHA"
+fi
 
 PR_NUMBER="$(gh pr list --base "$BASE_BRANCH" --head "$BRANCH" --state open --json number --jq ".[0].number // \"\"")"
 if [[ -z "$PR_NUMBER" ]]; then
-  PR_TITLE="Accept ${BRANCH#codex/}"
-  PR_BODY="$(cat <<BODY
+  if [[ "$DELIVERY_CLASS" == "infra-docs" ]]; then
+    PR_TITLE="Accept infra/docs ${BRANCH#codex/}"
+    PR_BODY="$(cat <<BODY
+Accepted infra/docs branch ${BRANCH}.
+
+This PR was opened by deploy/scripts/accept-preview.sh after CI classified the branch as infra/docs delivery.
+BODY
+)"
+  else
+    PR_TITLE="Accept ${BRANCH#codex/}"
+    PR_BODY="$(cat <<BODY
 Accepted preview branch ${BRANCH}.
 
 This PR was opened by deploy/scripts/accept-preview.sh after the project owner accepted the preview.
 BODY
 )"
+  fi
   gh pr create --base "$BASE_BRANCH" --head "$BRANCH" --title "$PR_TITLE" --body "$PR_BODY" >/dev/null
   PR_NUMBER="$(gh pr view "$BRANCH" --json number --jq ".number")"
+fi
+
+if [[ "$DELIVERY_CLASS" == "infra-docs" ]]; then
+  gh label create "$INFRA_DOCS_LABEL" --color "6f42c1" --description "Infra/docs delivery path without preview cleanup" --force >/dev/null
+  gh pr edit "$PR_NUMBER" --add-label "$INFRA_DOCS_LABEL" >/dev/null
 fi
 
 PR_STATE="$(gh pr view "$PR_NUMBER" --json state --jq ".state")"

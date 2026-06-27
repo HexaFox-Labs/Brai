@@ -4,10 +4,14 @@ export const STATE_QUERY = "state";
 export const EVENT_SIGNAL = "event";
 
 const MAX_EVENTS = 100;
+const NO_PREVIEW_TASKS = ["preview_deploy", "accepted_preview_promotion", "slot_release"];
 const PREVIEW_TASKS = {
   branch_pushed: "Branch push observed",
+  delivery_classification: "Delivery path classification",
   checks: "GitHub checks",
   preview_deploy: "Preview deploy",
+  delivery_handoff: "Infra/docs delivery handoff",
+  auto_merge: "Infra/docs auto-merge",
   accepted_for_dev: "Accepted for dev",
   accepted_preview_promotion: "Accepted preview metadata promotion",
   slot_release: "Preview slot release"
@@ -20,6 +24,15 @@ const PROMOTION_TASKS = {
 
 export const PREVIEW_EVENTS = new Set([
   "branch_pushed",
+  "delivery_classified",
+  "delivery_classification_failed",
+  "delivery_handoff_started",
+  "delivery_handoff_passed",
+  "delivery_handoff_failed",
+  "auto_merge_started",
+  "auto_merge_enabled",
+  "auto_merge_failed",
+  "no_preview_required",
   "checks_started",
   "checks_passed",
   "checks_failed",
@@ -69,6 +82,9 @@ export function createPreviewState(input) {
     taskQueue: PREVIEW_TASK_QUEUE,
     branch: input.branch,
     lastSha: input.sha ?? "",
+    deliveryClass: input.deliveryClass ?? "preview",
+    handoff: "not_started",
+    autoMerge: "not_started",
     status: "branch_pushed",
     terminal: false,
     checks: "not_started",
@@ -101,14 +117,70 @@ export function applyPreviewEvent(state, rawEvent) {
       state.checks = "not_started";
       state.previewDeploy = "not_started";
       state.slot = "";
+      state.deliveryClass = event.deliveryClass || "preview";
+      state.handoff = "not_started";
+      state.autoMerge = "not_started";
       state.blocker = null;
       state.blockers = [];
+      resetTask(state, "delivery_classification", event);
+      resetTask(state, "delivery_handoff", event);
+      resetTask(state, "auto_merge", event);
       resetTask(state, "checks", event);
       resetTask(state, "preview_deploy", event);
       resetTask(state, "accepted_for_dev", event);
       resetTask(state, "accepted_preview_promotion", event);
       resetTask(state, "slot_release", event);
       setTask(state, "branch_pushed", "passed", event);
+      break;
+    case "delivery_classified":
+      state.deliveryClass = event.deliveryClass || state.deliveryClass;
+      state.status = "delivery_classified";
+      setTask(state, "delivery_classification", "passed", event);
+      if (state.deliveryClass === "infra-docs") {
+        markNoPreviewRequired(state, event);
+      } else {
+        setTask(state, "delivery_handoff", "not_applicable", event);
+        setTask(state, "auto_merge", "not_applicable", event);
+      }
+      break;
+    case "delivery_classification_failed":
+      state.status = "waiting_for_fix";
+      setTask(state, "delivery_classification", "failed", event);
+      break;
+    case "no_preview_required":
+      state.deliveryClass = event.deliveryClass || (state.deliveryClass === "preview" ? "infra-docs" : state.deliveryClass);
+      state.status = "no_preview_required";
+      markNoPreviewRequired(state, event);
+      break;
+    case "delivery_handoff_started":
+      state.handoff = "running";
+      state.status = "delivery_handoff_started";
+      setTask(state, "delivery_handoff", "running", event);
+      break;
+    case "delivery_handoff_passed":
+      state.handoff = "passed";
+      state.status = "delivery_handoff_passed";
+      setTask(state, "delivery_handoff", "passed", event);
+      break;
+    case "delivery_handoff_failed":
+      state.handoff = "failed";
+      state.status = "waiting_for_fix";
+      setTask(state, "delivery_handoff", "failed", event);
+      break;
+    case "auto_merge_started":
+      state.autoMerge = "running";
+      state.status = "auto_merge_started";
+      setTask(state, "auto_merge", "running", event);
+      break;
+    case "auto_merge_enabled":
+      state.autoMerge = "enabled";
+      state.status = "auto_merge_enabled";
+      setTask(state, "auto_merge", "passed", event);
+      break;
+    case "auto_merge_failed":
+      state.autoMerge = "failed";
+      state.status = "waiting_for_fix";
+      setTask(state, "auto_merge", "failed", event);
       break;
     case "checks_started":
       state.checks = "running";
@@ -143,6 +215,10 @@ export function applyPreviewEvent(state, rawEvent) {
     case "pr_merged":
       setTask(state, "accepted_for_dev", "passed", event);
       state.status = "accepted_for_dev";
+      if (isNoPreviewRequired(state)) {
+        state.slot = "";
+        state.terminal = true;
+      }
       break;
     case "accepted_preview_started":
       setTask(state, "accepted_preview_promotion", "running", event);
@@ -295,6 +371,16 @@ function createTask(label) {
   };
 }
 
+function markNoPreviewRequired(state, event) {
+  state.previewDeploy = "not_applicable";
+  state.slot = "";
+  for (const task of NO_PREVIEW_TASKS) setTask(state, task, "not_applicable", event);
+}
+
+function isNoPreviewRequired(state) {
+  return state.tasks.preview_deploy?.status === "not_applicable";
+}
+
 function resetTask(state, name, event) {
   const task = taskFor(state, name);
   task.status = "pending";
@@ -315,7 +401,7 @@ function setTask(state, name, status, event) {
   task.source = event.source ?? task.source;
   if (status === "failed") {
     setBlocker(state, name, event);
-  } else if (status === "running" || status === "passed") {
+  } else if (status === "running" || status === "passed" || status === "not_applicable") {
     delete task.blocker;
     refreshBlockers(state);
   }
@@ -368,7 +454,7 @@ function refreshGates(state, definitions) {
     .map(([name, label]) => ({ task: name, label, status: state.tasks[name]?.status ?? "missing" }));
   state.missing = missing;
   state.gates = {
-    complete: missing.length === 0,
+    complete: missing.length === 0 && state.blockers.length === 0,
     missing
   };
 }

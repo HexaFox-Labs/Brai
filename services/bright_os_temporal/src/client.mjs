@@ -104,6 +104,10 @@ function buildEvent(type, options, sha) {
     type,
     sha,
     slot: options.slot ?? "",
+    deliveryClass: options.deliveryClass ?? "",
+    reason: options.reason ?? "",
+    prNumber: options.prNumber ?? "",
+    prUrl: options.prUrl ?? "",
     source: options.source ?? process.env.GITHUB_JOB ?? "manual",
     at: options.at ?? new Date().toISOString(),
     github: {

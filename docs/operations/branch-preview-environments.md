@@ -13,9 +13,11 @@ Read-only questions, planning, investigation without project-file changes, and e
 
 Agents must not reuse an existing `codex/*` branch just because Codex Desktop selected it by default. A new Codex thread must start a new task branch before changing project files, regardless of which branch the UI selected. Direct follow-ups may continue the same branch only inside the same Codex thread while the branch is not accepted into `dev`; explicit project-owner branch instructions do not override this thread boundary for project-file writes.
 
-A pushed `codex/*` branch allocates or reuses a preview slot through `deploy/scripts/preview-slots.sh`, deploys that slot, and reports the slot URL. If all slots `A` through `E` are occupied, the branch enters the preview queue until a slot is released. No push means no slot/deploy/queue.
+A pushed preview-class `codex/*` branch allocates or reuses a preview slot through `deploy/scripts/preview-slots.sh`, deploys that slot, and reports the slot URL. If all slots `A` through `E` are occupied, the branch enters the preview queue until a slot is released. No push means no slot/deploy/queue.
 
-Local dev server URLs are agent-only verification aids. The user-facing handoff for project changes is the preview slot URL after `deploy-preview` succeeds; if CI/deploy is not complete, report that blocker instead of asking the project owner to open `localhost` or `127.0.0.1`.
+Infrastructure/documentation-only branches can use the Temporal no-preview path when the delivery class is `infra-docs`. That path records `delivery_classified`, `no_preview_required`, `delivery_handoff_*`, and `auto_merge_*` events instead of allocating a slot. Temporal then marks `preview_deploy`, `accepted_preview_promotion`, and `slot_release` as `not_applicable`; after `pr_merged`, the branch lifecycle is complete without a slot.
+
+Local dev server URLs are agent-only verification aids. The user-facing handoff for preview-class project changes is the preview slot URL after `deploy-preview` succeeds; if CI/deploy is not complete, report that blocker instead of asking the project owner to open `localhost` or `127.0.0.1`.
 
 ## Mechanical Guard Rails
 
@@ -47,7 +49,7 @@ git config core.hooksPath .githooks
 
 `pre-commit` blocks commits outside valid same-thread `codex/*` task branches and rejects staged generated/runtime/secret-like files. `pre-push` blocks direct `main`/`dev` pushes, ref mismatches, wrong-thread branches, accepted branches, branches not based on `origin/dev`, and pushes that fail the public guard. CI/CD-sensitive pushes also run the Temporal test suite before leaving the machine.
 
-Before a final implementation handoff, run:
+Before a final preview-class implementation handoff, run:
 
 ```bash
 scripts/bright-preview-handoff.sh
@@ -55,7 +57,9 @@ scripts/bright-preview-handoff.sh
 
 The verifier requires a clean tree, pushed `origin/<codex-branch>` at `HEAD`, successful `Bright OS delivery` jobs including `deploy-preview`, and a ready preview slot from the slot registry or Temporal. It writes an ignored `.bright-task/preview-handoff.json` receipt that the Codex `Stop` hook checks.
 
-The final response format is the top-level handoff contract in `AGENTS.md`: after this command succeeds, the final implementation response starts with the command's `<slot emoji> Preview` header, then includes preview URL, branch, and commit before any summary. Do not print a preview emoji in intermediary updates, status replies, questions, acceptance monitoring, or any reply where the slot or deployed commit is unverified. If the preview letter or URL is missing because every slot is occupied, the response must say the branch is queued and include queue position/source when available. If it is missing for any other reason, the response must say exactly which push, CI, or deploy step blocked it. Ordinary `codex/*` branch push/deploy is standing Bright OS CI/CD automation and must not be treated as an optional manual confirmation step.
+The final response format for preview-class work is the top-level handoff contract in `AGENTS.md`: after this command succeeds, the final implementation response starts with the command's `<slot emoji> Preview` header, then includes preview URL, branch, and commit before any summary. Do not print a preview emoji in intermediary updates, status replies, questions, acceptance monitoring, no-preview handoffs, or any reply where the slot or deployed commit is unverified. If the preview letter or URL is missing because every slot is occupied, the response must say the branch is queued and include queue position/source when available. If it is missing for any other reason, the response must say exactly which push, CI, or deploy step blocked it. Ordinary preview-class `codex/*` branch push/deploy is standing Bright OS CI/CD automation and must not be treated as an optional manual confirmation step.
+
+For `infra-docs` no-preview work, the handoff reports the branch, commit, `deliveryClass=infra-docs`, `no_preview_required`, `handoff=passed`, `autoMerge=enabled`, and the merged PR/dev state instead of a preview slot URL.
 
 Preview acceptance flow:
 

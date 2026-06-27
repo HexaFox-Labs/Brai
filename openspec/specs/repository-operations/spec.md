@@ -48,8 +48,10 @@ Agents working on ordinary Bright OS feature, fix, refactor, or infrastructure i
 
 Ordinary `codex/*` task branch pushes to `origin` and their preview deploys SHALL be treated as standing Bright OS CI/CD automation approved by the project owner, not as optional per-task manual confirmations.
 
-#### Scenario: A project-file change begins
-- **WHEN** work changes repository files
+Infrastructure/documentation-only task branches MAY skip preview slot allocation only when Temporal classifies the branch as `deliveryClass=infra-docs` and records `no_preview_required`.
+
+#### Scenario: Preview-class project-file change begins
+- **WHEN** preview-class work changes repository files
 - **THEN** the agent creates or continues an appropriate `codex/<task-slug>` branch
 - **AND** the pushed branch is deployed to a preview slot before user-facing handoff
 - **AND** the handoff names the preview slot letter and URL
@@ -66,6 +68,14 @@ Ordinary `codex/*` task branch pushes to `origin` and their preview deploys SHAL
 - **AND** the task branch cannot be pushed or deployed to a preview slot
 - **THEN** the agent reports the exact push, CI, or deploy blocker
 - **AND** the agent does not describe the task as complete
+
+#### Scenario: Infrastructure docs work does not need a preview slot
+- **WHEN** work changes only infrastructure or documentation files that do not need a runnable preview
+- **AND** Temporal records `delivery_classified` with `deliveryClass=infra-docs`
+- **AND** Temporal records `no_preview_required`
+- **THEN** Temporal marks `preview_deploy`, `accepted_preview_promotion`, and `slot_release` as `not_applicable`
+- **AND** the handoff reports the branch, commit, `deliveryClass=infra-docs`, `handoff=passed`, and `autoMerge=enabled` instead of a preview slot URL
+- **AND** `pr_merged` completes the branch lifecycle without requiring a preview slot release
 
 #### Scenario: Preview work is accepted
 - **WHEN** the project owner accepts preview work
