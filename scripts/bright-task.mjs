@@ -35,6 +35,7 @@ export {
   isSensitivePath,
   isWriteLikeCommand,
   linkDependencyDirs,
+  findOpenTaskForThread,
   parseHookInput,
   taskStartGuidance,
   taskWorktreeParent,
@@ -109,6 +110,13 @@ function startTask(slug) {
   }
 
   fetchDev();
+  const openTask = findOpenTaskForThread(parent, currentThreadId(), branch);
+  if (openTask) {
+    throw new Error(
+      `This Codex thread already has open task branch ${openTask.branch} at ${openTask.path}.\n\n` +
+        `Continue that worktree instead of starting ${branch}. A new task branch is allowed only after the existing branch is accepted into origin/dev.`,
+    );
+  }
   if (remoteBranchExists(branch)) {
     throw new Error(`Remote branch already exists: ${branch}. Use a new slug unless the project owner explicitly said this is a follow-up.`);
   }
@@ -496,6 +504,28 @@ function dependencySourceRoot(root) {
   return root;
 }
 
+function findOpenTaskForThread(parent, threadId, branchToCreate, isAccepted = taskPath => {
+  const head = gitMaybeIn(taskPath, "rev-parse", "HEAD");
+  return head ? isAncestor(head, "origin/dev") : true;
+}) {
+  if (!threadId || !fs.existsSync(parent)) return null;
+  for (const entry of fs.readdirSync(parent, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const taskPath = path.join(parent, entry.name);
+    let marker;
+    try {
+      marker = readJson(path.join(taskPath, ".bright-task", "task.json"));
+    } catch {
+      continue;
+    }
+    if (marker?.threadId !== threadId) continue;
+    if (!CODEX_BRANCH_RE.test(marker.branch ?? "") || marker.branch === branchToCreate) continue;
+    if (isAccepted(taskPath, marker)) continue;
+    return { branch: marker.branch, path: taskPath };
+  }
+  return null;
+}
+
 function linkDependencyDirs(sourceRoot, targetRoot, dependencyDirs = DEPENDENCY_DIRS) {
   const linked = [];
   for (const relativePath of dependencyDirs) {
@@ -821,6 +851,11 @@ function git(...args) {
 
 function gitMaybe(...args) {
   const result = spawnGit(args, { encoding: "utf8" });
+  return result.status === 0 ? result.stdout.trim() : null;
+}
+
+function gitMaybeIn(cwd, ...args) {
+  const result = spawnSync("git", args, { cwd, encoding: "utf8", env: process.env });
   return result.status === 0 ? result.stdout.trim() : null;
 }
 
