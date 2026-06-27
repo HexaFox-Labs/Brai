@@ -46,6 +46,8 @@ Preview slots are still allocated and released by the existing slot scripts:
 
 The preview slot registry remains `/srv/projects/bright-os-envs/preview-slots.json`; Temporal does not replace that lock or registry.
 
+Native-boundary preview deploys may build a slot-specific APK inside the existing `preview_deploy_started` to `preview_deploy_passed` gate. Accepted native work may rebuild the Dev and Preview A-E APK baseline inside the existing `dev_deploy_started` to `dev_deploy_passed` gate. These APK builds are required deploy substeps, not separate Temporal state transitions; failure still reports through `preview_deploy_failed` or `dev_deploy_failed`.
+
 ## Infra Docs No-preview Path
 
 Infrastructure/documentation-only branches can be classified as `deliveryClass=infra-docs`.

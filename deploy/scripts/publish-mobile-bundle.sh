@@ -66,6 +66,18 @@ if [[ "$MANDATORY" != "true" && "$MANDATORY" != "false" ]]; then
   exit 1
 fi
 
+if [[ ! "$MIN_APK_VERSION_CODE" =~ ^[0-9]+$ || "$MIN_APK_VERSION_CODE" -le 0 ]]; then
+  echo "BRIGHT_OS_MIN_APK_VERSION_CODE must be a positive integer" >&2
+  exit 1
+fi
+
+if [[ -n "$MAX_APK_VERSION_CODE" ]]; then
+  if [[ ! "$MAX_APK_VERSION_CODE" =~ ^[0-9]+$ || "$MAX_APK_VERSION_CODE" -le 0 ]]; then
+    echo "BRIGHT_OS_MAX_APK_VERSION_CODE must be a positive integer when set" >&2
+    exit 1
+  fi
+fi
+
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/bright-mobile-bundle.XXXXXX")"
 cleanup() {
   rm -rf "$TMP_DIR"

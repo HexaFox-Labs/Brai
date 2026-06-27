@@ -15,6 +15,8 @@ Agents must not reuse an existing `codex/*` branch just because Codex Desktop se
 
 A pushed preview-class `codex/*` branch allocates or reuses a preview slot through `deploy/scripts/preview-slots.sh`, deploys that slot, and reports the slot URL. If all slots `A` through `E` are occupied, the branch enters the preview queue until a slot is released. No push means no slot/deploy/queue.
 
+If the preview branch changes the Android native boundary, deploy also builds a slot-specific APK and records the APK file plus Android `versionCode` in the preview slot registry/status page. Dev/Preview OTA manifests then require that exact `versionCode`, so stale slot APKs block with an APK update screen instead of silently running an incompatible web bundle.
+
 Infrastructure/documentation-only branches can use the Temporal no-preview path when the delivery class is `infra-docs`. That path records `delivery_classified`, `no_preview_required`, `delivery_handoff_*`, and `auto_merge_*` events instead of allocating a slot. Temporal then marks `preview_deploy`, `accepted_preview_promotion`, and `slot_release` as `not_applicable`; after `pr_merged`, the branch lifecycle is complete without a slot.
 
 Local dev server URLs are agent-only verification aids. The user-facing handoff for preview-class project changes is the preview slot URL after `deploy-preview` succeeds; if CI/deploy is not complete, report that blocker instead of asking the project owner to open `localhost` or `127.0.0.1`.

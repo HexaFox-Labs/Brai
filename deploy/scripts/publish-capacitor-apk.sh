@@ -14,7 +14,7 @@ if (!/^\d+\.\d+\.\d+\.\d+$/.test(version)) throw new Error("Unable to resolve Br
 console.log(version);
 ' "$ROOT")}"
 RELEASE_ENV="${BRIGHT_OS_RELEASE_ENV:-production}"
-TARGET_DIR="$ROOT/deploy/releases"
+TARGET_DIR="${BRIGHT_OS_RELEASE_TARGET:-$ROOT/deploy/releases}"
 
 if [[ -n "${BRIGHT_OS_APK_SOURCE:-}" ]]; then
   SOURCE="$BRIGHT_OS_APK_SOURCE"
@@ -46,5 +46,9 @@ chmod u=rw,go=r "$PRIMARY"
   --version "$VERSION" \
   --version-code "${BRIGHT_OS_ANDROID_VERSION_CODE:-1}" \
   --published-at "${BRIGHT_OS_PUBLISHED_AT:-$(date -u +"%Y-%m-%dT%H:%M:%SZ")}"
+
+if [[ "$RELEASE_ENV" =~ ^[a-e]$ && "${BRIGHT_OS_BRANCH:-}" == codex/* ]]; then
+  "$SCRIPT_DIR/preview-slots.sh" apk "$BRIGHT_OS_BRANCH" "${BRIGHT_OS_COMMIT:-}" "${BRIGHT_OS_ANDROID_VERSION_CODE:-1}" "$FILENAME" "$VERSION" >/dev/null
+fi
 
 sha256sum "$PRIMARY"

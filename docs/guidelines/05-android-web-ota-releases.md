@@ -32,6 +32,10 @@ npm run publish:client-web-layer
 
 Build and publish a release APK only when native Android code, Capacitor config, permissions, signing, manifest values, application id, SDK versions, icons, splash assets, native plugins, or native compatibility boundaries change.
 
+Dev and Preview OTA manifests use exact Android `versionCode` compatibility. Web-only changes keep using OTA without an APK rebuild. Native-boundary changes build a new APK for the target environment, and accepted native work rebuilds the shared Dev and Preview A-E APK baseline from `dev`.
+
+Preview slot status records branch-specific APK file and `versionCode` when a `codex/*` native preview publishes a slot APK. Releasing an unaccepted slot with a branch-specific APK rebuilds that slot's baseline APK from `dev` before freeing the slot.
+
 Release APK signing is env-only. Required variables:
 
 - `BRIGHT_OS_ANDROID_KEYSTORE_PATH`

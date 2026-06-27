@@ -50,6 +50,8 @@ Ordinary `codex/*` task branch pushes to `origin` and their preview deploys SHAL
 
 Infrastructure/documentation-only task branches MAY skip preview slot allocation only when Temporal classifies the branch as `deliveryClass=infra-docs` and records `no_preview_required`.
 
+Native-boundary preview branches SHALL publish a slot-specific APK before handoff, and accepted native work SHALL rebuild the shared Dev and Preview A-E APK baseline from `dev`.
+
 #### Scenario: Preview-class project-file change begins
 - **WHEN** preview-class work changes repository files
 - **THEN** the agent creates or continues an appropriate `codex/<task-slug>` branch
@@ -68,6 +70,14 @@ Infrastructure/documentation-only task branches MAY skip preview slot allocation
 - **AND** the task branch cannot be pushed or deployed to a preview slot
 - **THEN** the agent reports the exact push, CI, or deploy blocker
 - **AND** the agent does not describe the task as complete
+
+#### Scenario: Native preview branch is handed off
+- **WHEN** a `codex/*` branch changes native Android behavior
+- **THEN** the handoff includes the preview APK link and Android `versionCode`
+
+#### Scenario: Native preview branch is accepted
+- **WHEN** a native preview branch is merged into `dev`
+- **THEN** the shared non-production APK baseline is rebuilt from `dev`
 
 #### Scenario: Infrastructure docs work does not need a preview slot
 - **WHEN** work changes only infrastructure or documentation files that do not need a runnable preview

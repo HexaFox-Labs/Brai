@@ -8,6 +8,8 @@
 
 Preview-class `codex/*` pushes deploy to an allocated preview slot (`a.test` through `e.test`) with that slot's web shell, API service, SQLite data path, and mobile OTA endpoint. Production apps and `dev.brightos.world` are not updated until the branch is accepted into `dev` or promoted to `main`.
 
+When a preview branch changes the Android native boundary, the preview deploy also builds a slot-specific APK, records its APK file and `versionCode` in the preview slot registry, and publishes an OTA manifest that requires that exact `versionCode`. Accepted native work rebuilds the Dev and Preview A-E APK baseline from `dev`; unaccepted native preview slot release rebuilds the freed slot baseline from `dev`.
+
 Infrastructure/documentation-only branches can use the Temporal no-preview path when the delivery class is `infra-docs`. That path records `delivery_classified`, `no_preview_required`, `delivery_handoff_*`, and `auto_merge_*`, marks `preview_deploy`, `accepted_preview_promotion`, and `slot_release` as `not_applicable`, and completes the branch lifecycle at `pr_merged` without a preview slot.
 
 Preview deployments are review environments, not accepted build versions. They record deployment metadata in `deployment_records`, but their visible app/web version must stay on the current accepted `dev` version with a preview OTA bundle suffix. A new public build version becomes real only after the change is accepted into `dev` and `deploy-dev` succeeds.

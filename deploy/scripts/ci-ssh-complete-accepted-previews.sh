@@ -84,6 +84,7 @@ for branch in "${REQUIRED_BRANCHES[@]}"; do
 
   signal_temporal_preview "$branch" slot_release_started
   if BRIGHT_OS_BRANCH="$branch" \
+    BRIGHT_OS_ACCEPTED_PREVIEW=true \
     BRIGHT_OS_REQUIRE_PREVIEW_SLOT_RELEASE=true \
       "$SCRIPT_DIR/ci-ssh-release-slot.sh"; then
     signal_temporal_preview "$branch" slot_released
@@ -99,7 +100,7 @@ for branch in "${CLEANUP_BRANCHES[@]}"; do
   signal_temporal_preview "$branch" accepted_preview_promoted
 
   signal_temporal_preview "$branch" slot_release_started
-  if BRIGHT_OS_BRANCH="$branch" "$SCRIPT_DIR/ci-ssh-release-slot.sh"; then
+  if BRIGHT_OS_BRANCH="$branch" BRIGHT_OS_ACCEPTED_PREVIEW=true "$SCRIPT_DIR/ci-ssh-release-slot.sh"; then
     signal_temporal_preview "$branch" slot_released
   else
     signal_temporal_preview "$branch" slot_release_failed

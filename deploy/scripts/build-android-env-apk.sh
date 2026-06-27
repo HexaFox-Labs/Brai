@@ -25,6 +25,9 @@ if [[ "$ENVIRONMENT" == "prod" ]]; then
 fi
 
 export BRIGHT_OS_ROOT="$ROOT"
+if [[ -z "${BRIGHT_OS_ANDROID_VERSION_CODE:-}" ]]; then
+  export BRIGHT_OS_ANDROID_VERSION_CODE="$("$SCRIPT_DIR/apk-version-code.sh" next "manual $FLAVOR APK")"
+fi
 export BRIGHT_OS_APP_VERSION="${BRIGHT_OS_APP_VERSION:-$("$NODE_BIN" -e '
 const fs = require("node:fs");
 const path = require("node:path");
@@ -39,10 +42,25 @@ export NEXT_PUBLIC_BRIGHT_OS_COMMIT="${BRIGHT_OS_COMMIT:-}"
 export NEXT_PUBLIC_BRIGHT_OS_OTA_CHANNEL="$DOMAIN/mobile-update"
 export NEXT_PUBLIC_BRIGHT_OS_API="/api"
 export NEXT_PUBLIC_BRIGHT_OS_ANDROID_API="$ANDROID_API"
+if [[ -z "${JAVA_HOME:-}" && -d "/srv/opt/jdk-21" ]]; then
+  export JAVA_HOME="/srv/opt/jdk-21"
+  export PATH="$JAVA_HOME/bin:$PATH"
+fi
+SIGNING_ENV="${BRIGHT_OS_ANDROID_SIGNING_ENV:-/srv/projects/bright-os-envs/android-signing/signing.env}"
+if [[ -f "$SIGNING_ENV" ]]; then
+  set -a
+  # shellcheck source=/dev/null
+  . "$SIGNING_ENV"
+  set +a
+fi
 
 (cd "$ROOT" && "$NPM_BIN" run app:build)
 (cd "$ROOT" && "$NPM_BIN" run app:cap:sync)
-(cd "$ROOT/apps/bright_os_app/android" && ./gradlew "$GRADLE_TASK")
+if [[ -x "/srv/opt/android-build-env/build-android.sh" ]]; then
+  /srv/opt/android-build-env/build-android.sh "$ROOT/apps/bright_os_app/android" "$GRADLE_TASK"
+else
+  (cd "$ROOT/apps/bright_os_app/android" && ./gradlew "$GRADLE_TASK")
+fi
 
 APK="$ROOT/apps/bright_os_app/android/app/build/outputs/apk/$FLAVOR/release/app-$FLAVOR-release.apk"
 if [[ ! -f "$APK" ]]; then

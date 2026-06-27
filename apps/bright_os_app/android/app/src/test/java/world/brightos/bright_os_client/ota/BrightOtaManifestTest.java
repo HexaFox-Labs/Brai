@@ -34,6 +34,26 @@ public class BrightOtaManifestTest {
     }
 
     @Test
+    public void acceptsExactApkRequirement() throws Exception {
+        BrightOtaManifest manifest = BrightOtaManifest.parse(validManifest().replace("\"maxApkVersionCode\":null", "\"maxApkVersionCode\":2"));
+
+        manifest.validate(new URL("https://app.brightos.world/mobile-update/manifest.json"), 2);
+
+        assertTrue(manifest.isCompatibleWith(2));
+    }
+
+    @Test
+    public void rejectsApkAboveMaxRequirement() throws Exception {
+        BrightOtaManifest manifest = BrightOtaManifest.parse(validManifest().replace("\"maxApkVersionCode\":null", "\"maxApkVersionCode\":1"));
+
+        assertFalse(manifest.isCompatibleWith(2));
+        assertThrows(
+            BrightOtaException.class,
+            () -> manifest.validate(new URL("https://app.brightos.world/mobile-update/manifest.json"), 2)
+        );
+    }
+
+    @Test
     public void rejectsCrossOriginArchiveUrl() throws Exception {
         BrightOtaManifest manifest = BrightOtaManifest.parse(
             validManifest().replace(
