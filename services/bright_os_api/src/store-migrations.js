@@ -485,15 +485,6 @@ export const migrationMethods = {
       CREATE INDEX IF NOT EXISTS idx_inbox_normalized_updated
       ON inbox (is_normalized, updated_at_utc);
 
-      CREATE INDEX IF NOT EXISTS idx_inbox_source_key_created
-      ON inbox (source_key, created_at_utc);
-
-      CREATE INDEX IF NOT EXISTS idx_inbox_record_type_created
-      ON inbox (record_type_id, created_at_utc);
-
-      CREATE INDEX IF NOT EXISTS idx_inbox_related
-      ON inbox (related_inbox_id);
-
       CREATE TABLE IF NOT EXISTS inbox_events (
         event_id TEXT PRIMARY KEY,
         device_id TEXT NOT NULL,
