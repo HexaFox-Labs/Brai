@@ -32,6 +32,8 @@ if ! command -v gh >/dev/null 2>&1; then
   exit 1
 fi
 
+ROOT="$(git rev-parse --show-toplevel)"
+
 if [[ -n "$(git status --porcelain)" ]]; then
   echo "Working tree must be clean before accepting preview work." >&2
   exit 1
@@ -44,6 +46,8 @@ if git merge-base --is-ancestor "$HEAD_SHA" "origin/$BASE_BRANCH"; then
   echo "Preview branch already accepted: $HEAD_SHA is included in origin/$BASE_BRANCH"
   exit 0
 fi
+
+"$ROOT/scripts/use-node22.sh" node "$ROOT/scripts/bright-task.mjs" require-preview "$BRANCH" "$HEAD_SHA"
 
 PR_NUMBER="$(gh pr list --base "$BASE_BRANCH" --head "$BRANCH" --state open --json number --jq ".[0].number // \"\"")"
 if [[ -z "$PR_NUMBER" ]]; then

@@ -25,15 +25,17 @@ Use the checked-in task starter before the first project-file change:
 scripts/bright-task-start.sh <task-slug>
 ```
 
-The starter fetches `origin/dev`, refuses to reuse an existing remote `codex/<task-slug>`, creates a separate worktree under `../bright-os-worktrees/<task-slug>`, creates `codex/<task-slug>` with `--no-track`, writes ignored local task state under `.bright-task/` including the current Codex thread id, and links existing ignored `node_modules` directories from the main checkout when present. In Codex Desktop this sibling worktree is outside the normal repository sandbox, so run the starter with `sandbox_permissions=require_escalated` immediately. If that is unavailable, stop without project-file changes; do not create or switch to a manual fallback branch in the current checkout.
+The starter fetches `origin/dev`, refuses to reuse an existing remote `codex/<task-slug>`, creates a separate worktree under `../bright-os-worktrees/<task-slug>`, creates `codex/<task-slug>` with `--no-track`, writes ignored local task state under `.bright-task/` including the current Codex thread id, enables `.githooks`, and links existing ignored `node_modules` directories from the main checkout when present. In Codex Desktop this sibling worktree is outside the normal repository sandbox, so run the starter with `sandbox_permissions=require_escalated` immediately. If that is unavailable, stop without project-file changes; do not create or switch to a manual fallback branch in the current checkout.
 
 Repository Codex hooks are defined in `.codex/hooks.json`:
 
-- `PreToolUse` fetches current `origin/dev` and blocks write-like `exec_command`/`Bash` commands and `apply_patch` unless the checkout is a valid `codex/*` task branch based on current `origin/dev`.
+- `PreToolUse` recursively inspects namespaced, custom, and nested tool calls such as `functions.apply_patch`, `custom_tool_call`, and `multi_tool_use.parallel`. Before a valid task state exists, only explicitly read-only shell commands and the official task starter are allowed; unknown shell commands are treated as write-like and blocked.
 - The local `.bright-task/` marker must come from `scripts/bright-task-start.sh` (`mode: new`) or an explicit same-thread `node scripts/bright-task.mjs follow-up` (`mode: follow-up`). Automatically created or manual markers are invalid for project-file writes.
 - When Codex provides a thread id, the marker must match the current thread. A different or missing thread id blocks project-file writes, commits, and pushes; start a new task branch instead of continuing the auto-selected branch.
+- Manual creation or switching of `codex/*` branches through `git switch`, `git checkout`, `git branch`, or `git worktree` is blocked; use the task starter or same-thread follow-up marker instead.
 - If the current branch or its remote head is already included in `origin/dev`, it is treated as accepted work and cannot receive more project-file changes. Start a new task branch even if Codex Desktop selected the old branch by default.
-- `Stop` blocks handoff when the working tree is dirty or when project-file writes were made without a verified preview receipt.
+- `pre-commit` marks local write intent, and `Stop` derives implementation work from Git state: dirty files, staged changes, local commits or diff against `origin/dev`, marker validity, and the exact preview receipt for the current `HEAD`.
+- `node scripts/bright-task.mjs doctor --strict` prints the same guard state and exits nonzero when the checkout is not ready for handoff.
 
 Codex requires new or changed repo hooks to be reviewed and trusted through `/hooks`; that trust is local Codex security state and is not committed to Git.
 
@@ -69,7 +71,7 @@ If this flow changes, update the Temporal workflow state, signals, tests, and th
 Acceptance trigger:
 
 - If the project owner says `Принято`, `принимаю`, `accepted`, or an equivalent acceptance phrase after a preview handoff, run `deploy/scripts/accept-preview.sh <codex-branch>` immediately. Negated phrases such as `пока не принято` or `не принято` are not acceptance triggers.
-- The script is the single local acceptance entrypoint. It creates or reuses a GitHub PR into `dev` and calls `gh pr merge --merge --auto --match-head-commit <sha>` so branch protection, checks, merge queue, `deploy-dev`, metadata promotion, and preview-slot release stay in GitHub Actions.
+- The script is the single local acceptance entrypoint. It first requires verified preview state for the exact `origin/<codex-branch>` head, then creates or reuses a GitHub PR into `dev` and calls `gh pr merge --merge --auto --match-head-commit <sha>` so branch protection, checks, merge queue, `deploy-dev`, metadata promotion, and preview-slot release stay in GitHub Actions.
 - After starting acceptance, monitor GitHub Actions until `dev` deploy and preview-slot release finish, or report the exact PR/check/merge-queue/deploy/release blocker. Accepted preview slots are released only by the successful `deploy-dev` post-step, after metadata promotion; that step requires a real slot release and fails if the accepted branch did not release one.
 
 The development repository default branch should be `dev` once `dev` exists. If `dev` is missing during the first accepted preview, bootstrap it from the latest accepted workflow/source commit, set GitHub default branch to `dev`, then merge the accepted `codex/*` branch into `dev` through a PR so the normal promotion and slot-release jobs run.
