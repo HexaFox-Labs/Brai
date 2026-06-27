@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import Database from 'better-sqlite3';
 import { createBrightOsServer } from '../src/server.js';
 import {
   RELEASE_PASSWORD,
@@ -41,6 +42,14 @@ test('migration seeds legacy sessions and survives close and reopen', async () =
     let state = await request(baseUrl, '/v1/timer/state');
     assert.ok(state.body.active_session);
     assert.equal(runtime.store.db.prepare('SELECT COUNT(*) AS count FROM timer_events').get().count, 3);
+    assert.equal(runtime.store.db.prepare('SELECT COUNT(*) AS count FROM focus_sessions').get().count, 2);
+    assert.equal(runtime.store.db.prepare('SELECT COUNT(*) AS count FROM focus_session_versions WHERE is_current = 1').get().count, 2);
+    assert.equal(
+      runtime.store.db
+        .prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name = 'timer_sessions'")
+        .get().count,
+      0
+    );
 
     await runtime.close();
     runtime = createBrightOsServer({
@@ -58,6 +67,7 @@ test('migration seeds legacy sessions and survives close and reopen', async () =
     state = await request(baseUrl, '/v1/timer/state');
     assert.ok(state.body.active_session);
     assert.equal(state.body.server_revision, 3);
+    assert.equal(runtime.store.db.prepare('SELECT COUNT(*) AS count FROM focus_session_versions WHERE is_current = 1').get().count, 2);
   } finally {
     await runtime.close();
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -108,6 +118,210 @@ test('migration renames actions tables to activities and seeds items', async () 
   }
 });
 
+test('migration adds inbox entity schema and metadata', async () => {
+  const fixture = await createFixture(['2026-06-26T12:00:00.000Z']);
+
+  try {
+    const columns = new Set(
+      fixture.store.db.prepare('PRAGMA table_info(inbox)').all().map((row) => row.name)
+    );
+    assert.deepEqual(
+      [
+        'id',
+        'title',
+        'description_text',
+        'source',
+        'source_key',
+        'response_required',
+        'related_inbox_id',
+        'record_type_id',
+        'item_date',
+        'author',
+        'preliminary_section',
+        'urgency',
+        'attachment_links_json',
+        'explanation_text',
+        'normalization_text',
+        'is_normalized',
+        'created_at_utc',
+        'updated_at_utc',
+        'deleted_at_utc',
+        'last_event_id'
+      ].filter((column) => !columns.has(column)),
+      []
+    );
+
+    const indexes = fixture.store.db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'inbox'")
+      .all()
+      .map((row) => row.name);
+    assert.ok(indexes.includes('idx_inbox_item_date'));
+    assert.ok(indexes.includes('idx_inbox_normalized_updated'));
+    assert.ok(indexes.includes('idx_inbox_source_key_created'));
+    assert.ok(indexes.includes('idx_inbox_record_type_created'));
+    assert.ok(indexes.includes('idx_inbox_related'));
+
+    const items = fixture.store.db
+      .prepare("SELECT id FROM items WHERE id IN ('activities', 'inbox') ORDER BY id")
+      .all()
+      .map((row) => row.id);
+    assert.deepEqual(items, ['activities', 'inbox']);
+
+    const description = fixture.store.db
+      .prepare("SELECT title, short_description FROM table_descriptions WHERE table_name = 'inbox'")
+      .get();
+    assert.equal(description.title, 'Входящие');
+    assert.equal(description.short_description, 'Список входящих материалов.');
+
+    assert.equal(
+      fixture.store.db.prepare('SELECT description FROM schema_migrations WHERE version = 32').get().description,
+      'add inbox work entity schema'
+    );
+    assert.equal(
+      fixture.store.db.prepare('SELECT description FROM schema_migrations WHERE version = 33').get().description,
+      'add inbox offline event log'
+    );
+    assert.equal(
+      fixture.store.db.prepare('SELECT description FROM schema_migrations WHERE version = 34').get().description,
+      'add inbox inbound metadata and record types'
+    );
+    assert.equal(
+      fixture.store.db.prepare('SELECT description FROM schema_migrations WHERE version = 35').get().description,
+      'add handler registry'
+    );
+    assert.ok(fixture.store.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'inbox_events'").get());
+    assert.ok(fixture.store.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'inbox_record_types'").get());
+    assert.ok(fixture.store.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'handlers'").get());
+    assert.deepEqual(
+      fixture.store.db.prepare('SELECT id FROM inbox_record_types ORDER BY id').all().map((row) => row.id),
+      [1, 2, 3, 4]
+    );
+    assert.equal(
+      fixture.store.db.prepare("SELECT title FROM table_descriptions WHERE table_name = 'inbox_events'").get().title,
+      'События входящих'
+    );
+    assert.equal(
+      fixture.store.db.prepare("SELECT title FROM table_descriptions WHERE table_name = 'handlers'").get().title,
+      'Обработчики'
+    );
+    const handler = fixture.store.db
+      .prepare(`
+        SELECT target, kind, trigger_description, conditions_description, llm_provider,
+          llm_prompt_template, llm_timeout_ms, source_module
+        FROM handlers
+        WHERE id = 'inbound.inbox.title_generator'
+      `)
+      .get();
+    assert.equal(handler.target, 'inbox');
+    assert.equal(handler.kind, 'inbound_llm_title_generator');
+    assert.match(handler.trigger_description, /POST \/v1\/in\/inbox/);
+    assert.match(handler.conditions_description, /duplicate idempotency_key/);
+    assert.equal(handler.llm_provider, 'codex-cli');
+    assert.match(handler.llm_prompt_template, /{{text}}/);
+    assert.equal(handler.llm_timeout_ms, 3000);
+    assert.equal(handler.source_module, 'services/bright_os_api/src/inbound.js');
+
+    fixture.store.migrate();
+    assert.equal(fixture.store.db.prepare("SELECT COUNT(*) AS count FROM items WHERE id = 'inbox'").get().count, 1);
+    assert.equal(
+      fixture.store.db
+        .prepare("SELECT COUNT(*) AS count FROM handlers WHERE id = 'inbound.inbox.title_generator'")
+        .get().count,
+      1
+    );
+  } finally {
+    await fixture.close();
+  }
+});
+
+test('migration upgrades legacy inbox table before metadata indexes', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bright-os-api-inbox-migrate-'));
+  const dbPath = path.join(tmp, 'bright_os.sqlite');
+  const db = new Database(dbPath);
+  db.exec(`
+    CREATE TABLE inbox (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      description_text TEXT NOT NULL DEFAULT '',
+      source TEXT NOT NULL DEFAULT '',
+      item_date TEXT,
+      author TEXT NOT NULL DEFAULT '',
+      preliminary_section TEXT NOT NULL DEFAULT '',
+      urgency TEXT NOT NULL DEFAULT '',
+      attachment_links_json TEXT NOT NULL DEFAULT '[]',
+      explanation_text TEXT NOT NULL DEFAULT '',
+      normalization_text TEXT NOT NULL DEFAULT '',
+      is_normalized INTEGER NOT NULL DEFAULT 0 CHECK (is_normalized IN (0, 1)),
+      created_at_utc TEXT NOT NULL,
+      updated_at_utc TEXT NOT NULL,
+      deleted_at_utc TEXT,
+      last_event_id TEXT
+    );
+
+    INSERT INTO inbox (
+      id,
+      title,
+      description_text,
+      source,
+      item_date,
+      attachment_links_json,
+      explanation_text,
+      is_normalized,
+      created_at_utc,
+      updated_at_utc,
+      last_event_id
+    )
+    VALUES (
+      'inbound:inbox:legacy',
+      'Legacy inbound',
+      '',
+      'legacy-source',
+      '2026-06-26',
+      '[]',
+      'legacy explanation',
+      0,
+      '2026-06-26T12:00:00.000Z',
+      '2026-06-26T12:00:00.000Z',
+      'inbound:inbox:legacy'
+    );
+  `);
+  db.close();
+
+  const runtime = createBrightOsServer({
+    dbPath,
+    token: TOKEN,
+    now: () => new Date('2026-06-27T10:30:00.000Z'),
+    logger: { error: () => {} }
+  });
+
+  try {
+    await new Promise((resolve) => runtime.server.listen(0, '127.0.0.1', resolve));
+    const columns = new Set(
+      runtime.store.db.prepare('PRAGMA table_info(inbox)').all().map((row) => row.name)
+    );
+    assert.ok(columns.has('source_key'));
+    assert.ok(columns.has('response_required'));
+    assert.ok(columns.has('related_inbox_id'));
+    assert.ok(columns.has('record_type_id'));
+    assert.equal(
+      runtime.store.db.prepare("SELECT record_type_id FROM inbox WHERE id = 'inbound:inbox:legacy'").get()
+        .record_type_id,
+      1
+    );
+
+    const indexes = runtime.store.db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'inbox'")
+      .all()
+      .map((row) => row.name);
+    assert.ok(indexes.includes('idx_inbox_source_key_created'));
+    assert.ok(indexes.includes('idx_inbox_record_type_created'));
+    assert.ok(indexes.includes('idx_inbox_related'));
+  } finally {
+    await runtime.close();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('migration seeds unified build version ledger', async () => {
   const fixture = await createFixture(['2026-06-22T00:00:00.000Z']);
 
@@ -144,7 +358,7 @@ test('migration seeds unified build version ledger', async () => {
     assert.match(baselineApk.short_changes, /APK/);
     assert.match(baselineApk.detailed_changes, /versionCode 1/);
     assert.match(baselineApk.detailed_changes, /Release signing material/);
-    assert.equal(baselineApk.reason, 'Initial public baseline.');
+    assert.match(baselineApk.reason, /first installable public Android APK baseline/);
 
     const baselineBuild = versions.find((version) => version.version_type_id === 'build' && version.version === '0.0.1.1');
     assert.ok(baselineBuild);
@@ -155,7 +369,7 @@ test('migration seeds unified build version ledger', async () => {
     assert.equal(baselineBuild.released_at_utc, '2026-06-23T09:12:45Z');
     assert.match(baselineBuild.short_changes, /web\/OTA/);
     assert.match(baselineBuild.detailed_changes, /min APK versionCode 1/);
-    assert.equal(baselineBuild.reason, 'Initial public baseline.');
+    assert.match(baselineBuild.reason, /first clean public web\/OTA version/);
 
     const firstTaskBuild = versions.find((version) => version.version_type_id === 'build' && version.version === '0.0.2.1');
     assert.ok(firstTaskBuild);
@@ -165,7 +379,7 @@ test('migration seeds unified build version ledger', async () => {
     assert.equal(firstTaskBuild.apk_version, 1);
     assert.equal(firstTaskBuild.released_at_utc, '2026-06-24T13:45:00Z');
     assert.match(firstTaskBuild.detailed_changes, /dev promotions to main increment Y/);
-    assert.equal(firstTaskBuild.reason, 'Accepted first public task into dev.');
+    assert.match(firstTaskBuild.reason, /explicit X\.Y\.Z\.S rules/);
 
     const secondTaskBuild = versions.find((version) => version.version_type_id === 'build' && version.version === '0.0.3.1');
     assert.ok(secondTaskBuild);
@@ -175,7 +389,7 @@ test('migration seeds unified build version ledger', async () => {
     assert.equal(secondTaskBuild.apk_version, 1);
     assert.equal(secondTaskBuild.released_at_utc, '2026-06-24T14:05:00Z');
     assert.match(secondTaskBuild.detailed_changes, /codex task branches deploy to isolated preview slots/);
-    assert.equal(secondTaskBuild.reason, 'Accepted clean task finish workflow into dev.');
+    assert.match(secondTaskBuild.reason, /unfinished local work/);
 
     const thirdTaskBuild = versions.find((version) => version.version_type_id === 'build' && version.version === '0.0.4.1');
     assert.ok(thirdTaskBuild);
@@ -185,7 +399,7 @@ test('migration seeds unified build version ledger', async () => {
     assert.equal(thirdTaskBuild.apk_version, 1);
     assert.equal(thirdTaskBuild.released_at_utc, '2026-06-24T14:25:00Z');
     assert.match(thirdTaskBuild.detailed_changes, /preview slot has already been released/);
-    assert.equal(thirdTaskBuild.reason, 'Accepted preview cleanup workflow into dev.');
+    assert.match(thirdTaskBuild.reason, /preview cleanup could fail/);
 
     const fourthTaskBuild = versions.find((version) => version.version_type_id === 'build' && version.version === '0.0.5.1');
     assert.ok(fourthTaskBuild);
@@ -195,7 +409,7 @@ test('migration seeds unified build version ledger', async () => {
     assert.equal(fourthTaskBuild.apk_version, 1);
     assert.equal(fourthTaskBuild.released_at_utc, '2026-06-24T14:40:00Z');
     assert.match(fourthTaskBuild.detailed_changes, /environment-specific favicon/);
-    assert.equal(fourthTaskBuild.reason, 'Accepted dev and preview favicon separation into dev.');
+    assert.match(fourthTaskBuild.reason, /visually distinguishable/);
 
     const fifthTaskBuild = versions.find((version) => version.version_type_id === 'build' && version.version === '0.0.6.1');
     assert.ok(fifthTaskBuild);
@@ -205,7 +419,7 @@ test('migration seeds unified build version ledger', async () => {
     assert.equal(fifthTaskBuild.apk_version, 1);
     assert.equal(fifthTaskBuild.released_at_utc, '2026-06-24T15:10:00Z');
     assert.match(fifthTaskBuild.detailed_changes, /preview deployments keep the current accepted dev app version/);
-    assert.equal(fifthTaskBuild.reason, 'Accepted preview/dev version separation into dev.');
+    assert.match(fifthTaskBuild.reason, /unaccepted version numbers/);
 
     const sixthTaskBuild = versions.find((version) => version.version_type_id === 'build' && version.version === '0.0.7.1');
     assert.ok(sixthTaskBuild);
@@ -215,7 +429,7 @@ test('migration seeds unified build version ledger', async () => {
     assert.equal(sixthTaskBuild.apk_version, 1);
     assert.equal(sixthTaskBuild.released_at_utc, '2026-06-24T18:20:00Z');
     assert.match(sixthTaskBuild.detailed_changes, /production Android web\/OTA bundles use the public API endpoint/);
-    assert.equal(sixthTaskBuild.reason, 'Accepted production Android OTA API endpoint fix into dev.');
+    assert.match(sixthTaskBuild.reason, /public API endpoint/);
 
     const eighthTaskBuild = versions.find((version) => version.version_type_id === 'build' && version.version === '0.0.8.1');
     assert.ok(eighthTaskBuild);
@@ -224,23 +438,23 @@ test('migration seeds unified build version ledger', async () => {
     assert.equal(eighthTaskBuild.build_version, 8);
     assert.equal(eighthTaskBuild.apk_version, 1);
     assert.equal(eighthTaskBuild.released_at_utc, '2026-06-24T21:40:47Z');
-    assert.match(eighthTaskBuild.detailed_changes, /Z now matches the accepted GitHub PR number/);
-    assert.equal(eighthTaskBuild.reason, 'Accepted PR/version ledger alignment into dev.');
+    assert.match(eighthTaskBuild.detailed_changes, /Z follows the accepted dev build sequence/);
+    assert.match(eighthTaskBuild.reason, /accepted dev build numbering/);
 
     const ninthTaskBuild = versions.find((version) => version.version_type_id === 'build' && version.version === '0.0.9.1');
     assert.ok(ninthTaskBuild);
     assert.equal(ninthTaskBuild.build_version, 9);
-    assert.equal(ninthTaskBuild.reason, 'Accepted PR #9 into dev.');
+    assert.match(ninthTaskBuild.reason, /mobile navigation lacked/);
 
     const tenthTaskBuild = versions.find((version) => version.version_type_id === 'build' && version.version === '0.0.10.1');
     assert.ok(tenthTaskBuild);
     assert.equal(tenthTaskBuild.build_version, 10);
-    assert.equal(tenthTaskBuild.reason, 'Accepted PR #10 into dev.');
+    assert.match(tenthTaskBuild.reason, /preview slots could remain occupied/);
 
     const eleventhTaskBuild = versions.find((version) => version.version_type_id === 'build' && version.version === '0.0.11.1');
     assert.ok(eleventhTaskBuild);
     assert.equal(eleventhTaskBuild.build_version, 11);
-    assert.equal(eleventhTaskBuild.reason, 'Accepted PR #11 into dev.');
+    assert.match(eleventhTaskBuild.reason, /duplicate or miss accepted build ledger rows/);
 
     fixture.store.migrate();
     assert.equal(fixture.store.db.prepare('SELECT COUNT(*) AS count FROM build_versions').get().count, 12);

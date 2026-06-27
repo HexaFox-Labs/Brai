@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3';
 import { activityEventMethods } from './store-activity-events.js';
+import { inboxEventMethods } from './store-inbox-events.js';
 import { migrationMethods } from './store-migrations.js';
 import { deploymentMethods } from './store-deployments.js';
 import { readModelMethods } from './store-read-models.js';
@@ -21,5 +22,6 @@ Object.assign(
   deploymentMethods,
   timerEventMethods,
   activityEventMethods,
+  inboxEventMethods,
   readModelMethods
 );

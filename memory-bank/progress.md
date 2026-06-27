@@ -16,15 +16,18 @@
 - Fourth accepted `dev` task version is `0.0.5.1`.
 - Fifth accepted `dev` task version is `0.0.6.1`.
 - Sixth accepted `dev` task version is `0.0.7.1`.
-- Current accepted `dev` build version is `0.0.13.1`.
-- The `build_versions` ledger has exactly 13 `build` rows; `Z` must match the build row count and accepted GitHub PR number.
+- Versioning is no longer coupled to GitHub PR numbers.
+- Runtime `build_versions` is the source of truth for current accepted dev builds and production releases.
 
 ## Current State
 
 - Future work starts from `origin/dev` on `codex/*` branches.
 - Task branches do not add `build_versions` rows by themselves.
-- Accepted task merges into `dev` add a `build` ledger row and increment `Z`.
-- Promotions from `dev` to `main` add a `build` ledger row and increment `Y`.
+- Accepted working-branch merges into `dev` add a detailed `build` ledger row with `release_version = 0` and increment `Z`.
+- Build ledger `short_changes` and `detailed_changes` are human-readable release notes; `reason` explains the problem or need behind the change; branch/commit/deploy audit metadata belongs in `build_version_refs` or `deployment_records`.
+- Promotions from `dev` to `main` add a detailed production `build` ledger row, increment `Y`, keep the latest included `Z`, and reference the accepted dev build rows included in the release.
 - Shipped APK releases add an `apk` ledger row and increment `S`.
 - Implementation tasks must finish with clean tracked status, committed, pushed, and deployed to a preview slot with the preview letter and URL reported, unless explicitly local-only. If all preview slots are occupied, the pushed branch is queued and remains incomplete until a slot is assigned.
-- After preview handoff, the project owner saying `Принято` or an equivalent acceptance phrase must run `deploy/scripts/accept-preview.sh <codex-branch>` and monitor PR/merge/deploy/release instead of replying with an acknowledgement. Negated phrases such as `пока не принято` do not trigger acceptance.
+- Branch/preview enforcement is implemented through `scripts/bright-task.mjs`, `.codex/hooks.json`, `.githooks/`, and `scripts/bright-preview-handoff.sh`. New project-file tasks should start through `scripts/bright-task-start.sh <task-slug>`, local Git hooks should be enabled with `git config core.hooksPath .githooks`, and changed Codex hooks must be trusted through `/hooks`.
+- After preview handoff, the project owner saying `Принято` or an equivalent acceptance phrase must run `deploy/scripts/accept-preview.sh <codex-branch>` and monitor PR/merge/deploy/release instead of replying with an acknowledgement. Negated phrases such as `пока не принято` do not trigger acceptance. Accepted preview slots are released by the successful `deploy-dev` post-step after metadata promotion, and a missing slot release is a blocker.
+- Temporal is integrated as the required CI/CD control ledger for `codex/*` branch previews and dev/prod promotions. Existing GitHub Actions checks/deploy jobs and preview slot scripts still execute the deployment work, but strict Temporal signals gate the critical transitions and retain failed checks/deploys/releases as `waiting_for_fix` blockers.

@@ -1,0 +1,6 @@
+- [x] Add lock-protected APK `versionCode` allocation.
+- [x] Publish non-production APK metadata to release index and preview status.
+- [x] Require exact Dev/Preview APK compatibility in OTA manifests.
+- [x] Add Dev/Preview APK incompatibility blocker.
+- [x] Update accepted requirements and release docs.
+- [ ] Archive this OpenSpec change after review.

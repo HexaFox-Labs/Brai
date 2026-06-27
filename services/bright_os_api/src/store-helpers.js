@@ -18,6 +18,13 @@ export const ACTIVITY_EVENT_TYPES = new Set([
   'delete',
   'restore'
 ]);
+export const INBOX_EVENT_PAYLOAD_VERSION = 1;
+export const INBOX_EVENT_TYPES = new Set([
+  'create',
+  'update_title',
+  'update_description',
+  'delete'
+]);
 export const ACTIVITY_STATUSES = new Set(['New', 'Done']);
 
 export function formatSession(session) {
@@ -49,6 +56,31 @@ export function formatActivity(activity) {
     sort_order: Number.isInteger(activity.sort_order) ? activity.sort_order : null,
     deleted_at_utc: activity.deleted_at_utc ?? null,
     restored_at_utc: activity.restored_at_utc ?? null
+  };
+}
+
+export function formatInboxItem(item) {
+  if (!item) return null;
+  return {
+    id: item.id,
+    title: item.title,
+    description_md: item.description_text ?? '',
+    source: item.source ?? '',
+    source_key: item.source_key ?? '',
+    response_required: item.response_required === 1,
+    related_inbox_id: item.related_inbox_id ?? null,
+    record_type_id: Number.isInteger(item.record_type_id) ? item.record_type_id : 4,
+    item_date: item.item_date ?? null,
+    author: item.author ?? '',
+    preliminary_section: item.preliminary_section ?? '',
+    urgency: item.urgency ?? '',
+    attachment_links: parseJsonArray(item.attachment_links_json),
+    explanation_text: item.explanation_text ?? '',
+    normalization_text: item.normalization_text ?? '',
+    is_normalized: item.is_normalized === 1,
+    created_at_utc: item.created_at_utc,
+    updated_at_utc: item.updated_at_utc,
+    deleted_at_utc: item.deleted_at_utc ?? null
   };
 }
 
@@ -145,8 +177,17 @@ export function parseJsonObject(value) {
   }
 }
 
+export function parseJsonArray(value) {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 export function toNullableInteger(value) {
   const number = Number(value);
   return Number.isInteger(number) ? number : null;
 }
-

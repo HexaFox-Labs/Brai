@@ -25,6 +25,20 @@ Bright OS SHALL preserve the existing Caddy route boundaries for web, API proxy,
 - **AND** `/releases*` remains routed to the release/auth flow before the web catch-all
 - **AND** application service ports remain localhost-only
 
+### Requirement: Public site is separated from protected app delivery
+Bright OS SHALL serve the public website from a separate static root from the protected Bright OS app web layer.
+
+#### Scenario: Public site is served
+- **WHEN** `brightos.world` is requested
+- **THEN** Caddy serves the public site static root
+- **AND** Caddy does not apply unified Basic Auth to that route
+- **AND** protected app environments keep their existing authentication boundaries
+
+#### Scenario: Public site assets are published
+- **WHEN** production branch deployment runs
+- **THEN** the public site source is copied to `deploy/site`
+- **AND** the generated public site output is not committed
+
 ### Requirement: Android release uses Capacitor APK artifacts
 Bright OS SHALL publish Capacitor Android APK artifacts through the existing protected release flow after the migration.
 
@@ -107,6 +121,10 @@ Bright OS SHALL publish a release APK whenever a change crosses the native Andro
 ### Requirement: Release versions use one build ledger
 Bright OS SHALL track public release versions in the server SQLite `build_versions` table with type metadata from `version_types`.
 
+`short_changes` and `detailed_changes` SHALL contain human-readable release notes about what changed in the product or delivery workflow.
+
+`reason` SHALL describe the human reason for the change: the problem, risk, or product/workflow need that made the change necessary. Branch names, commit SHAs, target commits, domains, and similar audit metadata SHALL NOT be stored in `reason`; it belongs in `build_version_refs` or deployment records.
+
 #### Scenario: Task branch is prepared
 - **WHEN** a `codex/*` task branch is created or updated before acceptance
 - **THEN** it does not write a `build_versions` row by itself
@@ -179,6 +197,18 @@ Bright OS SHALL provide non-production Android flavors for Dev and preview slots
 - **WHEN** Dev or preview APKs are built
 - **THEN** they use separate application ids, labels, icons, and OTA channels
 - **AND** they can be installed side-by-side with production
+
+### Requirement: Non-production APK builds use exact OTA compatibility
+Bright OS SHALL keep Dev and Preview APK artifacts aligned with their OTA manifests through a monotonic technical Android `versionCode`.
+
+#### Scenario: Native preview APK is published
+- **WHEN** a `codex/*` branch changes the native Android boundary
+- **THEN** the allocated preview slot APK is built with a new Android `versionCode`
+- **AND** the preview release metadata records that APK file and `versionCode`
+
+#### Scenario: Accepted native work reaches dev
+- **WHEN** native-boundary work is accepted into `dev`
+- **THEN** Dev and Preview A-E APKs are rebuilt from the accepted `dev` source
 
 ### Requirement: Deployment metadata is recorded per environment
 Bright OS SHALL record deployment metadata for production, dev, and preview environments.

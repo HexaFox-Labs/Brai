@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { BookOpen, Pencil } from "lucide-react";
 import { installAndroidBackHandler } from "@/shared/platform/platform";
 import { markdownPreviewSource, visibleDescriptionPreview } from "@/shared/activities/text";
-import type { ActionItem } from "@/shared/types/activities";
+import type { ActivityItem } from "@/shared/types/activities";
 import { Button } from "@/shared/ui/button";
 import { hasMarkdownSyntax, MarkdownContent } from "@/shared/ui/markdown-content";
 import { ScrollArea } from "@/shared/ui/scroll-area";
@@ -23,13 +23,13 @@ export function ActivityDetailEditor({
   onTitleDraftChange = () => undefined,
   onAutosaveDetails,
 }: {
-  action: ActionItem;
+  action: ActivityItem;
   titleDraft?: string;
   mode: "desktop" | "mobile";
   focusTitleRequest?: number;
   onClose: () => void;
   onTitleDraftChange?: (actionId: string, title: string | null) => void;
-  onAutosaveDetails: (action: ActionItem, title: string, descriptionMd: string) => Promise<void>;
+  onAutosaveDetails: (action: ActivityItem, title: string, descriptionMd: string) => Promise<void>;
 }) {
   const initial = activityDraftValues(action);
   const title = titleDraft ?? initial.title;
@@ -256,7 +256,7 @@ export function ActivityDetailEditor({
 
   return (
     <aside
-      className="actions-detail-panel desktop grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3 overflow-hidden pl-7 max-[860px]:hidden"
+      className="actions-detail-panel desktop grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3 overflow-hidden pl-7 pr-7 max-[860px]:hidden"
       aria-label="Редактирование действия"
       data-nav-swipe-exclusion
       onKeyDown={onKeyDown}

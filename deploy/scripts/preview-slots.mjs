@@ -28,6 +28,9 @@ try {
     case "failed":
       result = updateOwnedSlot(registry, args[0], args[1], now, "failed");
       break;
+    case "apk":
+      result = updateOwnedApk(registry, args[0], args[1], args[2], args[3], args[4], now);
+      break;
     case "release":
       result = release(registry, args[0], now);
       break;
@@ -38,7 +41,7 @@ try {
       result = { ok: true, registry };
       break;
     default:
-      throw new Error("usage: preview-slots.sh init|status|allocate <branch> <commit>|ready <branch> <commit>|failed <branch> <commit>|release <branch-or-slot>|dequeue <branch>");
+      throw new Error("usage: preview-slots.sh init|status|allocate <branch> <commit>|ready <branch> <commit>|failed <branch> <commit>|apk <branch> <commit> <versionCode> <file> <version>|release <branch-or-slot>|dequeue <branch>");
   }
 
   writeRegistry(registry);
@@ -87,6 +90,25 @@ function updateOwnedSlot(registry, branch, commit, now, status) {
   Object.assign(existing.entry, {
     status,
     commit: commit ?? existing.entry.commit,
+    updated_at: now,
+  });
+  return { ok: true, slot: existing.slot, entry: existing.entry };
+}
+
+function updateOwnedApk(registry, branch, commit, versionCode, file, version, now) {
+  requireBranch(branch);
+  const existing = findByBranch(registry, branch);
+  if (!existing) throw new Error(`branch has no preview slot: ${branch}`);
+  const numericVersionCode = Number(versionCode);
+  if (!Number.isInteger(numericVersionCode) || numericVersionCode <= 0) {
+    throw new Error(`invalid APK versionCode: ${versionCode}`);
+  }
+  Object.assign(existing.entry, {
+    commit: commit ?? existing.entry.commit,
+    apk_version_code: numericVersionCode,
+    apk_file: file ?? null,
+    apk_version: version ?? null,
+    apk_updated_at: now,
     updated_at: now,
   });
   return { ok: true, slot: existing.slot, entry: existing.entry };
@@ -151,6 +173,10 @@ function defaultSlot(slot) {
     url: `https://${env.domain}`,
     android_app: env.androidApp,
     display_label: slot,
+    apk_version_code: null,
+    apk_file: null,
+    apk_version: null,
+    apk_updated_at: null,
     assigned_at: null,
     updated_at: null,
   };
@@ -162,6 +188,9 @@ function renderStatusPage(registry) {
     .map((slot) => {
       const entry = registry[slot];
       const commit = entry.commit ? entry.commit.slice(0, 12) : "none";
+      const env = environments[`preview-${slot.toLowerCase()}`];
+      const apkUrl = entry.apk_file ? `https://${env.domain}/releases/${entry.apk_file}` : null;
+      const apkStatus = entry.apk_version_code ? "apk current" : "apk missing";
       return `<section class="slot slot-${escapeHtml(entry.status)}">
         <h2>${slot}</h2>
         <dl>
@@ -170,6 +199,8 @@ function renderStatusPage(registry) {
           <div><dt>Commit</dt><dd>${escapeHtml(commit)}</dd></div>
           <div><dt>URL</dt><dd><a href="${escapeHtml(entry.url)}">${escapeHtml(entry.url)}</a></dd></div>
           <div><dt>Android</dt><dd>${escapeHtml(entry.android_app)}</dd></div>
+          <div><dt>APK</dt><dd>${apkUrl ? `<a href="${escapeHtml(apkUrl)}">${escapeHtml(entry.apk_file)}</a>` : escapeHtml(apkStatus)}</dd></div>
+          <div><dt>APK versionCode</dt><dd>${escapeHtml(entry.apk_version_code ?? "none")}</dd></div>
         </dl>
       </section>`;
     })

@@ -5,7 +5,7 @@ import process from "node:process";
 
 const args = parseArgs(process.argv.slice(2));
 const root = process.env.BRIGHT_OS_ROOT ?? path.resolve(import.meta.dirname, "../..");
-const releaseDir = path.join(root, "deploy/releases");
+const releaseDir = process.env.BRIGHT_OS_RELEASE_TARGET ?? path.join(root, "deploy/releases");
 const indexPath = path.join(releaseDir, "releases.json");
 const environments = JSON.parse(fs.readFileSync(path.join(root, "deploy/environments.json"), "utf8")).environments;
 const releaseKey = required(args, "release");

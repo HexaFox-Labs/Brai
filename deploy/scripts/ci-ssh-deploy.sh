@@ -13,12 +13,8 @@ ENVS_ROOT="${BRIGHT_OS_ENVS_ROOT:-/srv/projects/bright-os-envs}"
 UPLOAD_ROOT="${BRIGHT_DEPLOY_UPLOAD_ROOT:-$ENVS_ROOT/ci-uploads}"
 SAFE_BRANCH="$(printf '%s' "$BRIGHT_OS_BRANCH" | tr -c 'A-Za-z0-9._-' '-')"
 REMOTE_UPLOAD="$UPLOAD_ROOT/$SAFE_BRANCH"
-ACCEPTED_PR_NUMBER="${BRIGHT_OS_ACCEPTED_PR_NUMBER:-}"
-if [[ -z "$ACCEPTED_PR_NUMBER" && "$BRIGHT_OS_BRANCH" == "dev" ]]; then
-  HEAD_MESSAGE="$(git log -1 --pretty=%B 2>/dev/null || true)"
-  if [[ "$HEAD_MESSAGE" =~ Merge[[:space:]]pull[[:space:]]request[[:space:]]#([0-9]+) ]]; then
-    ACCEPTED_PR_NUMBER="${BASH_REMATCH[1]}"
-  fi
+if [[ -z "${BRIGHT_OS_NATIVE_APK_CHANGE:-}" ]]; then
+  BRIGHT_OS_NATIVE_APK_CHANGE="$(node deploy/scripts/detect-native-apk-change.mjs "$BRIGHT_OS_BRANCH" "${BRIGHT_OS_BASE_COMMIT:-}")"
 fi
 KEY_FILE="$(mktemp "${TMPDIR:-/tmp}/bright-deploy-key.XXXXXX")"
 cleanup() {
@@ -53,20 +49,22 @@ tar \
   --exclude=out \
   --exclude='*/build' \
   --exclude='*/.gradle' \
+  --exclude=deploy/site \
   --exclude=deploy/web \
   --exclude=deploy/mobile-update \
   --exclude=deploy/releases \
   -czf - . | ssh -i "$KEY_FILE" -p "$SSH_PORT" -o StrictHostKeyChecking=accept-new "$BRIGHT_DEPLOY_USER@$BRIGHT_DEPLOY_HOST" \
     tar -xzf - -C "$REMOTE_UPLOAD"
 
-ssh -i "$KEY_FILE" -p "$SSH_PORT" -o StrictHostKeyChecking=accept-new "$BRIGHT_DEPLOY_USER@$BRIGHT_DEPLOY_HOST" \
-  bash -s -- "$DEPLOY_REPO" "$REMOTE_UPLOAD" "$BRIGHT_OS_BRANCH" "$BRIGHT_OS_COMMIT" "$ACCEPTED_PR_NUMBER" <<'REMOTE'
+DEPLOY_OUTPUT=""
+if ! DEPLOY_OUTPUT="$(ssh -i "$KEY_FILE" -p "$SSH_PORT" -o StrictHostKeyChecking=accept-new "$BRIGHT_DEPLOY_USER@$BRIGHT_DEPLOY_HOST" \
+  bash -s -- "$DEPLOY_REPO" "$REMOTE_UPLOAD" "$BRIGHT_OS_BRANCH" "$BRIGHT_OS_COMMIT" "$BRIGHT_OS_NATIVE_APK_CHANGE" <<'REMOTE'
 set -euo pipefail
 DEPLOY_REPO="$1"
 REMOTE_UPLOAD="$2"
 BRIGHT_OS_BRANCH="$3"
 BRIGHT_OS_COMMIT="$4"
-BRIGHT_OS_ACCEPTED_PR_NUMBER="${5:-}"
+BRIGHT_OS_NATIVE_APK_CHANGE="$5"
 ENVS_ROOT="${BRIGHT_OS_ENVS_ROOT:-/srv/projects/bright-os-envs}"
 NODE_PREFIX="${BRIGHT_OS_NODE_PREFIX:-/srv/opt/node-v22.16.0/bin}"
 if [[ -d "$NODE_PREFIX" ]]; then
@@ -111,6 +109,7 @@ if [[ "$BRIGHT_OS_BRANCH" == codex/* ]]; then
   BRIGHT_OS_PREVIEW_SLOT="$(printf '%s' "$ALLOCATION_JSON" | allocation_field slot)"
   BRIGHT_OS_PREVIEW_ALLOCATED_NEW="$(printf '%s' "$ALLOCATION_JSON" | allocation_field allocatedNew)"
   export BRIGHT_OS_PREVIEW_SLOT BRIGHT_OS_PREVIEW_ALLOCATED_NEW
+  printf 'BRIGHT_OS_PREVIEW_SLOT_OUTPUT=%s\n' "$BRIGHT_OS_PREVIEW_SLOT"
   trap mark_preview_failed ERR
 fi
 
@@ -127,6 +126,7 @@ case "$SOURCE_ROOT" in
 esac
 
 if [[ "$ENVIRONMENT" == "prod" ]]; then
+  export BRIGHT_OS_SITE_TARGET="$DEPLOY_REPO/deploy/site"
   export BRIGHT_OS_WEB_TARGET="$DEPLOY_REPO/deploy/web"
   export BRIGHT_OS_MOBILE_TARGET="$DEPLOY_REPO/deploy/mobile-update"
   export BRIGHT_OS_DB="$DEPLOY_REPO/data/bright_os.sqlite"
@@ -141,7 +141,34 @@ npm ci
 npm --prefix apps/bright_os_app ci
 npm --prefix services/bright_os_api ci
 export BRIGHT_OS_BRANCH BRIGHT_OS_COMMIT
-export BRIGHT_OS_ACCEPTED_PR_NUMBER
 export BRIGHT_OS_ROOT="$SOURCE_ROOT"
+export BRIGHT_OS_RELEASE_TARGET="$DEPLOY_REPO/deploy/releases"
+if [[ "$BRIGHT_OS_NATIVE_APK_CHANGE" == "true" ]]; then
+  if [[ "$ENVIRONMENT" == preview-* ]]; then
+    FLAVOR="preview$BRIGHT_OS_PREVIEW_SLOT"
+    export BRIGHT_OS_ANDROID_VERSION_CODE="$(deploy/scripts/apk-version-code.sh next "$BRIGHT_OS_BRANCH $BRIGHT_OS_COMMIT $FLAVOR")"
+    deploy/scripts/build-android-env-apk.sh "$FLAVOR"
+  elif [[ "$ENVIRONMENT" == "dev" ]]; then
+    export BRIGHT_OS_ANDROID_VERSION_CODE="$(deploy/scripts/apk-version-code.sh next "dev non-production APK baseline $BRIGHT_OS_COMMIT")"
+    deploy/scripts/build-nonproduction-apks.sh
+    deploy/scripts/publish-environment-web-layer.sh preview-a preview-b preview-c preview-d preview-e
+  elif [[ "$ENVIRONMENT" == "prod" ]]; then
+    export BRIGHT_OS_ANDROID_VERSION_CODE="$(deploy/scripts/apk-version-code.sh next "production APK $BRIGHT_OS_COMMIT")"
+    deploy/scripts/build-android-env-apk.sh production
+  fi
+fi
 deploy/scripts/deploy-branch.sh
 REMOTE
+)"; then
+  printf '%s\n' "$DEPLOY_OUTPUT"
+  PREVIEW_SLOT="$(printf '%s\n' "$DEPLOY_OUTPUT" | sed -n 's/^BRIGHT_OS_PREVIEW_SLOT_OUTPUT=//p' | tail -n 1)"
+  if [[ -n "${GITHUB_OUTPUT:-}" && -n "$PREVIEW_SLOT" ]]; then
+    printf 'preview_slot=%s\n' "$PREVIEW_SLOT" >>"$GITHUB_OUTPUT"
+  fi
+  exit 1
+fi
+printf '%s\n' "$DEPLOY_OUTPUT"
+PREVIEW_SLOT="$(printf '%s\n' "$DEPLOY_OUTPUT" | sed -n 's/^BRIGHT_OS_PREVIEW_SLOT_OUTPUT=//p' | tail -n 1)"
+if [[ -n "${GITHUB_OUTPUT:-}" && -n "$PREVIEW_SLOT" ]]; then
+  printf 'preview_slot=%s\n' "$PREVIEW_SLOT" >>"$GITHUB_OUTPUT"
+fi

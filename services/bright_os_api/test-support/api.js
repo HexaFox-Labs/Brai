@@ -6,6 +6,7 @@ import Database from 'better-sqlite3';
 import { createBrightOsServer } from '../src/server.js';
 
 export const TOKEN = 'test-token';
+export const INBOUND_TOKEN = 'test-inbound-token';
 export const WEB_PASSWORD = 'test-password';
 export const RELEASE_PASSWORD = 'release-password';
 export const SESSION_SECRET = 'test-session-secret';
@@ -27,6 +28,12 @@ export async function createFixture(times, options = {}) {
     releasePassword: options.releasePassword,
     sessionSecret: options.sessionSecret,
     releaseDir: options.releaseFiles ? releaseDir : null,
+    inboundToken: options.inboundToken ?? INBOUND_TOKEN,
+    inboundStorageRoot: options.inboundStorageRoot ?? path.join(tmp, 'inbox-attachments'),
+    codexBin: options.codexBin,
+    codexModel: options.codexModel,
+    codexTimeoutMs: options.codexTimeoutMs,
+    inboundTitleGenerator: options.inboundTitleGenerator,
     now: () => new Date(times[Math.min(index++, times.length - 1)]),
     logger: { error: () => {} }
   });
@@ -53,6 +60,22 @@ export async function request(baseUrl, pathName, options = {}, authorized = true
       headers: authorized
         ? {
             authorization: `Bearer ${TOKEN}`,
+            ...(options.headers ?? {})
+          }
+        : options.headers
+    }
+  );
+}
+
+export async function inboundRequest(baseUrl, pathName, options = {}, authorized = true) {
+  return jsonRequest(
+    baseUrl,
+    pathName,
+    {
+      ...options,
+      headers: authorized
+        ? {
+            authorization: `Bearer ${INBOUND_TOKEN}`,
             ...(options.headers ?? {})
           }
         : options.headers
@@ -108,6 +131,17 @@ export function actionEvent(eventId, clientSequence, type, actionId, occurredAtU
     client_sequence: clientSequence,
     type,
     activity_id: actionId,
+    occurred_at_utc: occurredAtUtc,
+    payload
+  };
+}
+
+export function inboxEvent(eventId, clientSequence, type, inboxId, occurredAtUtc, payload = {}) {
+  return {
+    event_id: eventId,
+    client_sequence: clientSequence,
+    type,
+    inbox_id: inboxId,
     occurred_at_utc: occurredAtUtc,
     payload
   };

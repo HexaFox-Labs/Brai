@@ -2,41 +2,60 @@ import process from "node:process";
 import { BrightOsStore } from "../../services/bright_os_api/src/store.js";
 
 const args = parseArgs(process.argv.slice(2));
-const source = new BrightOsStore(required(args, "source-db"));
+const sourceBranch = required(args, "source-branch");
+const targetEnvironment = required(args, "target-environment");
+const targetBranch = required(args, "target-branch");
+const targetCommit = required(args, "target-commit");
+const deployedAtUtc = args["deployed-at"] || new Date().toISOString();
+const ledgerOnly = args["ledger-only"] === "true";
 const target = new BrightOsStore(required(args, "target-db"));
+let source = null;
 
 try {
-  const sourceBranch = required(args, "source-branch");
-  const targetEnvironment = required(args, "target-environment");
-  const targetBranch = required(args, "target-branch");
-  const targetCommit = required(args, "target-commit");
-  const deployedAtUtc = args["deployed-at"] || new Date().toISOString();
-  const sourceRecord = source
-    .listDeploymentRecords()
-    .find((record) => record.branch === sourceBranch);
+  source = openSourceStore(args, targetEnvironment);
+  const fallbackRecord = fallbackSourceRecord(args, sourceBranch, targetEnvironment);
+  const sourceRecord = normalizeSourceRecord(
+    source?.listDeploymentRecords().find((record) => record.branch === sourceBranch) ?? fallbackRecord,
+    fallbackRecord,
+  );
   if (!sourceRecord) throw new Error(`no deployment metadata for ${sourceBranch}`);
 
   if (targetEnvironment === "prod") {
+    if (!source) throw new Error("production promotion requires readable source deployment metadata");
     promoteBuildVersions(source, target);
   }
 
-  target.recordDeployment({
-    environment: targetEnvironment,
-    slot: args["target-slot"] || null,
-    branch: targetBranch,
-    commit: targetCommit,
-    domain: required(args, "target-domain"),
-    webOtaVersion: args["web-ota-version"] || sourceRecord.web_ota_version,
-    apkVersion: args["apk-version"] || sourceRecord.apk_version,
-    shortChanges: sourceRecord.short_changes,
-    detailedChanges: `Promoted from ${sourceRecord.environment}${sourceRecord.slot ? ` ${sourceRecord.slot}` : ""} (${sourceRecord.branch}@${sourceRecord.commit_sha}). ${sourceRecord.detailed_changes}`,
-    reason: args.reason || `Promoted accepted deployment from ${sourceBranch}`,
-    deployedAtUtc,
-  });
+  if (!ledgerOnly) {
+    target.recordDeployment({
+      environment: targetEnvironment,
+      slot: args["target-slot"] || null,
+      branch: targetBranch,
+      commit: targetCommit,
+      domain: required(args, "target-domain"),
+      webOtaVersion: args["web-ota-version"] || sourceRecord.web_ota_version,
+      apkVersion: args["apk-version"] || sourceRecord.apk_version,
+      shortChanges: sourceRecord.short_changes,
+      detailedChanges: `Promoted from ${sourceRecord.environment}${sourceRecord.slot ? ` ${sourceRecord.slot}` : ""} (${sourceRecord.branch}@${sourceRecord.commit_sha}). ${sourceRecord.detailed_changes}`,
+      reason: args.reason || `Promoted accepted deployment from ${sourceBranch}`,
+      deployedAtUtc,
+    });
+  }
   recordAcceptedBuildVersion(target, {
-    prNumber: args["accepted-pr-number"],
     sourceBranch,
     sourceCommit: sourceRecord.commit_sha,
+    sourceShortChanges: sourceRecord.short_changes,
+    sourceReason: sourceRecord.reason || args["source-reason"] || args.reason,
+    sourceDetails: sourceRecord.detailed_changes,
+    targetBranch,
+    targetCommit,
+    targetEnvironment,
+    releasedAtUtc: deployedAtUtc,
+  });
+  recordProductionReleaseVersion(target, {
+    sourceBranch,
+    sourceCommit: sourceRecord.commit_sha,
+    sourceShortChanges: sourceRecord.short_changes,
+    sourceReason: sourceRecord.reason || args["source-reason"] || args.reason,
     sourceDetails: sourceRecord.detailed_changes,
     targetBranch,
     targetCommit,
@@ -44,13 +63,71 @@ try {
     releasedAtUtc: deployedAtUtc,
   });
 } finally {
-  source.close();
+  source?.close();
   target.close();
+}
+
+function openSourceStore(values, targetEnvironment) {
+  const sourceDb = required(values, "source-db");
+  try {
+    return new BrightOsStore(sourceDb);
+  } catch (error) {
+    if (targetEnvironment === "dev" && values["source-commit"]) {
+      console.error(`Warning: preview deployment metadata is unavailable; using branch and commit fallback. ${error.message}`);
+      return null;
+    }
+    throw error;
+  }
+}
+
+function fallbackSourceRecord(values, sourceBranch, targetEnvironment) {
+  if (targetEnvironment !== "dev" || !values["source-commit"]) return null;
+  return {
+    environment: "preview",
+    slot: values["source-slot"] || null,
+    branch: sourceBranch,
+    commit_sha: values["source-commit"],
+    web_ota_version: values["web-ota-version"] || null,
+    apk_version: values["apk-version"] || null,
+    short_changes: values["source-short-changes"] || 'Accepted preview changes without authored release notes.',
+    reason: values["source-reason"] || values.reason || '',
+    detailed_changes:
+      values["source-details"] || 'No authored preview release notes were available; audit metadata is stored separately.',
+  };
+}
+
+function normalizeSourceRecord(record, fallbackRecord) {
+  if (!record) return null;
+  const shortChanges = usefulChanges(record.short_changes) || usefulChanges(fallbackRecord?.short_changes);
+  const detailedChanges = usefulChanges(record.detailed_changes) || usefulChanges(fallbackRecord?.detailed_changes) || shortChanges;
+  return {
+    ...record,
+    short_changes: shortChanges || 'Accepted preview changes without authored release notes.',
+    detailed_changes: detailedChanges || shortChanges || 'No authored preview release notes were available; audit metadata is stored separately.',
+  };
+}
+
+function usefulChanges(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+  const oneLine = text.replace(/\s+/g, ' ');
+  if (oneLine === 'Branch deployment') return '';
+  if (/^Merge branch .+ into codex\/\S+$/i.test(oneLine)) return '';
+  if (/^Merge remote-tracking branch .+ into codex\/\S+$/i.test(oneLine)) return '';
+  if (/^Automated deployment from \S+@\S+ to \S+\.?$/i.test(oneLine)) return '';
+  if (/^Automated dev deployment from \S+@\S+\.?$/i.test(oneLine)) return '';
+  if (/^Accepted preview branch \S+@\S+\.?$/i.test(oneLine)) return '';
+  if (/^Accepted dev build (?:\d|0\.)/i.test(oneLine)) return '';
+  if (/^Accepted codex\/\S+\.?$/i.test(oneLine)) return '';
+  if (/^Accepted \S+@\S+ without preview deployment metadata\.?$/i.test(oneLine)) return '';
+  if (/^Accepted preview changes without authored release notes\.?$/i.test(oneLine)) return '';
+  if (/^No authored preview release notes were available; audit metadata is stored separately\.?$/i.test(oneLine)) return '';
+  return text;
 }
 
 function promoteBuildVersions(source, target) {
   const rows = source.db
-    .prepare("SELECT * FROM build_versions WHERE version_type_id = ? ORDER BY build_version")
+    .prepare("SELECT * FROM build_versions WHERE version_type_id = ? AND release_version = 0 ORDER BY build_version")
     .all("build");
   const insert = target.db.prepare(`
     INSERT INTO build_versions (
@@ -95,13 +172,31 @@ function promoteBuildVersions(source, target) {
 
 function recordAcceptedBuildVersion(
   target,
-  { prNumber, sourceBranch, sourceCommit, sourceDetails, targetBranch, targetCommit, targetEnvironment, releasedAtUtc },
+  { sourceBranch, sourceCommit, sourceShortChanges, sourceReason, sourceDetails, targetBranch, targetCommit, targetEnvironment, releasedAtUtc },
 ) {
-  if (targetEnvironment !== "dev" || !prNumber) return;
+  if (targetEnvironment !== "dev") return;
   target.recordAcceptedBuildVersion({
-    prNumber,
     sourceBranch,
     sourceCommit,
+    sourceShortChanges,
+    sourceReason,
+    sourceDetails,
+    targetBranch,
+    targetCommit,
+    releasedAtUtc,
+  });
+}
+
+function recordProductionReleaseVersion(
+  target,
+  { sourceBranch, sourceCommit, sourceShortChanges, sourceReason, sourceDetails, targetBranch, targetCommit, targetEnvironment, releasedAtUtc },
+) {
+  if (targetEnvironment !== "prod") return;
+  target.recordProductionReleaseVersion({
+    sourceBranch,
+    sourceCommit,
+    sourceShortChanges,
+    sourceReason,
     sourceDetails,
     targetBranch,
     targetCommit,

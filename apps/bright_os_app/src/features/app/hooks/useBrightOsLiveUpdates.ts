@@ -4,6 +4,7 @@ import { useEffect, type Dispatch, type MutableRefObject, type SetStateAction } 
 import { BrightOsApi } from "@/shared/api/brightOsApi";
 import { tickTimerState } from "@/shared/time/format";
 import type { ActionsState } from "@/shared/types/activities";
+import type { InboxState } from "@/shared/types/inbox";
 import type { SyncStatus, TimerState } from "@/shared/types/timer";
 
 type LiveUpdateOptions = {
@@ -12,7 +13,8 @@ type LiveUpdateOptions = {
   setTimer: Dispatch<SetStateAction<TimerState>>;
   refreshStateAndFlushRef: MutableRefObject<() => Promise<void>>;
   applyServerStateRef: MutableRefObject<(state: TimerState) => Promise<void>>;
-  applyActionsStateRef: MutableRefObject<(state: ActionsState) => Promise<void>>;
+  applyActivitiesStateRef: MutableRefObject<(state: ActionsState) => Promise<void>>;
+  applyInboxStateRef: MutableRefObject<(state: InboxState) => Promise<void>>;
 };
 
 /**
@@ -24,7 +26,8 @@ export function useBrightOsLiveUpdates({
   setTimer,
   refreshStateAndFlushRef,
   applyServerStateRef,
-  applyActionsStateRef,
+  applyActivitiesStateRef,
+  applyInboxStateRef,
 }: LiveUpdateOptions) {
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -71,16 +74,18 @@ export function useBrightOsLiveUpdates({
             activities: ActionsState["actions"];
             archived_activities?: ActionsState["archived_actions"];
           };
+          inbox_state?: InboxState;
         };
         if (payload.state) void applyServerStateRef.current(payload.state);
         if (payload.activities_state) {
-          void applyActionsStateRef.current({
+          void applyActivitiesStateRef.current({
             server_time_utc: payload.activities_state.server_time_utc,
             server_revision: payload.activities_state.server_revision,
             actions: payload.activities_state.activities,
             archived_actions: payload.activities_state.archived_activities ?? [],
           });
         }
+        if (payload.inbox_state) void applyInboxStateRef.current(payload.inbox_state);
       };
       websocket.onerror = () => websocket?.close();
       websocket.onclose = () => {
@@ -94,5 +99,5 @@ export function useBrightOsLiveUpdates({
       connected = false;
       websocket?.close();
     };
-  }, [api, syncStatus, refreshStateAndFlushRef, applyServerStateRef, applyActionsStateRef]);
+  }, [api, syncStatus, refreshStateAndFlushRef, applyServerStateRef, applyActivitiesStateRef, applyInboxStateRef]);
 }

@@ -6,11 +6,14 @@ import { defaultApiBase } from "@/shared/config/runtime";
 import { consumeAndroidTimerStopRequest, startAndroidTimerNotification, stopAndroidTimerNotification } from "@/shared/platform/androidTimerNotification";
 import { acknowledgeActionEvents, loadActionsState, markActionAttempt, markActionFailure, pendingActionEvents, projectActionsState, saveActionsState } from "@/shared/storage/activityStore";
 import { ensureClientMeta } from "@/shared/storage/db";
-import { projectTimerState } from "@/shared/storage/projection";
-import { acknowledgeEvents, enqueueTimerEvent, loadCanonicalState, loadGoalCache, loadHistoryCache, markAttempt, markFailure, pendingEvents, saveCanonicalState, saveGoalCache, saveHistoryCache, saveIgnoredEvents } from "@/shared/storage/syncStore";
+import { acknowledgeInboxEvents, loadInboxState, markInboxAttempt, markInboxFailure, pendingInboxEvents, projectInboxState, saveInboxState } from "@/shared/storage/inboxStore";
+import { projectHistoryData, projectTimerState } from "@/shared/storage/projection";
+import { acknowledgeEvents, enqueueFocusSessionEdit, enqueueTimerEvent, loadCanonicalState, loadGoalCache, loadHistoryCache, markAttempt, markFailure, pendingEvents, saveCanonicalState, saveGoalCache, saveHistoryCache, saveIgnoredEvents } from "@/shared/storage/syncStore";
 import { tickTimerState } from "@/shared/time/format";
 import type { ActionsState } from "@/shared/types/activities";
 import { emptyActionsState } from "@/shared/types/activities";
+import type { InboxState } from "@/shared/types/inbox";
+import { emptyInboxState } from "@/shared/types/inbox";
 import type { GoalData, HistoryData, SyncStatus, TimerState } from "@/shared/types/timer";
 import { emptyGoal, emptyHistory, emptyTimerState } from "@/shared/types/timer";
 import type { FocusBackgroundMode, FocusContextPanel, MobileContextPanel, SectionId } from "../appModel";
@@ -18,6 +21,7 @@ import { FOCUS_BACKGROUND_STORAGE_KEY, FOCUS_CONTEXT_PANEL_STORAGE_KEY, sectionF
 import { moscowTodayKey, normalizeHistory } from "../appUtils";
 import { isMobileNavigationViewport, useMobileNavigationViewport, useSectionSwipeNavigation } from "../navigation/useSectionSwipeNavigation";
 import { createBrightOsActionCommands } from "./useBrightOsActionCommands";
+import { createBrightOsInboxCommands } from "./useBrightOsInboxCommands";
 import { useBrightOsLiveUpdates } from "./useBrightOsLiveUpdates";
 import { useBrightOsOta } from "./useBrightOsOta";
 import { useBrightOsTheme } from "./useBrightOsTheme";
@@ -37,21 +41,25 @@ export function useBrightOsAppState(initialSection: SectionId) {
   const refreshAllRef = useRef<(sourceApi?: BrightOsApi) => Promise<void>>(async () => undefined);
   const refreshStateAndFlushRef = useRef<() => Promise<void>>(async () => undefined);
   const applyServerStateRef = useRef<(state: TimerState) => Promise<void>>(async () => undefined);
-  const applyActionsStateRef = useRef<(state: ActionsState) => Promise<void>>(async () => undefined);
+  const applyActivitiesStateRef = useRef<(state: ActionsState) => Promise<void>>(async () => undefined);
+  const applyInboxStateRef = useRef<(state: InboxState) => Promise<void>>(async () => undefined);
   const timerRevisionRef = useRef(0);
   const actionsRevisionRef = useRef(0);
+  const inboxRevisionRef = useRef(0);
   const historyGoalRevisionRef = useRef(0);
   const activeRef = useRef(false);
   const androidStopInFlightRef = useRef(false);
   const stopTimerRef = useRef<() => Promise<void>>(async () => undefined);
   const [timer, setTimer] = useState<TimerState>(() => emptyTimerState());
   const [actions, setActions] = useState<ActionsState>(() => emptyActionsState());
+  const [inbox, setInbox] = useState<InboxState>(() => emptyInboxState());
   const [history, setHistory] = useState<HistoryData>(() => emptyHistory());
   const [goal, setGoal] = useState<GoalData>(() => emptyGoal());
   const [localSnapshotReady, setLocalSnapshotReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("connecting");
   const [pendingCount, setPendingCount] = useState(0);
   const [actionPendingCount, setActionPendingCount] = useState(0);
+  const [inboxPendingCount, setInboxPendingCount] = useState(0);
   const [busy, setBusy] = useState(false);
   const [timerBusy, setTimerBusy] = useState(false);
   const [actionOverlayOpen, setActionOverlayOpen] = useState(false);
@@ -70,6 +78,10 @@ export function useBrightOsAppState(initialSection: SectionId) {
 
   function setActionsSnapshot(nextState: ActionsState) {
     setActions((current) => (current.server_revision > nextState.server_revision ? current : nextState));
+  }
+
+  function setInboxSnapshot(nextState: InboxState) {
+    setInbox((current) => (current.server_revision > nextState.server_revision ? current : nextState));
   }
 
   async function applyServerState(state: TimerState) {
@@ -93,7 +105,7 @@ export function useBrightOsAppState(initialSection: SectionId) {
     }
   }
 
-  async function applyActionsState(state: ActionsState) {
+  async function applyActivitiesState(state: ActionsState) {
     const queued = await pendingActionEvents();
     if (queued.length > 0) {
       await flushActionPending();
@@ -108,12 +120,28 @@ export function useBrightOsAppState(initialSection: SectionId) {
     setSyncStatus("synced");
   }
 
+  async function applyInboxState(state: InboxState) {
+    const queued = await pendingInboxEvents();
+    if (queued.length > 0) {
+      await flushInboxPending();
+      return;
+    }
+    if (state.server_revision < inboxRevisionRef.current) return;
+    inboxRevisionRef.current = state.server_revision;
+    const accepted = await saveInboxState(state);
+    if (!accepted) return;
+    setInboxSnapshot(projectInboxState(state, []));
+    setInboxPendingCount(0);
+    setSyncStatus("synced");
+  }
+
   async function refreshStateAndFlush() {
     try {
       const state = await apiRef.current.state();
       await applyServerState(state);
       await flushPending();
       await refreshActionsAndFlush();
+      await refreshInboxAndFlush();
     } catch (error) {
       handleError(error);
     }
@@ -122,13 +150,14 @@ export function useBrightOsAppState(initialSection: SectionId) {
   async function refreshAll(sourceApi = apiRef.current) {
     setBusy(true);
     try {
-      const [nextState, nextHistory, nextGoal, nextActions] = await Promise.all([
+      const [nextState, nextHistory, nextGoal, nextActions, nextInbox] = await Promise.all([
         sourceApi.state(),
         sourceApi.history(),
         sourceApi.goal(),
         sourceApi.actions(),
+        sourceApi.inbox(),
       ]);
-      const [queued, queuedActions] = await Promise.all([pendingEvents(), pendingActionEvents()]);
+      const [queued, queuedActions, queuedInbox] = await Promise.all([pendingEvents(), pendingActionEvents(), pendingInboxEvents()]);
       const accepted =
         nextState.server_revision >= timerRevisionRef.current && (await saveCanonicalState(nextState));
       if (accepted) {
@@ -140,7 +169,7 @@ export function useBrightOsAppState(initialSection: SectionId) {
         timerRevisionRef.current = nextState.server_revision;
         historyGoalRevisionRef.current = nextState.server_revision;
         setTimerSnapshot(projectTimerState(nextState, queued));
-        setHistory(normalizedHistory);
+        setHistory(projectHistoryData(normalizedHistory, queued));
         setGoal(nextGoal);
       }
       const actionsAccepted =
@@ -149,11 +178,19 @@ export function useBrightOsAppState(initialSection: SectionId) {
         actionsRevisionRef.current = nextActions.server_revision;
         setActionsSnapshot(projectActionsState(nextActions, queuedActions));
       }
+      const inboxAccepted =
+        nextInbox.server_revision >= inboxRevisionRef.current && (await saveInboxState(nextInbox));
+      if (inboxAccepted) {
+        inboxRevisionRef.current = nextInbox.server_revision;
+        setInboxSnapshot(projectInboxState(nextInbox, queuedInbox));
+      }
       setPendingCount(queued.length);
       setActionPendingCount(queuedActions.length);
-      setSyncStatus(queued.length + queuedActions.length > 0 ? "pending_sync" : "synced");
+      setInboxPendingCount(queuedInbox.length);
+      setSyncStatus(queued.length + queuedActions.length + queuedInbox.length > 0 ? "pending_sync" : "synced");
       await flushPending(sourceApi);
       await flushActionPending(sourceApi);
+      await flushInboxPending(sourceApi);
     } catch (error) {
       handleError(error);
     } finally {
@@ -165,7 +202,7 @@ export function useBrightOsAppState(initialSection: SectionId) {
     const queued = await pendingEvents();
     setPendingCount(queued.length);
     if (queued.length === 0) {
-      setSyncStatus("synced");
+      if ((await pendingActionEvents()).length + (await pendingInboxEvents()).length === 0) setSyncStatus("synced");
       return;
     }
 
@@ -191,7 +228,8 @@ export function useBrightOsAppState(initialSection: SectionId) {
         setTimerSnapshot(projectTimerState(currentState, remaining));
       }
       setPendingCount(remaining.length);
-      setSyncStatus(remaining.length > 0 ? "pending_sync" : "synced");
+      const [actionQueued, inboxQueued] = await Promise.all([pendingActionEvents(), pendingInboxEvents()]);
+      setSyncStatus(remaining.length + actionQueued.length + inboxQueued.length > 0 ? "pending_sync" : "synced");
 
       if (accepted) {
         await refreshHistoryAndGoal(sourceApi, response.server_revision);
@@ -212,7 +250,7 @@ export function useBrightOsAppState(initialSection: SectionId) {
       saveGoalCache(nextGoal, serverRevision),
     ]);
     historyGoalRevisionRef.current = serverRevision;
-    setHistory(normalizedHistory);
+    setHistory(projectHistoryData(normalizedHistory, await pendingEvents()));
     setGoal(nextGoal);
   }
 
@@ -237,7 +275,7 @@ export function useBrightOsAppState(initialSection: SectionId) {
     const queued = await pendingActionEvents();
     setActionPendingCount(queued.length);
     if (queued.length === 0) {
-      if ((await pendingEvents()).length === 0) setSyncStatus("synced");
+      if ((await pendingEvents()).length + (await pendingInboxEvents()).length === 0) setSyncStatus("synced");
       return;
     }
 
@@ -263,10 +301,65 @@ export function useBrightOsAppState(initialSection: SectionId) {
         setActionsSnapshot(projectActionsState(currentState, remaining));
       }
       setActionPendingCount(remaining.length);
-      const timerQueued = await pendingEvents();
-      setSyncStatus(remaining.length + timerQueued.length > 0 ? "pending_sync" : "synced");
+      const [timerQueued, inboxQueued] = await Promise.all([pendingEvents(), pendingInboxEvents()]);
+      setSyncStatus(remaining.length + timerQueued.length + inboxQueued.length > 0 ? "pending_sync" : "synced");
     } catch (error) {
       await markActionFailure(queued, error instanceof Error ? error.message : "sync_failed");
+      handleError(error);
+    }
+  }
+
+  async function refreshInboxAndFlush(sourceApi = apiRef.current) {
+    try {
+      const nextInbox = await sourceApi.inbox();
+      const queuedInbox = await pendingInboxEvents();
+      const accepted =
+        nextInbox.server_revision >= inboxRevisionRef.current && (await saveInboxState(nextInbox));
+      if (accepted) {
+        inboxRevisionRef.current = nextInbox.server_revision;
+        setInboxSnapshot(projectInboxState(nextInbox, queuedInbox));
+      }
+      setInboxPendingCount(queuedInbox.length);
+      await flushInboxPending(sourceApi);
+    } catch (error) {
+      handleError(error);
+    }
+  }
+
+  async function flushInboxPending(sourceApi = apiRef.current) {
+    const queued = await pendingInboxEvents();
+    setInboxPendingCount(queued.length);
+    if (queued.length === 0) {
+      if ((await pendingEvents()).length + (await pendingActionEvents()).length === 0) setSyncStatus("synced");
+      return;
+    }
+
+    setSyncStatus("pending_sync");
+    await markInboxAttempt(queued);
+    try {
+      const meta = await ensureClientMeta();
+      const response = await sourceApi.syncInboxEvents({
+        deviceId: meta.deviceId,
+        platform: meta.platform,
+        events: queued,
+        lastKnownServerTimeUtc: inbox.server_time_utc,
+      });
+      const ignoredIds = response.ignored_events.map((event) => event.event_id);
+      await acknowledgeInboxEvents([...response.acknowledged_event_ids, ...ignoredIds]);
+      await saveIgnoredEvents(response.ignored_events);
+      const accepted =
+        response.state.server_revision >= inboxRevisionRef.current && (await saveInboxState(response.state));
+      const remaining = await pendingInboxEvents();
+      const currentState = accepted ? response.state : (await loadInboxState()) ?? response.state;
+      if (currentState.server_revision >= inboxRevisionRef.current) {
+        inboxRevisionRef.current = currentState.server_revision;
+        setInboxSnapshot(projectInboxState(currentState, remaining));
+      }
+      setInboxPendingCount(remaining.length);
+      const [timerQueued, actionQueued] = await Promise.all([pendingEvents(), pendingActionEvents()]);
+      setSyncStatus(remaining.length + timerQueued.length + actionQueued.length > 0 ? "pending_sync" : "synced");
+    } catch (error) {
+      await markInboxFailure(queued, error instanceof Error ? error.message : "sync_failed");
       handleError(error);
     }
   }
@@ -305,6 +398,20 @@ export function useBrightOsAppState(initialSection: SectionId) {
     void flushPending().catch(handleError);
   }
 
+  async function onEditFocusSession(sessionId: string, startedAtUtc: string, endedAtUtc: string) {
+    await enqueueFocusSessionEdit({
+      sessionId,
+      startedAtUtc,
+      endedAtUtc,
+      baseServerRevision: timer.server_revision,
+    });
+    const queued = await pendingEvents();
+    setHistory((current) => projectHistoryData(current, queued));
+    setPendingCount(queued.length);
+    setSyncStatus("pending_sync");
+    void flushPending().catch(handleError);
+  }
+
   async function onLogin(password: string) {
     setBusy(true);
     try {
@@ -338,7 +445,8 @@ export function useBrightOsAppState(initialSection: SectionId) {
     refreshAllRef.current = refreshAll;
     refreshStateAndFlushRef.current = refreshStateAndFlush;
     applyServerStateRef.current = applyServerState;
-    applyActionsStateRef.current = applyActionsState;
+    applyActivitiesStateRef.current = applyActivitiesState;
+    applyInboxStateRef.current = applyInboxState;
   });
 
   useLayoutEffect(() => {
@@ -356,13 +464,15 @@ export function useBrightOsAppState(initialSection: SectionId) {
 
     async function boot() {
       await ensureClientMeta();
-      const [cachedState, cachedHistory, cachedGoal, cachedActions, queued, queuedActions] = await Promise.all([
+      const [cachedState, cachedHistory, cachedGoal, cachedActions, cachedInbox, queued, queuedActions, queuedInbox] = await Promise.all([
         loadCanonicalState(),
         loadHistoryCache(),
         loadGoalCache(),
         loadActionsState(),
+        loadInboxState(),
         pendingEvents(),
         pendingActionEvents(),
+        pendingInboxEvents(),
       ]);
       const resolvedApiBase = defaultApiBase();
 
@@ -370,14 +480,17 @@ export function useBrightOsAppState(initialSection: SectionId) {
       setApiBase(resolvedApiBase);
       setPendingCount(queued.length);
       setActionPendingCount(queuedActions.length);
+      setInboxPendingCount(queuedInbox.length);
       if (cachedState) {
         timerRevisionRef.current = cachedState.server_revision;
         setTimerSnapshot(projectTimerState(cachedState, queued));
       }
-      if (cachedHistory.sessions.length > 0) setHistory(cachedHistory);
+      if (cachedHistory.sessions.length > 0) setHistory(projectHistoryData(cachedHistory, queued));
       if (cachedGoal) setGoal(cachedGoal);
       if (cachedActions) actionsRevisionRef.current = cachedActions.server_revision;
       setActionsSnapshot(projectActionsState(cachedActions, queuedActions));
+      if (cachedInbox) inboxRevisionRef.current = cachedInbox.server_revision;
+      setInboxSnapshot(projectInboxState(cachedInbox, queuedInbox));
       setLocalSnapshotReady(true);
       await refreshAllRef.current(new BrightOsApi(resolvedApiBase));
     }
@@ -394,12 +507,13 @@ export function useBrightOsAppState(initialSection: SectionId) {
     setTimer,
     refreshStateAndFlushRef,
     applyServerStateRef,
-    applyActionsStateRef,
+    applyActivitiesStateRef,
+    applyInboxStateRef,
   });
 
   const active = timer.active_session != null;
   const activeStartedAtUtc = timer.active_session?.started_at_utc ?? null;
-  const totalPendingCount = pendingCount + actionPendingCount;
+  const totalPendingCount = pendingCount + actionPendingCount + inboxPendingCount;
   const displaySyncStatus =
     totalPendingCount > 0 && syncStatus === "synced" ? "pending_sync" : syncStatus;
 
@@ -532,8 +646,15 @@ export function useBrightOsAppState(initialSection: SectionId) {
     setActions,
     setSyncStatus,
   });
+  const inboxCommands = createBrightOsInboxCommands({
+    flushInboxPending,
+    inbox,
+    setInbox,
+    setInboxPendingCount,
+    setSyncStatus,
+  });
 
-  return { actionOverlayOpen, actions, actionsInfoActive, actionsInfoOpen, active, bundlePublishedAt, busy, desktopRailExpanded, displaySyncStatus, focusBackground, focusContextPanel, focusGoalActive, focusHistoryActive, goal, history, localSnapshotReady, markMobileContextPanelClosing, mobileContextPanel, mobileMenuOpen, ...actionCommands, onLogin, onLogout, onStart, onStop, openSettingsPage, otaCheckedAt, otaRefreshing, otaState, refreshOtaStateOnce, section, selectSection, setActionOverlayOpen, setActionsInfoOpen, setDesktopRailExpanded, setFocusBackground, setMobileContextPanel: setMobileContextPanelState, setMobileMenuOpen, setTheme, swipeNavigation, theme, timer, timerBusy, todayKey, toggleActionsInfoPanel, toggleFocusContextPanel, totalPendingCount };
+  return { actionOverlayOpen, actions, actionsInfoActive, actionsInfoOpen, active, bundlePublishedAt, busy, desktopRailExpanded, displaySyncStatus, focusBackground, focusContextPanel, focusGoalActive, focusHistoryActive, goal, history, inbox, localSnapshotReady, markMobileContextPanelClosing, mobileContextPanel, mobileMenuOpen, ...actionCommands, ...inboxCommands, onEditFocusSession, onLogin, onLogout, onStart, onStop, openSettingsPage, otaCheckedAt, otaRefreshing, otaState, refreshOtaStateOnce, section, selectSection, setActionOverlayOpen, setActionsInfoOpen, setDesktopRailExpanded, setFocusBackground, setMobileContextPanel: setMobileContextPanelState, setMobileMenuOpen, setTheme, swipeNavigation, theme, timer, timerBusy, todayKey, toggleActionsInfoPanel, toggleFocusContextPanel, totalPendingCount };
 }
 
 function loadFocusContextPanelPreference(): FocusContextPanel {

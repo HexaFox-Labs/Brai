@@ -32,6 +32,25 @@ DOMAIN="${DEPLOY_META[2]}"
 ENV_PATH="${DEPLOY_META[3]}"
 SERVICE_NAME="${DEPLOY_META[4]}"
 
+GIT_SUBJECT="$(git -C "$ROOT" log -1 --format=%s "$COMMIT" 2>/dev/null || true)"
+GIT_BODY="$(git -C "$ROOT" log -1 --format=%b "$COMMIT" 2>/dev/null || true)"
+if [[ "$GIT_SUBJECT" == Merge\ pull\ request* && -n "$GIT_BODY" ]]; then
+  while IFS= read -r line; do
+    if [[ -n "${line//[[:space:]]/}" ]]; then
+      GIT_SUBJECT="$line"
+    fi
+  done <<<"$GIT_BODY"
+  GIT_BODY=""
+fi
+DEPLOY_SHORT_CHANGES="${BRIGHT_OS_DEPLOY_SHORT_CHANGES:-${GIT_SUBJECT:-Branch deployment}}"
+if [[ -n "${BRIGHT_OS_DEPLOY_DETAILED_CHANGES:-}" ]]; then
+  DEPLOY_DETAILED_CHANGES="$BRIGHT_OS_DEPLOY_DETAILED_CHANGES"
+elif [[ -n "$GIT_BODY" ]]; then
+  DEPLOY_DETAILED_CHANGES="$GIT_SUBJECT"$'\n\n'"$GIT_BODY"
+else
+  DEPLOY_DETAILED_CHANGES="${GIT_SUBJECT:-Branch deployment}"
+fi
+
 if [[ "$ENVIRONMENT" == "prod" ]]; then
   WEB_TARGET="${BRIGHT_OS_WEB_TARGET:-$ROOT/deploy/web}"
   MOBILE_TARGET="${BRIGHT_OS_MOBILE_TARGET:-$ROOT/deploy/mobile-update}"
@@ -47,6 +66,7 @@ fi
 if [[ "$ENVIRONMENT" == preview-* && "$ALLOCATED_NEW" == "true" && "${BRIGHT_OS_RESET_NEW_PREVIEW_DB:-true}" != "false" ]]; then
   case "$TARGET_ROOT" in
     "$ENVS_ROOT"/preview-*)
+      find "$TARGET_ROOT" -user "$(id -u)" -exec chmod u+rwX,g+rwX {} + || true
       rm -f "$TARGET_ROOT/data/bright_os.sqlite" "$TARGET_ROOT/data/bright_os.sqlite-shm" "$TARGET_ROOT/data/bright_os.sqlite-wal"
       ;;
     *)
@@ -56,16 +76,30 @@ if [[ "$ENVIRONMENT" == preview-* && "$ALLOCATED_NEW" == "true" && "${BRIGHT_OS_
   esac
 fi
 
-if [[ "$ENVIRONMENT" == "dev" && -n "${BRIGHT_OS_ACCEPTED_PR_NUMBER:-}" ]]; then
+if [[ "$ENVIRONMENT" == "dev" ]]; then
   "$NODE_BIN" "$SCRIPT_DIR/record-accepted-build-version.mjs" \
     --db "$DB_PATH" \
-    --pr-number "$BRIGHT_OS_ACCEPTED_PR_NUMBER" \
     --source-branch "$BRANCH" \
     --source-commit "$COMMIT" \
+    --source-short-changes "$DEPLOY_SHORT_CHANGES" \
+    --source-reason "${BRIGHT_OS_CHANGE_REASON:-${BRIGHT_OS_DEPLOY_REASON:-}}" \
     --target-branch "$BRANCH" \
     --target-commit "$COMMIT" \
-    --source-details "Automated dev deployment from accepted PR #$BRIGHT_OS_ACCEPTED_PR_NUMBER." \
+    --source-details "$DEPLOY_DETAILED_CHANGES" \
     --released-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+fi
+
+if [[ "$ENVIRONMENT" == "prod" ]]; then
+  "$NODE_BIN" "$SCRIPT_DIR/promote-deployment.mjs" \
+    --source-db "$ENVS_ROOT/dev/data/bright_os.sqlite" \
+    --target-db "$DB_PATH" \
+    --source-branch dev \
+    --target-environment prod \
+    --target-branch "$BRANCH" \
+    --target-commit "$COMMIT" \
+    --target-domain "$DOMAIN" \
+    --ledger-only true \
+    --reason "Promote dev to production release"
 fi
 
 SOURCE_VERSION="$("$NODE_BIN" -e '
@@ -90,13 +124,27 @@ try {
 }
 ' "$DB_PATH")"
 fi
-if [[ "$ENVIRONMENT" == "prod" && -z "${BRIGHT_OS_APP_VERSION:-}" && -f "$ENVS_ROOT/dev/data/bright_os.sqlite" ]]; then
+if [[ "$ENVIRONMENT" == "prod" && -z "${BRIGHT_OS_APP_VERSION:-}" ]]; then
   LEDGER_VERSION="$("$NODE_BIN" -e '
 import { BrightOsStore } from "./services/bright_os_api/src/store.js";
 const store = new BrightOsStore(process.argv[1]);
 try {
   const row = store.db
-    .prepare("SELECT version FROM build_versions WHERE version_type_id = ? ORDER BY build_version DESC LIMIT 1")
+    .prepare("SELECT version FROM build_versions WHERE version_type_id = ? ORDER BY release_version DESC, build_version DESC LIMIT 1")
+    .get("build");
+  if (row?.version) console.log(row.version);
+} finally {
+  store.close();
+}
+' "$DB_PATH")"
+fi
+if [[ "$ENVIRONMENT" == "prod" && -z "${BRIGHT_OS_APP_VERSION:-}" && -z "$LEDGER_VERSION" && -f "$ENVS_ROOT/dev/data/bright_os.sqlite" ]]; then
+  LEDGER_VERSION="$("$NODE_BIN" -e '
+import { BrightOsStore } from "./services/bright_os_api/src/store.js";
+const store = new BrightOsStore(process.argv[1]);
+try {
+  const row = store.db
+    .prepare("SELECT version FROM build_versions WHERE version_type_id = ? AND release_version = 0 ORDER BY build_version DESC LIMIT 1")
     .get("build");
   if (row?.version) console.log(row.version);
 } finally {
@@ -142,11 +190,15 @@ export NEXT_PUBLIC_BRIGHT_OS_ANDROID_API="$ANDROID_API"
 
 "$SCRIPT_DIR/publish-client-web-layer.sh"
 
+if [[ "$ENVIRONMENT" == "prod" ]]; then
+  "$SCRIPT_DIR/publish-site.sh"
+fi
+
 if [[ "$ENVIRONMENT" != "prod" ]]; then
   find "$TARGET_ROOT" -user "$(id -u)" -exec chmod u+rwX,g+rwX {} +
 fi
 
-"$NODE_BIN" "$SCRIPT_DIR/record-deployment.mjs" \
+if ! "$NODE_BIN" "$SCRIPT_DIR/record-deployment.mjs" \
   --db "$DB_PATH" \
   --environment "$ENVIRONMENT" \
   --slot "$SLOT" \
@@ -154,9 +206,14 @@ fi
   --commit "$COMMIT" \
   --domain "$DOMAIN" \
   --web-ota-version "$BUNDLE_VERSION" \
-  --short-changes "${BRIGHT_OS_DEPLOY_SHORT_CHANGES:-Branch deployment}" \
-  --detailed-changes "${BRIGHT_OS_DEPLOY_DETAILED_CHANGES:-Automated deployment from $BRANCH@$COMMIT to $DOMAIN.}" \
-  --reason "${BRIGHT_OS_DEPLOY_REASON:-Automated branch delivery}"
+  --short-changes "$DEPLOY_SHORT_CHANGES" \
+  --detailed-changes "$DEPLOY_DETAILED_CHANGES" \
+  --reason "${BRIGHT_OS_DEPLOY_REASON:-Automated branch delivery}"; then
+  if [[ "$ENVIRONMENT" != preview-* ]]; then
+    exit 1
+  fi
+  echo "Warning: preview deployment metadata was not recorded; acceptance will use branch and commit fallback metadata." >&2
+fi
 
 if [[ "$ENVIRONMENT" != "prod" ]]; then
   find "$TARGET_ROOT" -user "$(id -u)" -exec chmod u+rwX,g+rwX {} +

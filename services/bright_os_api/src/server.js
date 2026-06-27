@@ -3,6 +3,13 @@ import crypto from 'node:crypto';
 import http from 'node:http';
 import path from 'node:path';
 import { WebSocketServer } from 'ws';
+import {
+  INBOUND_BODY_LIMIT_BYTES,
+  hasInboundToken,
+  inboundPathTarget,
+  receiveInboxInbound,
+  serveInboxAttachment
+} from './inbound.js';
 import { sendReleaseLoginPage, serveRelease } from './release-routes.js';
 import { BrightOsStore, formatSession } from './store.js';
 
@@ -22,12 +29,32 @@ export function createBrightOsServer({
   releasePassword = webPassword,
   sessionSecret = null,
   releaseDir = null,
+  inboundToken = null,
+  inboundStorageRoot = path.join(path.dirname(dbPath), 'inbox-attachments'),
+  codexBin = 'codex',
+  codexModel = null,
+  codexTimeoutMs = null,
+  inboundTitleGenerator = null,
   now = () => new Date(),
   logger = console
 }) {
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   const store = new BrightOsStore(dbPath);
   const sockets = new Set();
+  const inboundHandlers = new Map([
+    ['inbox', {
+      receive: (body, requestNow) => receiveInboxInbound({
+        store,
+        body,
+        storageRoot: inboundStorageRoot,
+        codexBin,
+        codexModel,
+        codexTimeoutMs,
+        titleGenerator: inboundTitleGenerator,
+        nowDate: requestNow
+      })
+    }]
+  ]);
 
   const server = http.createServer(async (req, res) => {
     try {
@@ -100,6 +127,38 @@ export function createBrightOsServer({
         return;
       }
 
+      if (url.pathname.startsWith('/v1/in/')) {
+        if (!hasInboundToken(req, inboundToken)) {
+          sendJson(req, res, 401, { error: 'unauthorized' });
+          return;
+        }
+
+        const target = inboundPathTarget(url.pathname);
+        const inboundHandler = target ? inboundHandlers.get(target) : null;
+        if (!target || !inboundHandler) {
+          sendJson(req, res, 404, { error: 'unsupported_target' });
+          return;
+        }
+
+        if (req.method === 'GET') {
+          sendJson(req, res, 200, { ok: true, target });
+          return;
+        }
+
+        if (req.method === 'POST') {
+          const requestNow = now();
+          const body = await readJson(req, { limit: INBOUND_BODY_LIMIT_BYTES });
+          const result = await inboundHandler.receive(body, requestNow);
+          const state = inboxState(store, requestNow);
+          broadcast(sockets, { type: 'inbox_synced', inbox_state: state });
+          sendJson(req, res, result.created ? 201 : 200, { ok: true, target, ...result, state });
+          return;
+        }
+
+        sendJson(req, res, 405, { error: 'method_not_allowed' });
+        return;
+      }
+
       if (!isAuthorized(req, token, url, sessionSecret, now)) {
         sendJson(req, res, 401, { error: 'unauthorized' });
         return;
@@ -132,6 +191,15 @@ export function createBrightOsServer({
         return;
       }
 
+      if (req.method === 'GET' && serveInboxAttachment(req, res, url, inboundStorageRoot, sendJson)) {
+        return;
+      }
+
+      if (req.method === 'GET' && url.pathname === '/v1/inbox') {
+        sendJson(req, res, 200, inboxState(store, now()));
+        return;
+      }
+
       if (
         req.method === 'POST' &&
         (url.pathname === '/v1/activities/events/sync' || url.pathname === '/v1/actions/events/sync')
@@ -154,6 +222,22 @@ export function createBrightOsServer({
           activities_state: state,
           actions_state: actionsCompatState(state)
         });
+        sendJson(req, res, 200, responseBody);
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/v1/inbox/events/sync') {
+        const requestNow = now();
+        const body = await readJson(req, { limit: 256 * 1024 });
+        const result = store.syncInboxEvents({
+          device: body.device,
+          events: body.events,
+          lastKnownServerTimeUtc: body.last_known_server_time_utc,
+          nowIso: requestNow.toISOString()
+        });
+        const state = inboxState(store, requestNow);
+        const responseBody = { ...result, state };
+        broadcast(sockets, { type: 'inbox_synced', inbox_state: state });
         sendJson(req, res, 200, responseBody);
         return;
       }
@@ -224,7 +308,8 @@ export function createBrightOsServer({
         type: 'connected',
         state: timerState(store, now()),
         activities_state: currentActivitiesState,
-        actions_state: actionsCompatState(currentActivitiesState)
+        actions_state: actionsCompatState(currentActivitiesState),
+        inbox_state: inboxState(store, now())
       }));
       ws.on('close', () => sockets.delete(ws));
       ws.on('error', () => sockets.delete(ws));
@@ -268,6 +353,14 @@ export function activitiesState(store, nowDate) {
     server_revision: store.getActivityServerRevision(),
     activities: store.listActivities(),
     archived_activities: store.listArchivedActivities()
+  };
+}
+
+export function inboxState(store, nowDate) {
+  return {
+    server_time_utc: nowDate.toISOString(),
+    server_revision: store.getInboxServerRevision(),
+    inbox: store.listInbox()
   };
 }
 

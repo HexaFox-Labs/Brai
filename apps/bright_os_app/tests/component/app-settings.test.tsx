@@ -63,6 +63,45 @@ describe("BrightOsApp settings", () => {
     expect(screen.queryByText(/Software caused connection abort|ENOENT|\/data\/user/)).not.toBeInTheDocument();
   });
 
+  it("blocks Dev and Preview when the installed APK is incompatible", async () => {
+    stubAndroidCapacitor();
+    otaPlugin.getState.mockResolvedValue({
+      activeBundleVersion: "0.0.10.1.42",
+      fallbackBundleVersion: "0.0.10.1.0",
+      nativeVersionName: "0.0.10.1",
+      nativeBuild: "1-a",
+      nativeVersionCode: 1,
+      nativeEnvironment: "preview-a",
+      nativePreviewSlot: "A",
+      nativeOtaChannel: "a.test.brightos.world/mobile-update",
+      lastCheckStatus: "incompatible",
+    });
+
+    render(<BrightOsApp />);
+
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Установленный APK не подходит для этой версии" })).toBeInTheDocument());
+    expect(screen.getByText("Нужен новый APK")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Открыть APK-релизы" })).toHaveAttribute("href", "https://a.test.brightos.world/releases/");
+    expect(screen.queryByRole("heading", { name: "Действия" })).not.toBeInTheDocument();
+  });
+
+  it("keeps production incompatible OTA non-blocking", async () => {
+    stubAndroidCapacitor();
+    otaPlugin.getState.mockResolvedValue({
+      activeBundleVersion: "0.0.10.1",
+      nativeVersionName: "0.0.10.1",
+      nativeBuild: "1",
+      nativeVersionCode: 1,
+      nativeEnvironment: "prod",
+      lastCheckStatus: "incompatible",
+    });
+
+    render(<BrightOsApp />);
+
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Действия" })).toBeInTheDocument());
+    expect(screen.queryByRole("heading", { name: "Установленный APK не подходит для этой версии" })).not.toBeInTheDocument();
+  });
+
   it("starts an Android OTA check from Settings", async () => {
     stubAndroidCapacitor();
 

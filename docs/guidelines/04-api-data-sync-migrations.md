@@ -10,6 +10,15 @@
 - Timer sync основан на event log и deterministic replay.
 - Activities sync использует отдельный event log: `activities` и `activity_events`.
 - Main work entities регистрируются в таблице `items`; сейчас основной entity - `activities`.
+- Server SQLite schema metadata регистрируется в таблице `table_descriptions`.
+- Runtime-обработчики регистрируются в server SQLite таблице `handlers`.
+
+## Runtime schema verification
+
+- Перед правилом, миграцией, утверждением или handoff про runtime SQLite таблицу проверь реальное целевое окружение: DB path, наличие таблицы, `.schema`, `PRAGMA table_info`, индексы и релевантные строки.
+- Не выводи состояние dev/preview/prod из кода, миграций, скриншота или слов Сергея. Если не проверил живую базу, так и скажи.
+- Для live SQLite в WAL mode используй обычный read-only connection (`mode=ro`), а не `immutable=1`, иначе свежие данные из `-wal` можно не увидеть.
+- В невизуальном handoff укажи проверенные environment, DB path, SQL/команду и ключевые строки результата.
 
 ## Main entities
 
@@ -20,6 +29,9 @@
 ## Миграции
 
 - Каждое server-side schema изменение получает migration marker в `schema_migrations`.
+- Любое server-side schema metadata изменение обновляет `table_descriptions` в том же change: новые/изменённые таблицы, столбцы, индексы, связи, зависимости и назначение. Content-only изменения строк этого не требуют.
+- `table_descriptions` имеет поля `table_name`, `title`, `short_description`, `long_description`, `updated_at_utc`; перед обновлением проверь эти поля в целевой DB.
+- Любой новый или изменённый runtime-обработчик должен обновлять строку в `handlers` в том же change. Заполняй максимум полезного контекста: stable id, target, kind, status, краткое и подробное описание, когда срабатывает, условия пропуска, входы, выходы, зависимости/взаимодействия, side effects, LLM provider/model, полный prompt template, timeout, fallback и source module.
 - Перед live migration или destructive-risk изменением делай SQLite backup.
 - Migration должна быть idempotent для повторного запуска.
 - Не меняй canonical data shape без проверки API consumers и client cache projection.
@@ -38,6 +50,8 @@
 - Browser web `/api/*` идёт через Caddy upstream Bearer injection.
 - Direct Capacitor Android uses password-auth session cookies against `https://api.brightos.world`.
 - Не embed private Bearer token в web bundle, OTA bundle или docs.
+- External inbound API contract is documented in `docs/api/inbound-api.md`.
+- Any inbound API route, payload, response, auth, MIME, limit, storage, DB mapping, title-generation, or error-code change must update `docs/api/inbound-api.md` in the same commit.
 
 ## Проверка
 

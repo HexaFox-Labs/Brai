@@ -5,7 +5,8 @@ import type {
   TimerState,
   TimerSyncResponse,
 } from "@/shared/types/timer";
-import type { ActionsState, ActionsSyncResponse, PendingActionEvent } from "@/shared/types/activities";
+import type { ActivitiesState, ActivitiesSyncResponse, PendingActivityEvent } from "@/shared/types/activities";
+import type { InboxState, InboxSyncResponse, PendingInboxEvent } from "@/shared/types/inbox";
 
 interface RequestOptions extends RequestInit {
   json?: unknown;
@@ -46,8 +47,16 @@ export class BrightOsApi {
     return this.request("/v1/goals/challenge");
   }
 
-  async actions(): Promise<ActionsState> {
+  async activities(): Promise<ActivitiesState> {
     return fromActivitiesState(await this.request<ActivitiesApiState>("/v1/activities"));
+  }
+
+  async actions(): Promise<ActivitiesState> {
+    return this.activities();
+  }
+
+  async inbox(): Promise<InboxState> {
+    return this.request("/v1/inbox");
   }
 
   async syncEvents(params: {
@@ -79,12 +88,12 @@ export class BrightOsApi {
     });
   }
 
-  async syncActionEvents(params: {
+  async syncActivityEvents(params: {
     deviceId: string;
     platform: string;
-    events: PendingActionEvent[];
+    events: PendingActivityEvent[];
     lastKnownServerTimeUtc?: string | null;
-  }): Promise<ActionsSyncResponse> {
+  }): Promise<ActivitiesSyncResponse> {
     const response = await this.request<ActivitiesApiSyncResponse>("/v1/activities/events/sync", {
       method: "POST",
       json: {
@@ -107,6 +116,44 @@ export class BrightOsApi {
       },
     });
     return { ...response, state: fromActivitiesState(response.state) };
+  }
+
+  async syncActionEvents(params: {
+    deviceId: string;
+    platform: string;
+    events: PendingActivityEvent[];
+    lastKnownServerTimeUtc?: string | null;
+  }): Promise<ActivitiesSyncResponse> {
+    return this.syncActivityEvents(params);
+  }
+
+  async syncInboxEvents(params: {
+    deviceId: string;
+    platform: string;
+    events: PendingInboxEvent[];
+    lastKnownServerTimeUtc?: string | null;
+  }): Promise<InboxSyncResponse> {
+    return this.request("/v1/inbox/events/sync", {
+      method: "POST",
+      json: {
+        device: {
+          device_id: params.deviceId,
+          platform: params.platform,
+          display_name: params.platform === "android" ? "Bright OS Android" : "Bright OS Web",
+        },
+        last_known_server_time_utc: params.lastKnownServerTimeUtc ?? null,
+        events: params.events.map((event) => ({
+          event_id: event.eventId,
+          client_sequence: event.clientSequence,
+          type: event.type,
+          occurred_at_utc: event.occurredAtUtc,
+          inbox_id: event.inboxId,
+          base_server_revision: event.baseServerRevision,
+          payload_version: event.payloadVersion,
+          payload: event.payload,
+        })),
+      },
+    });
   }
 
   liveUrl(): string {
@@ -151,8 +198,8 @@ export class BrightOsApi {
 interface ActivitiesApiState {
   server_time_utc: string;
   server_revision: number;
-  activities: ActionsState["actions"];
-  archived_activities?: ActionsState["archived_actions"];
+  activities: ActivitiesState["actions"];
+  archived_activities?: ActivitiesState["archived_actions"];
 }
 
 interface ActivitiesApiSyncResponse {
@@ -163,7 +210,7 @@ interface ActivitiesApiSyncResponse {
   state: ActivitiesApiState;
 }
 
-function fromActivitiesState(state: ActivitiesApiState): ActionsState {
+function fromActivitiesState(state: ActivitiesApiState): ActivitiesState {
   return {
     server_time_utc: state.server_time_utc,
     server_revision: state.server_revision,

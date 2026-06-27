@@ -38,12 +38,14 @@ coverage/
 *.apk
 *.aab
 deploy/web/
+deploy/site/
 deploy/releases/
 deploy/mobile-update/
 output/
 **/output/playwright/
 
 # Generated local state
+.bright-task/
 **/.idea/
 **/.gradle/
 **/test-results/

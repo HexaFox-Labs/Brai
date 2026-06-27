@@ -2,7 +2,10 @@
 
 import { useEffect, useRef } from "react";
 import { BookOpen, Crown, Info, Settings } from "lucide-react";
+import { APP_ENVIRONMENT, APP_OTA_CHANNEL, APP_PREVIEW_SLOT } from "@/shared/config/runtime";
 import { installAndroidBackHandler } from "@/shared/platform/platform";
+import type { BrightOtaState } from "@/shared/platform/ota";
+import { Button } from "@/shared/ui/button";
 import { ScrollArea } from "@/shared/ui/scroll-area";
 import { SidebarInset, SidebarProvider } from "@/shared/ui/sidebar";
 import type { SectionId } from "./appModel";
@@ -17,6 +20,7 @@ import { ActionsSection } from "./sections/actions/ActionsSection";
 import { ArchiveSection } from "./sections/actions/ArchiveSection";
 import { EvilEyeSection } from "./sections/EvilEyeSection";
 import { FocusBackground, FocusContextPanelSheet, FocusSection } from "./sections/focus/FocusSection";
+import { InboxSection } from "./sections/inbox/InboxSection";
 import { SettingsSection } from "./sections/settings/SettingsSection";
 
 const SECTION_PAGE_INSET_CLASS = "grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] pb-11 pl-7 pr-0 pt-3.5 max-[860px]:px-3.5 max-[860px]:pb-7 max-[860px]:pt-[var(--mobile-top-padding)]";
@@ -26,6 +30,7 @@ export function BrightOsApp({ initialSection = "actions" }: { initialSection?: S
   const sectionRef = useRef(app.section);
   const selectSectionRef = useRef(app.selectSection);
   const adjacentSection = app.swipeNavigation.visual?.to;
+  const apkBlocked = isDevPreviewApkIncompatible(app.otaState);
   const mobileMenuSwipe = useLeftEdgeMenuSwipe(
     () => app.setMobileMenuOpen(true),
     isPrimarySection(app.section) && !app.mobileMenuOpen && !app.mobileContextPanel && !app.actionOverlayOpen,
@@ -37,7 +42,7 @@ export function BrightOsApp({ initialSection = "actions" }: { initialSection?: S
   }, [app.section, app.selectSection]);
 
   useEffect(() => installAndroidBackHandler(() => {
-    if (window.history.state?.brightMobileMenu || window.history.state?.brightMobileSheet || window.history.state?.brightActivityEditor || window.history.state?.brightMobileActionCreate) return false;
+    if (window.history.state?.brightMobileMenu || window.history.state?.brightMobileSheet || window.history.state?.brightActivityEditor || window.history.state?.brightMobileActionCreate || window.history.state?.brightInboxEditor || window.history.state?.brightMobileInboxCreate) return false;
     if (sectionRef.current === "actions") return false;
     if (window.history.state?.brightOsSection === sectionRef.current) {
       window.history.back();
@@ -88,6 +93,17 @@ export function BrightOsApp({ initialSection = "actions" }: { initialSection?: S
             infoOpen={app.actionsInfoOpen}
             onInfoOpenChange={app.setActionsInfoOpen}
           />
+        ) : screenSection === "inbox" ? (
+          <InboxSection
+            state={app.inbox}
+            localSnapshotReady={app.localSnapshotReady}
+            autoFocusAddInput={isActivePage}
+            onCreate={app.onCreateInboxItem}
+            onUpdateTitle={app.onUpdateInboxTitle}
+            onAutosaveDetails={app.onAutosaveInboxDetails}
+            onDelete={app.onDeleteInboxItem}
+            onMobileOverlayChange={app.setActionOverlayOpen}
+          />
         ) : screenSection === "archive" ? (
           <ArchiveSection state={app.actions} localSnapshotReady={app.localSnapshotReady} onRestore={app.onRestoreAction} />
         ) : screenSection === "focus" ? (
@@ -102,6 +118,7 @@ export function BrightOsApp({ initialSection = "actions" }: { initialSection?: S
             background={app.focusBackground}
             onStart={app.onStart}
             onStop={app.onStop}
+            onEditSession={app.onEditFocusSession}
             onBackground={app.setFocusBackground}
           />
         ) : screenSection === "evil-eye" ? (
@@ -117,6 +134,10 @@ export function BrightOsApp({ initialSection = "actions" }: { initialSection?: S
         ) : null}
       </>
     );
+  }
+
+  if (apkBlocked) {
+    return <ApkCompatibilityBlocker otaState={app.otaState} refreshing={app.otaRefreshing} onRefresh={app.refreshOtaStateOnce} />;
   }
 
   return (
@@ -178,10 +199,10 @@ export function BrightOsApp({ initialSection = "actions" }: { initialSection?: S
         />
       ) : null}
       {app.mobileContextPanel === "focus-goal" && app.section === "focus" ? (
-        <FocusContextPanelSheet panel="goal" history={app.history} goal={app.goal} todayKey={app.todayKey} onClose={() => app.setMobileContextPanel(null)} onCloseStart={app.markMobileContextPanelClosing} />
+        <FocusContextPanelSheet panel="goal" history={app.history} goal={app.goal} todayKey={app.todayKey} onClose={() => app.setMobileContextPanel(null)} onCloseStart={app.markMobileContextPanelClosing} onEditSession={app.onEditFocusSession} />
       ) : null}
       {app.mobileContextPanel === "focus-history" && app.section === "focus" ? (
-        <FocusContextPanelSheet panel="history" history={app.history} goal={app.goal} todayKey={app.todayKey} onClose={() => app.setMobileContextPanel(null)} onCloseStart={app.markMobileContextPanelClosing} />
+        <FocusContextPanelSheet panel="history" history={app.history} goal={app.goal} todayKey={app.todayKey} onClose={() => app.setMobileContextPanel(null)} onCloseStart={app.markMobileContextPanelClosing} onEditSession={app.onEditFocusSession} />
       ) : null}
       {app.mobileContextPanel === "actions-info" && app.section === "actions" ? (
         <MobileContextSheet label="Информация о действиях" onClose={() => app.setMobileContextPanel(null)} onCloseStart={app.markMobileContextPanelClosing}>
@@ -190,4 +211,71 @@ export function BrightOsApp({ initialSection = "actions" }: { initialSection?: S
       ) : null}
     </SidebarProvider>
   );
+}
+
+function isDevPreviewApkIncompatible(otaState: BrightOtaState | null): boolean {
+  if (otaState?.lastCheckStatus !== "incompatible") return false;
+  return (otaState.nativeEnvironment || APP_ENVIRONMENT) !== "prod";
+}
+
+function ApkCompatibilityBlocker({
+  otaState,
+  refreshing,
+  onRefresh,
+}: {
+  otaState: BrightOtaState | null;
+  refreshing: boolean;
+  onRefresh: () => Promise<void>;
+}) {
+  const releaseUrl = apkReleaseUrl(otaState);
+  const environment = otaState?.nativeEnvironment || APP_ENVIRONMENT;
+  const rows = [
+    { label: "Окружение", value: environment === "dev" ? "Dev" : APP_PREVIEW_SLOT || otaState?.nativePreviewSlot || environment },
+    { label: "APK", value: apkLabel(otaState) },
+    { label: "Web", value: otaState?.activeBundleVersion || "неизвестно" },
+    { label: "Fallback", value: otaState?.fallbackBundleVersion || "неизвестно" },
+  ];
+
+  return (
+    <main className="grid min-h-dvh place-items-center bg-background px-4 py-8 text-foreground">
+      <section className="grid w-full max-w-[520px] gap-5 rounded-lg border border-destructive/35 bg-card p-5 shadow-sm" aria-label="APK устарел">
+        <div className="grid gap-1.5">
+          <p className="m-0 text-xs font-semibold uppercase text-destructive">Нужен новый APK</p>
+          <h1 className="m-0 text-2xl leading-tight">Установленный APK не подходит для этой версии</h1>
+          <p className="m-0 text-sm leading-6 text-muted-foreground">
+            Эта Dev/Preview сборка требует другой Android shell. Установи свежий APK и запусти проверку снова.
+          </p>
+        </div>
+        <dl className="m-0 grid gap-2.5">
+          {rows.map((row) => (
+            <div key={row.label} className="flex items-baseline justify-between gap-3 max-[460px]:grid max-[460px]:gap-0.5">
+              <dt className="text-xs font-normal uppercase text-muted-foreground">{row.label}</dt>
+              <dd className="m-0 max-w-[70%] [overflow-wrap:anywhere] text-right text-sm tabular-nums max-[460px]:max-w-full max-[460px]:text-left">{row.value}</dd>
+            </div>
+          ))}
+        </dl>
+        <div className="flex flex-wrap gap-2.5">
+          <Button type="button" disabled={refreshing} onClick={() => void onRefresh()}>
+            {refreshing ? "Проверяем..." : "Проверить снова"}
+          </Button>
+          <Button asChild type="button" variant="secondary">
+            <a href={releaseUrl}>Открыть APK-релизы</a>
+          </Button>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function apkLabel(otaState: BrightOtaState | null): string {
+  const version = otaState?.nativeVersionName || "неизвестно";
+  const build = otaState?.nativeBuild && otaState.nativeBuild !== version ? `+${otaState.nativeBuild}` : "";
+  const code = otaState?.nativeVersionCode ? ` (${otaState.nativeVersionCode})` : "";
+  return `${version}${build}${code}`;
+}
+
+function apkReleaseUrl(otaState: BrightOtaState | null): string {
+  const channel = otaState?.nativeOtaChannel || APP_OTA_CHANNEL;
+  const host = channel.split("/")[0];
+  return host ? `https://${host}/releases/` : "/releases/";
 }

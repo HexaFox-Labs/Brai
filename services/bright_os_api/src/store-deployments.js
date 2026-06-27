@@ -56,20 +56,168 @@ export const deploymentMethods = {
   },
 
   recordAcceptedBuildVersion({
-    prNumber,
     sourceBranch,
     sourceCommit,
+    sourceShortChanges = null,
+    sourceReason = null,
     sourceDetails,
     targetBranch,
     targetCommit,
     releasedAtUtc,
   }) {
-    const buildVersion = Number(prNumber);
-    if (!Number.isInteger(buildVersion) || buildVersion <= 0) {
-      throw new Error(`invalid accepted PR number: ${prNumber}`);
-    }
+    const existing = this.findBuildVersionByTargetCommit({ targetBranch, targetCommit, releaseOnly: false });
+    const buildVersion = existing?.build_version ?? this.nextAcceptedBuildVersion();
     const version = `0.0.${buildVersion}.1`;
-    const now = new Date().toISOString();
+    const fallbackShortChanges = 'Accepted preview changes without authored release notes.';
+    const fallbackDetailedChanges = 'No authored preview release notes were available; audit metadata is stored separately.';
+    const fallbackReason = 'Needed because no authored preview release notes were available; audit metadata is stored separately.';
+    const shortChanges = usefulChanges(sourceShortChanges) || fallbackShortChanges;
+    const detailedChanges = usefulChanges(sourceDetails) || (shortChanges === fallbackShortChanges ? fallbackDetailedChanges : shortChanges);
+    this.upsertBuildVersion({
+      majorVersion: 0,
+      releaseVersion: 0,
+      buildVersion,
+      apkVersion: 1,
+      version,
+      shortChanges,
+      detailedChanges,
+      reason: usefulReason(sourceReason)
+        || (shortChanges === fallbackShortChanges ? fallbackReason : '')
+        || reasonFromChanges(detailedChanges, shortChanges)
+        || `Needed to accept ${sourceBranch} into ${targetBranch}.`,
+      releasedAtUtc,
+      sourceBranch,
+      sourceCommit,
+      targetBranch,
+      targetCommit,
+    });
+    return { buildVersion, version };
+  },
+
+  recordProductionReleaseVersion({
+    sourceBranch,
+    sourceCommit,
+    sourceShortChanges = null,
+    sourceReason = null,
+    sourceDetails,
+    targetBranch,
+    targetCommit,
+    releasedAtUtc,
+  }) {
+    const existing = this.findBuildVersionByTargetCommit({ targetBranch, targetCommit, releaseOnly: true });
+    if (existing) {
+      return {
+        releaseVersion: existing.release_version,
+        buildVersion: existing.build_version,
+        version: existing.version,
+      };
+    }
+    const acceptedBuilds = this.db
+      .prepare(`
+        SELECT *
+        FROM build_versions
+        WHERE version_type_id = 'build' AND release_version = 0
+        ORDER BY build_version
+      `)
+      .all();
+    const latest = acceptedBuilds.at(-1);
+    if (!latest) throw new Error('cannot create production release without accepted dev builds');
+
+    const previousRelease = this.db
+      .prepare(`
+        SELECT release_version, build_version
+        FROM build_versions
+        WHERE version_type_id = 'build' AND release_version > 0
+        ORDER BY release_version DESC
+        LIMIT 1
+      `)
+      .get() ?? { release_version: 0, build_version: 0 };
+    const releaseVersion = previousRelease.release_version + 1;
+    const includedBuilds = acceptedBuilds.filter((row) => row.build_version > previousRelease.build_version);
+    const referencedBuilds = includedBuilds.length > 0 ? includedBuilds : [latest];
+    const version = `0.${releaseVersion}.${latest.build_version}.${latest.apk_version}`;
+    const sourceChanges = usefulChanges(sourceDetails);
+
+    this.upsertBuildVersion({
+      majorVersion: 0,
+      releaseVersion,
+      buildVersion: latest.build_version,
+      apkVersion: latest.apk_version,
+      version,
+      shortChanges: usefulChanges(sourceShortChanges) || `Production release ${version}.`,
+      detailedChanges: [
+        `Included accepted dev builds: ${referencedBuilds.map((row) => `${row.version}: ${row.short_changes}`).join('; ')}.`,
+        sourceChanges,
+      ].filter(Boolean).join(' '),
+      reason: usefulReason(sourceReason) || 'Needed to publish accepted dev changes to production after validation.',
+      releasedAtUtc,
+      sourceBranch,
+      sourceCommit,
+      targetBranch,
+      targetCommit,
+    });
+    return { releaseVersion, buildVersion: latest.build_version, version };
+  },
+
+  findBuildVersionByTargetCommit({ targetBranch, targetCommit, releaseOnly }) {
+    if (!targetCommit) return null;
+    const releaseFilter = releaseOnly ? 'release_version > 0' : 'release_version = 0';
+    const fromRef = this.db
+      .prepare(`
+        SELECT build_versions.*
+        FROM build_version_refs
+        JOIN build_versions
+          ON build_versions.version_type_id = build_version_refs.version_type_id
+         AND build_versions.version = build_version_refs.version
+        WHERE build_version_refs.version_type_id = 'build'
+          AND build_version_refs.target_branch = ?
+          AND build_version_refs.target_commit = ?
+          AND ${releaseFilter}
+        ORDER BY build_versions.release_version DESC, build_versions.build_version DESC
+        LIMIT 1
+      `)
+      .get(targetBranch || '', targetCommit);
+    if (fromRef) return fromRef;
+
+    return this.db
+      .prepare(`
+        SELECT *
+        FROM build_versions
+        WHERE version_type_id = 'build'
+          AND (instr(detailed_changes, ?) > 0 OR instr(reason, ?) > 0)
+          AND ${releaseFilter}
+        ORDER BY release_version DESC, build_version DESC
+        LIMIT 1
+      `)
+      .get(`@${targetCommit}`, `@${targetCommit}`);
+  },
+
+  nextAcceptedBuildVersion() {
+    const row = this.db
+      .prepare(`
+        SELECT COALESCE(MAX(build_version), 0) + 1 AS next
+        FROM build_versions
+        WHERE version_type_id = 'build' AND release_version = 0
+      `)
+      .get();
+    return row.next;
+  },
+
+  upsertBuildVersion({
+    majorVersion,
+    releaseVersion,
+    buildVersion,
+    apkVersion,
+    version,
+    shortChanges,
+    detailedChanges,
+    reason,
+    releasedAtUtc,
+    sourceBranch = null,
+    sourceCommit = null,
+    targetBranch = null,
+    targetCommit = null,
+  }) {
     this.db
       .prepare(`
         INSERT INTO build_versions (
@@ -93,28 +241,97 @@ export const deploymentMethods = {
           released_at_utc = excluded.released_at_utc
       `)
       .run(
-        "build",
-        0,
-        0,
+        'build',
+        majorVersion,
+        releaseVersion,
         buildVersion,
-        1,
+        apkVersion,
         version,
-        `Accepted PR #${buildVersion} into dev.`,
-        `Recorded accepted PR #${buildVersion}: ${sourceBranch}@${sourceCommit} promoted to ${targetBranch}@${targetCommit}. ${sourceDetails}`,
-        `Accepted PR #${buildVersion} into dev.`,
+        shortChanges,
+        detailedChanges,
+        reason,
         releasedAtUtc,
-        now,
+        new Date().toISOString(),
       );
-
-    const ledger = this.db
-      .prepare(`
-        SELECT COUNT(*) AS count, MAX(build_version) AS max
-        FROM build_versions
-        WHERE version_type_id = 'build'
-      `)
-      .get();
-    if (ledger.count !== buildVersion || ledger.max !== buildVersion) {
-      throw new Error(`build_versions ledger mismatch: expected ${buildVersion} build rows ending at ${buildVersion}, got ${ledger.count} ending at ${ledger.max}`);
+    if (targetBranch && targetCommit) {
+      this.upsertBuildVersionRef({
+        versionTypeId: 'build',
+        version,
+        sourceBranch,
+        sourceCommit,
+        targetBranch,
+        targetCommit,
+      });
     }
   },
+
+  upsertBuildVersionRef({
+    versionTypeId,
+    version,
+    sourceBranch,
+    sourceCommit,
+    targetBranch,
+    targetCommit,
+  }) {
+    this.db
+      .prepare(`
+        INSERT INTO build_version_refs (
+          version_type_id,
+          version,
+          source_branch,
+          source_commit,
+          target_branch,
+          target_commit,
+          created_at_utc
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(version_type_id, target_branch, target_commit) DO UPDATE SET
+          version = excluded.version,
+          source_branch = excluded.source_branch,
+          source_commit = excluded.source_commit
+      `)
+      .run(
+        versionTypeId,
+        version,
+        sourceBranch,
+        sourceCommit,
+        targetBranch,
+        targetCommit,
+        new Date().toISOString(),
+      );
+  },
 };
+
+function usefulChanges(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+  const oneLine = text.replace(/\s+/g, ' ');
+  if (oneLine === 'Branch deployment') return '';
+  if (/^Automated deployment from \S+@\S+ to \S+\.?$/i.test(oneLine)) return '';
+  if (/^Automated dev deployment from \S+@\S+\.?$/i.test(oneLine)) return '';
+  if (/^Accepted preview branch \S+@\S+\.?$/i.test(oneLine)) return '';
+  if (/^Accepted dev build (?:\d|0\.)/i.test(oneLine)) return '';
+  if (/^Accepted codex\/\S+\.?$/i.test(oneLine)) return '';
+  if (/^Accepted \S+@\S+ without preview deployment metadata\.?$/i.test(oneLine)) return '';
+  if (/^Accepted preview changes without authored release notes\.?$/i.test(oneLine)) return '';
+  if (/^No authored preview release notes were available; audit metadata is stored separately\.?$/i.test(oneLine)) return '';
+  return text;
+}
+
+function usefulReason(value) {
+  const text = usefulChanges(value);
+  if (!text) return '';
+  const oneLine = text.replace(/\s+/g, ' ');
+  if (/^Accepted branch promotion\.?$/i.test(oneLine)) return '';
+  if (/^Promote preview\b/i.test(oneLine)) return '';
+  if (/^Promote dev to production/i.test(oneLine)) return '';
+  if (/^Automated branch delivery\.?$/i.test(oneLine)) return '';
+  if (/^Automated dev deployment\.?$/i.test(oneLine)) return '';
+  return text;
+}
+
+function reasonFromChanges(detailedChanges, shortChanges) {
+  const text = usefulChanges(detailedChanges) || usefulChanges(shortChanges);
+  if (!text) return '';
+  return `Needed because ${text.replace(/\.$/, '').replace(/^./, (letter) => letter.toLowerCase())}.`;
+}

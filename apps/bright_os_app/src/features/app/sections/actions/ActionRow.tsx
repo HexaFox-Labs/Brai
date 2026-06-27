@@ -5,7 +5,7 @@ import { useId, useLayoutEffect, useRef, useState } from "react";
 import { Trash2, Undo2 } from "lucide-react";
 import { useSwipeable } from "react-swipeable";
 import { cleanTitle, visibleDescriptionPreview } from "@/shared/activities/text";
-import type { ActionItem, ActionStatus } from "@/shared/types/activities";
+import type { ActivityItem, ActivityStatus } from "@/shared/types/activities";
 import { Checkbox } from "@/shared/ui/checkbox";
 import { cx } from "../../appUtils";
 import { isMobileNavigationViewport } from "../../navigation/useSectionSwipeNavigation";
@@ -35,16 +35,16 @@ export function ActionRow({
   sortableStyle,
   sortableDragging = false,
 }: {
-  action: ActionItem;
+  action: ActivityItem;
   selected: boolean;
   readonly?: boolean;
   control?: "delete" | "restore";
   onSelect: (detailTitleFocus?: DetailTitleFocus) => void;
-  onEditMobile: (action: ActionItem) => void;
-  onUpdateTitle: (action: ActionItem, title: string) => Promise<void>;
-  onSetStatus: (action: ActionItem, status: ActionStatus) => Promise<void>;
-  onDelete: (action: ActionItem) => Promise<void>;
-  onRestore?: (action: ActionItem) => Promise<void>;
+  onEditMobile: (action: ActivityItem) => void;
+  onUpdateTitle: (action: ActivityItem, title: string) => Promise<void>;
+  onSetStatus: (action: ActivityItem, status: ActivityStatus) => Promise<void>;
+  onDelete: (action: ActivityItem) => Promise<void>;
+  onRestore?: (action: ActivityItem) => Promise<void>;
   titleDraft?: string;
   onTitleDraftChange?: (actionId: string, title: string | null) => void;
   deleteOpen: boolean;
@@ -147,13 +147,13 @@ export function ActionRow({
     <div
       ref={setActionRowRef}
       className={cx(
-        "action-row group relative grid min-h-[54px] max-h-[220px] grid-cols-[minmax(0,1fr)_44px] items-stretch overflow-hidden border-b border-border transition-[max-height,opacity,border-color,box-shadow] duration-150 max-[860px]:grid-cols-[minmax(0,1fr)_46px] max-[860px]:[touch-action:pan-y]",
+        "action-row group relative grid min-h-[54px] max-h-[220px] grid-cols-[minmax(0,1fr)_44px] items-stretch overflow-hidden border-b border-border transition-[max-height,opacity,border-color,box-shadow] duration-150 [&:has(+_.action-row.selected)]:border-b-transparent max-[860px]:grid-cols-[minmax(0,1fr)_46px] max-[860px]:[touch-action:pan-y]",
         done && "done",
         action.pending && "pending opacity-80",
         deleteOpen && "delete-open",
         dragging && "dragging",
         removing && "removing pointer-events-none max-h-0 border-b-transparent opacity-0",
-        selected && "selected bg-primary/10",
+        selected && "selected rounded-lg border-b-transparent bg-primary/10",
         sortableDragging && "sorting overflow-visible shadow-lg",
       )}
       data-nav-swipe-exclusion
@@ -243,12 +243,12 @@ function ActionTitleEditor({
   onUpdateTitle,
   onTitleDraftChange,
 }: {
-  action: ActionItem;
+  action: ActivityItem;
   title: string;
   readonly?: boolean;
   onSelect: (detailTitleFocus?: DetailTitleFocus) => void;
-  onEditMobile: (action: ActionItem) => void;
-  onUpdateTitle: (action: ActionItem, title: string) => Promise<void>;
+  onEditMobile: (action: ActivityItem) => void;
+  onUpdateTitle: (action: ActivityItem, title: string) => Promise<void>;
   onTitleDraftChange: (actionId: string, title: string | null) => void;
 }) {
   const titleRef = useRef<HTMLSpanElement | null>(null);

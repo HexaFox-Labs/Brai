@@ -68,6 +68,24 @@ Agents and maintainers MUST verify actual repository files before relying on Mem
 - **WHEN** Memory Bank or OpenSpec content conflicts with the current repository state
 - **THEN** the repository state is treated as authoritative and the stale documentation is corrected
 
+### Requirement: Runtime facts are verified directly
+Agents and maintainers MUST verify runtime tables, services, deployments, and environment-specific state against the actual target environment before recording rules or reporting completion.
+
+#### Scenario: Runtime database fact is used
+- **WHEN** work depends on a runtime database table, schema, row, migration state, or environment-specific ledger
+- **THEN** the agent verifies the actual target environment and database path with read-only inspection
+- **AND** verifies table presence, schema, indexes, and relevant rows before making claims or changing durable rules
+- **AND** does not infer runtime state from repository code, migrations, screenshots, or user wording alone
+
+#### Scenario: Live SQLite database uses WAL
+- **WHEN** a live SQLite database may have WAL files
+- **THEN** freshness-sensitive verification uses a normal read-only connection that includes WAL state
+- **AND** does not use `immutable=1` as the source of truth for fresh runtime facts
+
+#### Scenario: Non-visual runtime change is handed off
+- **WHEN** a user cannot visually verify a runtime or database change
+- **THEN** the handoff includes the environment, path or system checked, and key query or command results
+
 ### Requirement: Main entities are registered in items
 Bright OS SHALL treat the server SQLite `items` table as the registry of main work entities.
 
@@ -79,12 +97,29 @@ Bright OS SHALL treat the server SQLite `items` table as the registry of main wo
 - **WHEN** the server database schema is initialized or migrated to the main entity registry
 - **THEN** the `items` table contains the `activities` entity
 
+### Requirement: Server schema metadata is registered in table_descriptions
+Bright OS SHALL treat the server SQLite `table_descriptions` table as the registry for schema metadata.
+
+#### Scenario: Server schema metadata changes
+- **WHEN** a server SQLite change adds or changes a table, column, index, relationship, dependency, or schema purpose
+- **THEN** the same change updates `table_descriptions`
+- **AND** content-only row changes do not require `table_descriptions` updates
+
 ### Requirement: SocratiCode is used for semantic code search
 Agents and maintainers MUST use SocratiCode for semantic code search after confirming the project codebase index is complete.
 
 #### Scenario: Semantic code search is needed
 - **WHEN** an agent needs to find code by behavior, responsibility, feature, or natural-language meaning
 - **THEN** the agent checks the SocratiCode index status and uses SocratiCode search once indexing is complete
+
+#### Scenario: SocratiCode context artifacts are maintained
+- **WHEN** agent-facing docs, OpenSpec requirements, or Memory Bank context are expected to be semantically searchable
+- **THEN** the project declares them in `.socraticodecontextartifacts.json`
+- **AND** SocratiCode context search is available for those artifacts after indexing
+
+#### Scenario: SocratiCode freshness is checked
+- **WHEN** SocratiCode behavior, agent rules, OpenSpec routing, or repository context indexing changes
+- **THEN** `npm run socraticode:preflight` verifies the local MCP config, context artifact registry, and active watcher state
 
 #### Scenario: Exact repository inspection is needed
 - **WHEN** an agent needs exact string matching, file discovery, or non-semantic repository inspection

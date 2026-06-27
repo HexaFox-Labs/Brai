@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BrightOsApi } from "@/shared/api/brightOsApi";
-import type { PendingActionEvent } from "@/shared/types/activities";
+import type { PendingActivityEvent } from "@/shared/types/activities";
+import type { PendingInboxEvent } from "@/shared/types/inbox";
 import type { PendingTimerEvent } from "@/shared/types/timer";
 
 describe("BrightOsApi", () => {
@@ -73,6 +74,62 @@ describe("BrightOsApi", () => {
     expect(body.events[0].metadata).toEqual({ global_stop: true });
   });
 
+  it("sends focus session edit metadata with synced timer events", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          acknowledged_event_ids: ["device:3:edit"],
+          ignored_events: [],
+          server_revision: 3,
+          state: {
+            server_time_utc: "2026-06-15T08:00:00.000Z",
+            server_revision: 3,
+            timezone: "Europe/Moscow",
+            active_session: null,
+            elapsed_seconds: 0,
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    await new BrightOsApi("https://api.example.test").syncEvents({
+      deviceId: "device",
+      platform: "web",
+      events: [
+        {
+          eventId: "device:3:edit",
+          deviceId: "device",
+          clientSequence: 3,
+          type: "edit_session",
+          occurredAtUtc: "2026-06-15T08:00:00.000Z",
+          localTimerId: "device:timer:3",
+          baseServerRevision: 2,
+          payloadVersion: 1,
+          status: "pending",
+          attemptCount: 0,
+          enqueuedAtUtc: "2026-06-15T08:00:00.000Z",
+          metadata: {
+            focus_session_id: "session-1",
+            started_at_utc: "2026-06-15T06:00:00.000Z",
+            ended_at_utc: "2026-06-15T07:00:00.000Z",
+          },
+        } satisfies PendingTimerEvent,
+      ],
+    });
+
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(String(init?.body));
+    expect(body.events[0]).toMatchObject({
+      type: "edit_session",
+      metadata: {
+        focus_session_id: "session-1",
+        started_at_utc: "2026-06-15T06:00:00.000Z",
+        ended_at_utc: "2026-06-15T07:00:00.000Z",
+      },
+    });
+  });
+
   it("sends pending action events to the activities sync endpoint", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
@@ -91,7 +148,7 @@ describe("BrightOsApi", () => {
       ),
     );
 
-    await new BrightOsApi("https://api.example.test").syncActionEvents({
+    await new BrightOsApi("https://api.example.test").syncActivityEvents({
       deviceId: "device",
       platform: "web",
       events: [
@@ -110,7 +167,7 @@ describe("BrightOsApi", () => {
           lastError: null,
           enqueuedAtUtc: "2026-06-16T08:00:00.000Z",
           lastSyncAttemptAtUtc: null,
-        } satisfies PendingActionEvent,
+        } satisfies PendingActivityEvent,
       ],
     });
 
@@ -143,7 +200,7 @@ describe("BrightOsApi", () => {
       ),
     );
 
-    await new BrightOsApi("https://api.example.test").syncActionEvents({
+    await new BrightOsApi("https://api.example.test").syncActivityEvents({
       deviceId: "device",
       platform: "web",
       events: [
@@ -162,7 +219,7 @@ describe("BrightOsApi", () => {
           lastError: null,
           enqueuedAtUtc: "2026-06-16T08:05:00.000Z",
           lastSyncAttemptAtUtc: null,
-        } satisfies PendingActionEvent,
+        } satisfies PendingActivityEvent,
       ],
     });
 
@@ -196,7 +253,7 @@ describe("BrightOsApi", () => {
       ),
     );
 
-    await new BrightOsApi("https://api.example.test").syncActionEvents({
+    await new BrightOsApi("https://api.example.test").syncActivityEvents({
       deviceId: "device",
       platform: "web",
       events: [
@@ -215,7 +272,7 @@ describe("BrightOsApi", () => {
           lastError: null,
           enqueuedAtUtc: "2026-06-16T08:06:00.000Z",
           lastSyncAttemptAtUtc: null,
-        } satisfies PendingActionEvent,
+        } satisfies PendingActivityEvent,
       ],
     });
 
@@ -248,7 +305,7 @@ describe("BrightOsApi", () => {
       ),
     );
 
-    await new BrightOsApi("https://api.example.test").syncActionEvents({
+    await new BrightOsApi("https://api.example.test").syncActivityEvents({
       deviceId: "device",
       platform: "web",
       events: [
@@ -267,7 +324,7 @@ describe("BrightOsApi", () => {
           lastError: null,
           enqueuedAtUtc: "2026-06-16T08:06:00.000Z",
           lastSyncAttemptAtUtc: null,
-        } satisfies PendingActionEvent,
+        } satisfies PendingActivityEvent,
       ],
     });
 
@@ -297,7 +354,7 @@ describe("BrightOsApi", () => {
       ),
     );
 
-    await new BrightOsApi("https://api.example.test").syncActionEvents({
+    await new BrightOsApi("https://api.example.test").syncActivityEvents({
       deviceId: "device",
       platform: "web",
       events: [
@@ -316,7 +373,7 @@ describe("BrightOsApi", () => {
           lastError: null,
           enqueuedAtUtc: "2026-06-16T08:07:00.000Z",
           lastSyncAttemptAtUtc: null,
-        } satisfies PendingActionEvent,
+        } satisfies PendingActivityEvent,
       ],
     });
 
@@ -325,6 +382,58 @@ describe("BrightOsApi", () => {
     expect(body.events[0]).toMatchObject({
       type: "reorder",
       payload: { ordered_ids: ["action-2", "action-1"] },
+    });
+  });
+
+  it("sends pending inbox events to the inbox sync endpoint", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          acknowledged_event_ids: ["device:inbox:1"],
+          ignored_events: [],
+          server_revision: 1,
+          server_time_utc: "2026-06-16T08:00:00.000Z",
+          state: {
+            server_time_utc: "2026-06-16T08:00:00.000Z",
+            server_revision: 1,
+            inbox: [],
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    await new BrightOsApi("https://api.example.test").syncInboxEvents({
+      deviceId: "device",
+      platform: "web",
+      events: [
+        {
+          eventId: "device:inbox:1",
+          deviceId: "device",
+          clientSequence: 1,
+          type: "create",
+          occurredAtUtc: "2026-06-16T08:00:00.000Z",
+          inboxId: "inbox-1",
+          payload: { title: "Входящее" },
+          baseServerRevision: 0,
+          payloadVersion: 1,
+          status: "pending",
+          attemptCount: 0,
+          lastError: null,
+          enqueuedAtUtc: "2026-06-16T08:00:00.000Z",
+          lastSyncAttemptAtUtc: null,
+        } satisfies PendingInboxEvent,
+      ],
+    });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(String(init?.body));
+    expect(url).toBe("https://api.example.test/v1/inbox/events/sync");
+    expect(body.events[0]).toMatchObject({
+      event_id: "device:inbox:1",
+      inbox_id: "inbox-1",
+      type: "create",
+      payload: { title: "Входящее" },
     });
   });
 });

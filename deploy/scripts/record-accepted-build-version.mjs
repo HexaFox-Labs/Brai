@@ -6,9 +6,10 @@ const store = new BrightOsStore(required(args, "db"));
 
 try {
   store.recordAcceptedBuildVersion({
-    prNumber: required(args, "pr-number"),
     sourceBranch: required(args, "source-branch"),
     sourceCommit: required(args, "source-commit"),
+    sourceShortChanges: args["source-short-changes"] || null,
+    sourceReason: args["source-reason"] || null,
     sourceDetails: args["source-details"] || "Accepted dev deployment.",
     targetBranch: required(args, "target-branch"),
     targetCommit: required(args, "target-commit"),
