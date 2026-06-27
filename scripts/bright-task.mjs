@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 
 const CODEX_BRANCH_RE = /^codex\/[a-z0-9][a-z0-9._-]*$/;
 const PROTECTED_PATH_RE =
-  /(^|\/)(\.env(\.|$)|.*\.(sqlite|sqlite3|db|jks|keystore|pem|key|p12|pfx|apk|aab|zip)$|google-services\.json|.*(service-account|credentials|secrets).*\.json$)|^(data\/|deploy\/(web|mobile-update|releases)\/)/;
+  /(^|\/)(\.env(\.|$)|.*\.(sqlite|sqlite3|db|jks|keystore|pem|key|p12|pfx|apk|aab|zip)$|google-services\.json|.*(service-account|credentials|secrets).*\.json$)|^(data\/|deploy\/(site|web|mobile-update|releases)\/)/;
 const DEPENDENCY_DIRS = [
   "node_modules",
   "apps/bright_os_app/node_modules",
@@ -17,6 +17,13 @@ const DEPENDENCY_DIRS = [
 
 const ZERO_SHA = "0000000000000000000000000000000000000000";
 const PREVIEW_SLOT_EMOJI = { A: "🅰️", B: "🅱️", C: "🅲", D: "🅳", E: "🅴" };
+const DELIVERY_RECEIPT_VERSION = "bright-delivery-handoff-v1";
+const DELIVERY_CLASS = {
+  BLOCKED: "blocked",
+  INFRA_DOCS: "infra-docs",
+  NONE: "none",
+  RUNTIME_PREVIEW: "runtime-preview",
+};
 
 if (isMainModule()) {
   runCli(process.argv.slice(2));
@@ -27,6 +34,8 @@ export {
   DEPENDENCY_DIRS,
   PROTECTED_PATH_RE,
   analyzeHookInput,
+  classifyDelivery,
+  deliveryClassForFile,
   dependencySourceRoot,
   deriveTaskState,
   enableGitHooks,
@@ -41,6 +50,7 @@ export {
   taskWorktreeParent,
   validateTaskMarker,
   validateTaskThread,
+  validateDeliveryReceipt,
   validatePushUpdate,
   validatePreviewReceipt,
 };
@@ -66,8 +76,17 @@ function runCli([command, ...args]) {
       case "stop":
         stopHook();
         break;
+      case "classify":
+        classifyCli(args);
+        break;
+      case "handoff":
+        deliveryHandoff(args[0]);
+        break;
       case "preview":
         previewHandoff(args[0]);
+        break;
+      case "require-delivery":
+        requireDeliveryVerification(args[0], args[1]);
         break;
       case "require-preview":
         requirePreviewVerification(args[0], args[1]);
@@ -76,7 +95,7 @@ function runCli([command, ...args]) {
         doctor(args.includes("--strict"));
         break;
       default:
-        throw new Error("usage: bright-task.mjs start <slug>|follow-up [branch]|pre-tool-use|pre-commit|pre-push <remote>|stop|preview [branch]|require-preview [branch] [sha]|doctor [--strict]");
+        throw new Error("usage: bright-task.mjs start <slug>|follow-up [branch]|pre-tool-use|pre-commit|pre-push <remote>|stop|classify [--base <ref>] [--head <ref>] [--github-output]|handoff [branch]|preview [branch]|require-delivery [branch] [sha]|require-preview [branch] [sha]|doctor [--strict]");
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -227,8 +246,14 @@ function prePush(remoteName) {
   }
 
   const changed = diffFromDev();
+  if (changed.some((file) => file.startsWith("scripts/bright-") || file.startsWith(".codex/") || file.startsWith(".githooks/"))) {
+    runRequired(["npm", "run", "task:test"], "Bright OS task guard changes require passing npm run task:test before push.");
+  }
   if (changed.some((file) => file.startsWith("services/bright_os_temporal/") || file === ".github/workflows/bright-os-delivery.yml")) {
     runRequired(["npm", "run", "temporal:test"], "Temporal-sensitive changes require passing npm run temporal:test before push.");
+  }
+  if (changed.some((file) => file.startsWith("openspec/"))) {
+    runRequired(["npm", "run", "openspec:validate"], "OpenSpec changes require passing npm run openspec:validate before push.");
   }
   runRequired(["npm", "run", "public:guard"], "Bright OS public guard must pass before push.");
 }
@@ -242,6 +267,13 @@ function stopHook() {
 }
 
 function previewHandoff(branchArg) {
+  const classification = classifyDelivery(diffFromTaskBase());
+  if (classification.deliveryClass === DELIVERY_CLASS.INFRA_DOCS) {
+    throw new Error("This branch is infra-docs and does not use preview handoff. Run: node scripts/bright-task.mjs handoff");
+  }
+  if (classification.deliveryClass === DELIVERY_CLASS.BLOCKED) {
+    throw new Error(`Blocked delivery paths cannot be handed off:\n${classification.paths.blocked.map((file) => `- ${file}`).join("\n")}`);
+  }
   const branch = branchArg ?? currentBranch();
   if (!CODEX_BRANCH_RE.test(branch)) throw new Error(`Preview handoff requires codex/* branch, got: ${branch}`);
   if (branch !== currentBranch()) throw new Error(`Current branch is ${currentBranch()}, not ${branch}`);
@@ -253,7 +285,7 @@ function previewHandoff(branchArg) {
   if (git("status", "--porcelain").trim()) throw new Error("Working tree is not clean. Commit or remove local changes before handoff.");
   if (!isAncestor("origin/dev", head)) throw new Error(`origin/dev is not an ancestor of ${head}.`);
 
-  const run = findSuccessfulDeliveryRun(branch, head);
+  const run = findSuccessfulDeliveryRun(branch, head, ["public-guard", "checks", "temporal-worker-check", "deploy-preview"]);
   const slot = readPreviewSlot(branch, head);
   const url = previewUrlForSlot(slot);
   const receipt = { branch, commit: head, slot, url, runId: run.databaseId, verifiedAt: new Date().toISOString(), verifiedBy: "bright-task-preview-v1" };
@@ -264,6 +296,82 @@ function previewHandoff(branchArg) {
   console.log(`Commit: ${head}`);
   console.log(`Preview ${slot}: ${url}`);
   console.log(`GitHub Actions run: ${run.url ?? `https://github.com/sergobright/Bright-OS/actions/runs/${run.databaseId}`}`);
+}
+
+function deliveryHandoff(branchArg) {
+  const classification = classifyDelivery(diffFromTaskBase());
+  if (classification.deliveryClass === DELIVERY_CLASS.RUNTIME_PREVIEW) {
+    previewHandoff(branchArg);
+    return;
+  }
+  if (classification.deliveryClass === DELIVERY_CLASS.BLOCKED) {
+    throw new Error(`Blocked delivery paths cannot be handed off:\n${classification.paths.blocked.map((file) => `- ${file}`).join("\n")}`);
+  }
+  if (classification.deliveryClass === DELIVERY_CLASS.NONE) {
+    console.log("No Bright OS delivery work to hand off.");
+    return;
+  }
+
+  const branch = branchArg ?? currentBranch();
+  if (!CODEX_BRANCH_RE.test(branch)) throw new Error(`Delivery handoff requires codex/* branch, got: ${branch}`);
+  if (branch !== currentBranch()) throw new Error(`Current branch is ${currentBranch()}, not ${branch}`);
+  const head = git("rev-parse", "HEAD");
+
+  fetchDevAndBranch(branch);
+  const remoteSha = git("rev-parse", `origin/${branch}`);
+  if (remoteSha !== head) throw new Error(`HEAD ${head} is not pushed to origin/${branch} (${remoteSha}). Push before handoff.`);
+  if (git("status", "--porcelain").trim()) throw new Error("Working tree is not clean. Commit or remove local changes before handoff.");
+  if (!isAncestor("origin/dev", head) && !isAncestor(head, "origin/dev")) {
+    throw new Error(`origin/dev is not related to ${head} as an ancestor or accepted descendant.`);
+  }
+
+  ensureInfraDocsPr(branch);
+  const run = findSuccessfulDeliveryRun(branch, head, ["public-guard", "checks", "temporal-worker-check", "auto-merge-infra-docs"]);
+  const receipt = {
+    receiptType: DELIVERY_RECEIPT_VERSION,
+    branch,
+    commit: head,
+    deliveryClass: classification.deliveryClass,
+    classification,
+    runId: run.databaseId,
+    runUrl: run.url ?? `https://github.com/sergobright/Bright-OS/actions/runs/${run.databaseId}`,
+    verifiedAt: new Date().toISOString(),
+    verifiedBy: "bright-task-delivery-v1",
+  };
+  writeDeliveryReceipt(receipt);
+
+  console.log("Infra/docs delivery");
+  console.log(`Branch: ${branch}`);
+  console.log(`Commit: ${head}`);
+  console.log(`GitHub Actions run: ${receipt.runUrl}`);
+}
+
+function classifyCli(args) {
+  let base = "origin/dev";
+  let head = "HEAD";
+  let githubOutput = false;
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] === "--base") base = args[++index] ?? base;
+    else if (args[index] === "--head") head = args[++index] ?? head;
+    else if (args[index] === "--github-output") githubOutput = true;
+  }
+  const files = git("diff", "--name-only", `${base}...${head}`)
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const result = classifyDelivery(files, { base, head: git("rev-parse", head), branch: currentBranch() });
+  if (githubOutput) writeGithubOutput(result);
+  console.log(JSON.stringify(result, null, 2));
+}
+
+function requireDeliveryVerification(branchArg, shaArg) {
+  const branch = branchArg ?? currentBranch();
+  if (!CODEX_BRANCH_RE.test(branch)) throw new Error(`Delivery verification requires codex/* branch, got: ${branch}`);
+  const sha = shaArg ?? git("rev-parse", `origin/${branch}`);
+  const receipt = readDeliveryReceipt();
+  const validation = validateDeliveryReceipt(receipt, branch, sha);
+  if (!validation.ok) throw new Error(validation.message);
+  findSuccessfulDeliveryRun(branch, sha, ["public-guard", "checks", "temporal-worker-check", "auto-merge-infra-docs"]);
 }
 
 function requirePreviewVerification(branchArg, shaArg) {
@@ -286,21 +394,27 @@ function deriveTaskState() {
   const head = gitMaybe("rev-parse", "HEAD") ?? "";
   const status = gitMaybe("status", "--porcelain") ?? "";
   const marker = readTaskMarker();
-  const receipt = readPreviewReceipt();
-  const changedFiles = gitMaybe("diff", "--name-only", "origin/dev...HEAD")
-    ?.split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean) ?? [];
+  const previewReceipt = readPreviewReceipt();
+  const deliveryReceipt = readDeliveryReceipt();
+  const changedFiles = diffFromTaskBase();
   const commitsAhead = Number(gitMaybe("rev-list", "--count", "origin/dev..HEAD") ?? 0);
   const validation = CODEX_BRANCH_RE.test(branch)
     ? validateTaskBranch({ requireExpectedUpstream: false })
     : { ok: false, message: `Implementation work must run on codex/<task-slug>, got: ${branch || "(none)"}` };
   const reuse = validation.ok ? validateBranchReuse() : { ok: false, message: validation.message };
-  const receiptValidation = validatePreviewReceipt(receipt, branch, head);
+  const classification = classifyDelivery(changedFiles);
+  const receiptValidation = validateHandoffReceipt({ classification, previewReceipt, deliveryReceipt, branch, head });
+  const markerValid = validateTaskMarker(marker, branch).ok && validateTaskThread(marker, currentThreadId()).ok;
+  const completedWithReceipt = Boolean(
+    head &&
+      markerValid &&
+      receiptValidation.ok &&
+      CODEX_BRANCH_RE.test(branch) &&
+      isAncestor(head, "origin/dev"),
+  );
   const hasImplementationWork = Boolean(status.trim() || marker?.writeIntentAt || changedFiles.length || commitsAhead > 0);
   const remoteSha = CODEX_BRANCH_RE.test(branch) ? gitMaybe("rev-parse", `origin/${branch}`) : "";
   const pushed = Boolean(remoteSha && remoteSha === head);
-  const markerValid = validateTaskMarker(marker, branch).ok && validateTaskThread(marker, currentThreadId()).ok;
   const phase = deriveTaskPhase({ markerValid, marker, status, commitsAhead, changedFiles, pushed, receiptValidation });
   const base = {
     ok: true,
@@ -311,7 +425,8 @@ function deriveTaskState() {
     reuse,
     marker,
     markerValid,
-    receipt,
+    classification,
+    receipt: classification.deliveryClass === DELIVERY_CLASS.INFRA_DOCS ? deliveryReceipt : previewReceipt,
     receiptValidation,
     status,
     changedFiles,
@@ -324,17 +439,24 @@ function deriveTaskState() {
     return {
       ...base,
       ok: false,
-      message: `Bright OS task is not ready for handoff: working tree is not clean.\n\n${status.trim()}\n\nCommit, push, and verify preview with: scripts/bright-preview-handoff.sh`,
+      message: `Bright OS task is not ready for handoff: working tree is not clean.\n\n${status.trim()}\n\nCommit, push, and verify delivery with: node scripts/bright-task.mjs handoff`,
     };
   }
   if (!hasImplementationWork) return base;
-  if (!validation.ok) return { ...base, ok: false, message: validation.message };
-  if (!reuse.ok) return { ...base, ok: false, message: reuse.message };
+  if (!validation.ok && !completedWithReceipt) return { ...base, ok: false, message: validation.message };
+  if (!reuse.ok && !completedWithReceipt) return { ...base, ok: false, message: reuse.message };
+  if (classification.deliveryClass === DELIVERY_CLASS.BLOCKED) {
+    return {
+      ...base,
+      ok: false,
+      message: `Bright OS delivery contains blocked paths:\n${classification.paths.blocked.map((file) => `- ${file}`).join("\n")}`,
+    };
+  }
   if (!receiptValidation.ok) {
     return {
       ...base,
       ok: false,
-      message: `Bright OS implementation work cannot be handed off before preview verification.\n\n${receiptValidation.message}\n\nRun: scripts/bright-preview-handoff.sh`,
+      message: `Bright OS implementation work cannot be handed off before delivery verification.\n\n${receiptValidation.message}\n\nRun: node scripts/bright-task.mjs handoff`,
     };
   }
   return base;
@@ -357,6 +479,25 @@ function validatePreviewReceipt(receipt, branch, head) {
   if (!receipt.url || !String(receipt.url).startsWith("https://")) return { ok: false, message: "Preview receipt has no valid URL." };
   if (!receipt.runId) return { ok: false, message: "Preview receipt has no GitHub Actions run id." };
   if (!receipt.verifiedAt) return { ok: false, message: "Preview receipt has no verification timestamp." };
+  return { ok: true };
+}
+
+function validateHandoffReceipt({ classification, previewReceipt, deliveryReceipt, branch, head }) {
+  if (classification.deliveryClass === DELIVERY_CLASS.NONE) return { ok: true };
+  if (classification.deliveryClass === DELIVERY_CLASS.INFRA_DOCS) {
+    return validateDeliveryReceipt(deliveryReceipt, branch, head, classification.deliveryClass);
+  }
+  return validatePreviewReceipt(previewReceipt, branch, head);
+}
+
+function validateDeliveryReceipt(receipt, branch, head, deliveryClass = DELIVERY_CLASS.INFRA_DOCS) {
+  if (!receipt) return { ok: false, message: "Delivery handoff receipt is missing." };
+  if (receipt.receiptType !== DELIVERY_RECEIPT_VERSION) return { ok: false, message: "Delivery receipt type is not valid." };
+  if (receipt.branch !== branch) return { ok: false, message: `Delivery receipt is for ${receipt.branch || "(missing)"}, not ${branch}.` };
+  if (receipt.commit !== head) return { ok: false, message: `Delivery receipt is for ${receipt.commit || "(missing)"}, not ${head}.` };
+  if (receipt.deliveryClass !== deliveryClass) return { ok: false, message: `Delivery receipt class is ${receipt.deliveryClass || "(missing)"}, not ${deliveryClass}.` };
+  if (!receipt.runId) return { ok: false, message: "Delivery receipt has no GitHub Actions run id." };
+  if (!receipt.verifiedAt) return { ok: false, message: "Delivery receipt has no verification timestamp." };
   return { ok: true };
 }
 
@@ -540,7 +681,7 @@ function linkDependencyDirs(sourceRoot, targetRoot, dependencyDirs = DEPENDENCY_
 }
 
 function enableGitHooks(root) {
-  const result = spawnSync("git", ["-C", root, "config", "core.hooksPath", ".githooks"], { encoding: "utf8", env: process.env });
+  const result = spawnSync("git", ["-C", root, "config", "core.hooksPath", ".githooks"], { encoding: "utf8", env: gitEnv() });
   if (result.status !== 0) throw new Error(`git config core.hooksPath failed:\n${result.stderr || result.stdout || "(no output)"}`);
 }
 
@@ -669,6 +810,8 @@ function isReadOnlyShellSegment(segment) {
     /^git\s+(?:status|diff|log|show|rev-parse|ls-files|merge-base)(?:\s+.+)?$/,
     /^git\s+branch\s+--show-current$/,
     /^git\s+config\s+(?:--get|get)\s+[A-Za-z0-9_.-]+$/,
+    /^node\s+scripts\/bright-task\.mjs\s+classify(?:\s+--(?:base|head)\s+[-A-Za-z0-9_./:@]+|\s+--github-output)*$/,
+    /^scripts\/use-node22\.sh\s+node\s+scripts\/bright-task\.mjs\s+classify(?:\s+--(?:base|head)\s+[-A-Za-z0-9_./:@]+|\s+--github-output)*$/,
     /^node\s+scripts\/bright-task\.mjs\s+doctor(?:\s+--strict)?$/,
     /^scripts\/use-node22\.sh\s+node\s+scripts\/bright-task\.mjs\s+doctor(?:\s+--strict)?$/,
   ].some((pattern) => pattern.test(segment));
@@ -687,7 +830,93 @@ function isSensitivePath(file) {
   return PROTECTED_PATH_RE.test(file);
 }
 
-function findSuccessfulDeliveryRun(branch, sha) {
+function classifyDelivery(files, { base = "origin/dev", head = "HEAD", branch = currentBranch() } = {}) {
+  const paths = { blocked: [], docs: [], infra: [], runtime: [], unknown: [] };
+  for (const file of files) paths[deliveryClassForFile(file)].push(file);
+
+  const deliveryClass = paths.blocked.length
+    ? DELIVERY_CLASS.BLOCKED
+    : files.length === 0
+      ? DELIVERY_CLASS.NONE
+      : paths.runtime.length || paths.unknown.length
+        ? DELIVERY_CLASS.RUNTIME_PREVIEW
+        : DELIVERY_CLASS.INFRA_DOCS;
+  const requiresPreview = deliveryClass === DELIVERY_CLASS.RUNTIME_PREVIEW;
+  const requiresDevDeploy = requiresPreview;
+  const autoMerge = deliveryClass === DELIVERY_CLASS.INFRA_DOCS;
+
+  return {
+    schemaVersion: 1,
+    classifier: "bright-delivery-classify-v1",
+    branch,
+    base,
+    head,
+    deliveryClass,
+    requires: {
+      preview: requiresPreview,
+      devDeploy: requiresDevDeploy,
+      autoMerge,
+    },
+    mixed: paths.runtime.length > 0 && (paths.docs.length > 0 || paths.infra.length > 0),
+    fallback: paths.unknown.length ? "unknown_path" : null,
+    paths,
+  };
+}
+
+function deliveryClassForFile(file) {
+  if (isSensitivePath(file)) return "blocked";
+  if (
+    file === "README.md" ||
+    file === "AGENTS.md" ||
+    file.endsWith(".md") ||
+    file.startsWith("docs/") ||
+    file.startsWith("memory-bank/") ||
+    file.startsWith("openspec/")
+  ) {
+    return "docs";
+  }
+  if (
+    file === ".github/workflows/bright-os-delivery.yml" ||
+    file === ".codex/hooks.json" ||
+    file.startsWith(".githooks/") ||
+    file.startsWith("scripts/bright-") ||
+    file.startsWith("services/bright_os_temporal/") ||
+    [
+      "deploy/scripts/classify-delivery.mjs",
+      "deploy/scripts/accept-preview.sh",
+      "deploy/scripts/accepted-preview-branches.mjs",
+      "deploy/scripts/ci-ssh-complete-accepted-previews.sh",
+    ].includes(file)
+  ) {
+    return "infra";
+  }
+  if (
+    file.startsWith("apps/bright_os_app/") ||
+    file.startsWith("apps/bright_os_site/") ||
+    file.startsWith("services/bright_os_api/") ||
+    file.startsWith("assets/brand/")
+  ) {
+    return "runtime";
+  }
+  return "unknown";
+}
+
+function writeGithubOutput(classification) {
+  const outputPath = process.env.GITHUB_OUTPUT;
+  if (!outputPath) return;
+  fs.appendFileSync(
+    outputPath,
+    [
+      `delivery_class=${classification.deliveryClass}`,
+      `requires_preview=${classification.requires.preview ? "true" : "false"}`,
+      `requires_dev_deploy=${classification.requires.devDeploy ? "true" : "false"}`,
+      `auto_merge=${classification.requires.autoMerge ? "true" : "false"}`,
+      "",
+    ].join("\n"),
+  );
+}
+
+function findSuccessfulDeliveryRun(branch, sha, requiredJobs = ["public-guard", "checks", "temporal-worker-check", "deploy-preview"]) {
   const runs = runJson(["gh", "run", "list", "--workflow", "Bright OS delivery", "--branch", branch, "--event", "push", "--limit", "20", "--json", "databaseId,headSha,status,conclusion,url"]);
   const run = runs.find((candidate) => candidate.headSha === sha);
   if (!run) throw new Error(`No Bright OS delivery push run found for ${branch}@${sha}.`);
@@ -697,7 +926,7 @@ function findSuccessfulDeliveryRun(branch, sha) {
 
   const details = runJson(["gh", "run", "view", String(run.databaseId), "--json", "jobs"]);
   const jobs = new Map((details.jobs ?? []).map((job) => [job.name, job.conclusion]));
-  for (const job of ["public-guard", "checks", "temporal-worker-check", "deploy-preview"]) {
+  for (const job of requiredJobs) {
     if (jobs.get(job) !== "success") throw new Error(`Delivery job ${job} is ${jobs.get(job) ?? "missing"} for run ${run.databaseId}.`);
   }
   return run;
@@ -750,6 +979,15 @@ function previewUrlForSlot(slot) {
 
 function diffFromDev() {
   return git("diff", "--name-only", "origin/dev...HEAD")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function diffFromTaskBase() {
+  const marker = readTaskMarker();
+  const base = marker?.base && gitMaybe("rev-parse", "--verify", `${marker.base}^{commit}`) ? marker.base : "origin/dev";
+  return (gitMaybe("diff", "--name-only", `${base}...HEAD`) ?? "")
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
@@ -810,11 +1048,24 @@ function readPreviewReceipt() {
   return readJson(path.join(root, ".bright-task", "preview-handoff.json"));
 }
 
+function readDeliveryReceipt() {
+  const root = gitMaybe("rev-parse", "--show-toplevel");
+  if (!root) return null;
+  return readJson(path.join(root, ".bright-task", "delivery-handoff.json"));
+}
+
 function writePreviewReceipt(receipt) {
   const root = git("rev-parse", "--show-toplevel");
   const dir = path.join(root, ".bright-task");
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, "preview-handoff.json"), `${JSON.stringify(receipt, null, 2)}\n`);
+}
+
+function writeDeliveryReceipt(receipt) {
+  const root = git("rev-parse", "--show-toplevel");
+  const dir = path.join(root, ".bright-task");
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "delivery-handoff.json"), `${JSON.stringify(receipt, null, 2)}\n`);
 }
 
 function readJson(file) {
@@ -825,6 +1076,15 @@ function readJson(file) {
 function runRequired(args, message) {
   const result = spawnSync(args[0], args.slice(1), { cwd: git("rev-parse", "--show-toplevel"), stdio: "inherit", env: process.env });
   if (result.status !== 0) throw new Error(message);
+}
+
+function ensureInfraDocsPr(branch) {
+  const result = spawnSync("deploy/scripts/accept-preview.sh", [branch], {
+    cwd: git("rev-parse", "--show-toplevel"),
+    stdio: "inherit",
+    env: { ...process.env, BRIGHT_OS_ACCEPT_INFRA_DOCS_ONLY: "true" },
+  });
+  if (result.status !== 0) throw new Error(`Failed to create or enable infra/docs PR for ${branch}.`);
 }
 
 function runJson(args) {
@@ -855,12 +1115,17 @@ function gitMaybe(...args) {
 }
 
 function gitMaybeIn(cwd, ...args) {
-  const result = spawnSync("git", args, { cwd, encoding: "utf8", env: process.env });
+  const result = spawnSync("git", args, { cwd, encoding: "utf8", env: gitEnv() });
   return result.status === 0 ? result.stdout.trim() : null;
 }
 
 function spawnGit(args, options = {}) {
-  return spawnSync("git", args, { cwd: process.cwd(), env: process.env, ...options });
+  return spawnSync("git", args, { cwd: process.cwd(), env: gitEnv(), ...options });
+}
+
+function gitEnv() {
+  const { GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE, ...env } = process.env;
+  return env;
 }
 
 function readStdin() {
