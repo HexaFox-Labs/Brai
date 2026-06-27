@@ -17,6 +17,7 @@ import { ActionsSection } from "./sections/actions/ActionsSection";
 import { ArchiveSection } from "./sections/actions/ArchiveSection";
 import { EvilEyeSection } from "./sections/EvilEyeSection";
 import { FocusBackground, FocusContextPanelSheet, FocusSection } from "./sections/focus/FocusSection";
+import { InboxSection } from "./sections/inbox/InboxSection";
 import { SettingsSection } from "./sections/settings/SettingsSection";
 
 const SECTION_PAGE_INSET_CLASS = "grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] pb-11 pl-7 pr-0 pt-3.5 max-[860px]:px-3.5 max-[860px]:pb-7 max-[860px]:pt-[var(--mobile-top-padding)]";
@@ -37,7 +38,7 @@ export function BrightOsApp({ initialSection = "actions" }: { initialSection?: S
   }, [app.section, app.selectSection]);
 
   useEffect(() => installAndroidBackHandler(() => {
-    if (window.history.state?.brightMobileMenu || window.history.state?.brightMobileSheet || window.history.state?.brightActivityEditor || window.history.state?.brightMobileActionCreate) return false;
+    if (window.history.state?.brightMobileMenu || window.history.state?.brightMobileSheet || window.history.state?.brightActivityEditor || window.history.state?.brightMobileActionCreate || window.history.state?.brightInboxEditor || window.history.state?.brightMobileInboxCreate) return false;
     if (sectionRef.current === "actions") return false;
     if (window.history.state?.brightOsSection === sectionRef.current) {
       window.history.back();
@@ -87,6 +88,17 @@ export function BrightOsApp({ initialSection = "actions" }: { initialSection?: S
             onMobileOverlayChange={app.setActionOverlayOpen}
             infoOpen={app.actionsInfoOpen}
             onInfoOpenChange={app.setActionsInfoOpen}
+          />
+        ) : screenSection === "inbox" ? (
+          <InboxSection
+            state={app.inbox}
+            localSnapshotReady={app.localSnapshotReady}
+            autoFocusAddInput={isActivePage}
+            onCreate={app.onCreateInboxItem}
+            onUpdateTitle={app.onUpdateInboxTitle}
+            onAutosaveDetails={app.onAutosaveInboxDetails}
+            onDelete={app.onDeleteInboxItem}
+            onMobileOverlayChange={app.setActionOverlayOpen}
           />
         ) : screenSection === "archive" ? (
           <ArchiveSection state={app.actions} localSnapshotReady={app.localSnapshotReady} onRestore={app.onRestoreAction} />

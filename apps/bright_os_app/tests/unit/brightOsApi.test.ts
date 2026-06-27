@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BrightOsApi } from "@/shared/api/brightOsApi";
 import type { PendingActivityEvent } from "@/shared/types/activities";
+import type { PendingInboxEvent } from "@/shared/types/inbox";
 import type { PendingTimerEvent } from "@/shared/types/timer";
 
 describe("BrightOsApi", () => {
@@ -381,6 +382,58 @@ describe("BrightOsApi", () => {
     expect(body.events[0]).toMatchObject({
       type: "reorder",
       payload: { ordered_ids: ["action-2", "action-1"] },
+    });
+  });
+
+  it("sends pending inbox events to the inbox sync endpoint", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          acknowledged_event_ids: ["device:inbox:1"],
+          ignored_events: [],
+          server_revision: 1,
+          server_time_utc: "2026-06-16T08:00:00.000Z",
+          state: {
+            server_time_utc: "2026-06-16T08:00:00.000Z",
+            server_revision: 1,
+            inbox: [],
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    await new BrightOsApi("https://api.example.test").syncInboxEvents({
+      deviceId: "device",
+      platform: "web",
+      events: [
+        {
+          eventId: "device:inbox:1",
+          deviceId: "device",
+          clientSequence: 1,
+          type: "create",
+          occurredAtUtc: "2026-06-16T08:00:00.000Z",
+          inboxId: "inbox-1",
+          payload: { title: "Входящее" },
+          baseServerRevision: 0,
+          payloadVersion: 1,
+          status: "pending",
+          attemptCount: 0,
+          lastError: null,
+          enqueuedAtUtc: "2026-06-16T08:00:00.000Z",
+          lastSyncAttemptAtUtc: null,
+        } satisfies PendingInboxEvent,
+      ],
+    });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(String(init?.body));
+    expect(url).toBe("https://api.example.test/v1/inbox/events/sync");
+    expect(body.events[0]).toMatchObject({
+      event_id: "device:inbox:1",
+      inbox_id: "inbox-1",
+      type: "create",
+      payload: { title: "Входящее" },
     });
   });
 });

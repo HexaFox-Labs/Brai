@@ -4,6 +4,7 @@ import { useEffect, type Dispatch, type MutableRefObject, type SetStateAction } 
 import { BrightOsApi } from "@/shared/api/brightOsApi";
 import { tickTimerState } from "@/shared/time/format";
 import type { ActionsState } from "@/shared/types/activities";
+import type { InboxState } from "@/shared/types/inbox";
 import type { SyncStatus, TimerState } from "@/shared/types/timer";
 
 type LiveUpdateOptions = {
@@ -13,6 +14,7 @@ type LiveUpdateOptions = {
   refreshStateAndFlushRef: MutableRefObject<() => Promise<void>>;
   applyServerStateRef: MutableRefObject<(state: TimerState) => Promise<void>>;
   applyActivitiesStateRef: MutableRefObject<(state: ActionsState) => Promise<void>>;
+  applyInboxStateRef: MutableRefObject<(state: InboxState) => Promise<void>>;
 };
 
 /**
@@ -25,6 +27,7 @@ export function useBrightOsLiveUpdates({
   refreshStateAndFlushRef,
   applyServerStateRef,
   applyActivitiesStateRef,
+  applyInboxStateRef,
 }: LiveUpdateOptions) {
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -71,6 +74,7 @@ export function useBrightOsLiveUpdates({
             activities: ActionsState["actions"];
             archived_activities?: ActionsState["archived_actions"];
           };
+          inbox_state?: InboxState;
         };
         if (payload.state) void applyServerStateRef.current(payload.state);
         if (payload.activities_state) {
@@ -81,6 +85,7 @@ export function useBrightOsLiveUpdates({
             archived_actions: payload.activities_state.archived_activities ?? [],
           });
         }
+        if (payload.inbox_state) void applyInboxStateRef.current(payload.inbox_state);
       };
       websocket.onerror = () => websocket?.close();
       websocket.onclose = () => {
@@ -94,5 +99,5 @@ export function useBrightOsLiveUpdates({
       connected = false;
       websocket?.close();
     };
-  }, [api, syncStatus, refreshStateAndFlushRef, applyServerStateRef, applyActivitiesStateRef]);
+  }, [api, syncStatus, refreshStateAndFlushRef, applyServerStateRef, applyActivitiesStateRef, applyInboxStateRef]);
 }

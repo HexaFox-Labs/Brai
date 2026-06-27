@@ -132,6 +132,11 @@ export function createBrightOsServer({
         return;
       }
 
+      if (req.method === 'GET' && url.pathname === '/v1/inbox') {
+        sendJson(req, res, 200, inboxState(store, now()));
+        return;
+      }
+
       if (
         req.method === 'POST' &&
         (url.pathname === '/v1/activities/events/sync' || url.pathname === '/v1/actions/events/sync')
@@ -154,6 +159,22 @@ export function createBrightOsServer({
           activities_state: state,
           actions_state: actionsCompatState(state)
         });
+        sendJson(req, res, 200, responseBody);
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/v1/inbox/events/sync') {
+        const requestNow = now();
+        const body = await readJson(req, { limit: 256 * 1024 });
+        const result = store.syncInboxEvents({
+          device: body.device,
+          events: body.events,
+          lastKnownServerTimeUtc: body.last_known_server_time_utc,
+          nowIso: requestNow.toISOString()
+        });
+        const state = inboxState(store, requestNow);
+        const responseBody = { ...result, state };
+        broadcast(sockets, { type: 'inbox_synced', inbox_state: state });
         sendJson(req, res, 200, responseBody);
         return;
       }
@@ -224,7 +245,8 @@ export function createBrightOsServer({
         type: 'connected',
         state: timerState(store, now()),
         activities_state: currentActivitiesState,
-        actions_state: actionsCompatState(currentActivitiesState)
+        actions_state: actionsCompatState(currentActivitiesState),
+        inbox_state: inboxState(store, now())
       }));
       ws.on('close', () => sockets.delete(ws));
       ws.on('error', () => sockets.delete(ws));
@@ -268,6 +290,14 @@ export function activitiesState(store, nowDate) {
     server_revision: store.getActivityServerRevision(),
     activities: store.listActivities(),
     archived_activities: store.listArchivedActivities()
+  };
+}
+
+export function inboxState(store, nowDate) {
+  return {
+    server_time_utc: nowDate.toISOString(),
+    server_revision: store.getInboxServerRevision(),
+    inbox: store.listInbox()
   };
 }
 

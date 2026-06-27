@@ -113,6 +113,17 @@ export function actionEvent(eventId, clientSequence, type, actionId, occurredAtU
   };
 }
 
+export function inboxEvent(eventId, clientSequence, type, inboxId, occurredAtUtc, payload = {}) {
+  return {
+    event_id: eventId,
+    client_sequence: clientSequence,
+    type,
+    inbox_id: inboxId,
+    occurred_at_utc: occurredAtUtc,
+    payload
+  };
+}
+
 export function tableCount(fixture, table) {
   assert.match(table, /^[a-z_]+$/);
   return fixture.store.db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get().count;

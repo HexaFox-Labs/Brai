@@ -6,6 +6,7 @@ import type {
   TimerState,
 } from "@/shared/types/timer";
 import type { ActivityItem, PendingActivityEvent } from "@/shared/types/activities";
+import type { InboxItem, PendingInboxEvent } from "@/shared/types/inbox";
 import { platformName } from "@/shared/platform/platform";
 
 export interface MetaRow {
@@ -42,9 +43,11 @@ export class BrightOsClientDb extends Dexie {
   meta!: Table<MetaRow, string>;
   outbox_events!: Table<PendingTimerEvent, string>;
   action_outbox_events!: Table<PendingActivityEvent, string>;
+  inbox_outbox_events!: Table<PendingInboxEvent, string>;
   canonical_state!: Table<CanonicalStateRow, string>;
   sessions_cache!: Table<TimerSession, string>;
   actions_cache!: Table<ActivityItem, string>;
+  inbox_cache!: Table<InboxItem, string>;
   goal_cache!: Table<GoalCacheRow, string>;
   ignored_events!: Table<IgnoredEventRow, string>;
 
@@ -65,6 +68,18 @@ export class BrightOsClientDb extends Dexie {
       canonical_state: "&key, serverRevision",
       sessions_cache: "&id, started_at_utc, ended_at_utc",
       actions_cache: "&id, status, created_at_utc, updated_at_utc, completed_at_utc",
+      goal_cache: "&key, serverRevision",
+      ignored_events: "&eventId, acknowledgedAtUtc",
+    });
+    this.version(3).stores({
+      meta: "&key",
+      outbox_events: "&eventId, deviceId, clientSequence, status, enqueuedAtUtc",
+      action_outbox_events: "&eventId, deviceId, clientSequence, actionId, status, enqueuedAtUtc",
+      inbox_outbox_events: "&eventId, deviceId, clientSequence, inboxId, status, enqueuedAtUtc",
+      canonical_state: "&key, serverRevision",
+      sessions_cache: "&id, started_at_utc, ended_at_utc",
+      actions_cache: "&id, status, created_at_utc, updated_at_utc, completed_at_utc",
+      inbox_cache: "&id, created_at_utc, updated_at_utc, deleted_at_utc",
       goal_cache: "&key, serverRevision",
       ignored_events: "&eventId, acknowledgedAtUtc",
     });
@@ -112,7 +127,7 @@ export async function ensureClientMeta(): Promise<{
 
     const platform = platformName();
     await setMeta("platform", platform);
-    await setMeta("localSchemaVersion", 2);
+    await setMeta("localSchemaVersion", 3);
 
     return { deviceId, platform, nextClientSequence };
   });

@@ -121,6 +121,7 @@ describe("BrightOsApp actions", () => {
     await waitFor(() => expect(screen.getByText("Детальное действие")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("textbox", { name: "Название действия: Детальное действие" }));
     expect(screen.getByRole("button", { name: "Закрыть редактор" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Редактирование действия")).toHaveClass("pr-7");
     const detailTitle = screen.getByRole("textbox", { name: "Название действия" });
     expect(detailTitle).toHaveClass("whitespace-pre-wrap");
     expect(detailTitle).toHaveClass("overflow-hidden");
@@ -237,6 +238,8 @@ describe("BrightOsApp actions", () => {
     fireEvent.click(activeRow.querySelector(".action-row-surface") as HTMLElement);
     await waitFor(() => expect(screen.getByRole("button", { name: "Закрыть редактор" })).toBeInTheDocument());
     expect(activeRow).toHaveClass("selected", "bg-primary/10");
+    expect(activeRow).toHaveClass("rounded-lg", "border-b-transparent");
+    expect(activeRow).toHaveClass("[&:has(+_.action-row.selected)]:border-b-transparent");
     expect(activeRow).toContainElement(activeRow.querySelector(".action-delete-button") as HTMLElement);
   });
 
