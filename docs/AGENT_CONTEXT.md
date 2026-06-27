@@ -25,6 +25,7 @@
 - `docs/operations/branch-preview-environments.md` - branch preview workflow, CI secrets, deploy-user boundary and branch protection steps.
 - `openspec/` - accepted/planned requirements.
 - `memory-bank/` - фактический контекст и решения.
+- `.socraticodecontextartifacts.json` - SocratiCode context artifact registry for agent rules, docs, OpenSpec, and Memory Bank.
 
 ## Команды
 
@@ -38,6 +39,7 @@
 - `npm run android:build:release` - release APK build.
 - `npm run openspec:guard` - проверка, что завершённые OpenSpec changes не оставлены активными.
 - `npm run openspec:validate` - completed-change guard плюс strict OpenSpec validation.
+- `npm run socraticode:preflight` - проверка, что SocratiCode подключён, context artifacts объявлены, и watcher активен для текущего project path.
 - `npm run publish:web` - публикация web layer.
 - `npm run publish:client-web-layer` - публикация клиентского web layer.
 - `npm run publish:mobile-bundle` - публикация mobile bundle.

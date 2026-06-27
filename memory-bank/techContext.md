@@ -15,6 +15,7 @@ Common checks:
 
 ```bash
 npm run public:guard
+npm run socraticode:preflight
 npm run openspec:validate
 npm run app:lint
 npm run app:test

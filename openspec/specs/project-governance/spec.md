@@ -112,6 +112,15 @@ Agents and maintainers MUST use SocratiCode for semantic code search after confi
 - **WHEN** an agent needs to find code by behavior, responsibility, feature, or natural-language meaning
 - **THEN** the agent checks the SocratiCode index status and uses SocratiCode search once indexing is complete
 
+#### Scenario: SocratiCode context artifacts are maintained
+- **WHEN** agent-facing docs, OpenSpec requirements, or Memory Bank context are expected to be semantically searchable
+- **THEN** the project declares them in `.socraticodecontextartifacts.json`
+- **AND** SocratiCode context search is available for those artifacts after indexing
+
+#### Scenario: SocratiCode freshness is checked
+- **WHEN** SocratiCode behavior, agent rules, OpenSpec routing, or repository context indexing changes
+- **THEN** `npm run socraticode:preflight` verifies the local MCP config, context artifact registry, and active watcher state
+
 #### Scenario: Exact repository inspection is needed
 - **WHEN** an agent needs exact string matching, file discovery, or non-semantic repository inspection
 - **THEN** the agent may use `rg` or equivalent local shell tools

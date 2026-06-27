@@ -1,0 +1,24 @@
+{
+  "artifacts": [
+    {
+      "name": "agent-rules",
+      "path": "./AGENTS.md",
+      "description": "Bright OS agent routing rules and required handoff behavior."
+    },
+    {
+      "name": "development-guidelines",
+      "path": "./docs",
+      "description": "Bright OS development guidelines, operational docs, API docs, and checklists."
+    },
+    {
+      "name": "openspec",
+      "path": "./openspec",
+      "description": "Accepted and proposed OpenSpec requirements for Bright OS."
+    },
+    {
+      "name": "memory-bank",
+      "path": "./memory-bank",
+      "description": "Durable Bright OS project context, decisions, architecture notes, and progress."
+    }
+  ]
+}

@@ -10,6 +10,7 @@
     "openspec:guard": "scripts/use-node22.sh node scripts/check-open-openspec-changes.mjs",
     "openspec:validate": "scripts/use-node22.sh node scripts/check-open-openspec-changes.mjs && scripts/use-node22.sh node scripts/run-openspec.mjs validate --all --strict",
     "public:guard": "scripts/use-node22.sh node scripts/check-public-branch.mjs",
+    "socraticode:preflight": "scripts/use-node22.sh node scripts/bright-socraticode-preflight.mjs",
     "task:start": "scripts/use-node22.sh node scripts/bright-task.mjs start",
     "task:doctor": "scripts/use-node22.sh node scripts/bright-task.mjs doctor",
     "task:test": "scripts/use-node22.sh node --test scripts/*.test.mjs",
