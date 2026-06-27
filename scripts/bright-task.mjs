@@ -325,6 +325,7 @@ function deliveryHandoff(branchArg) {
     throw new Error(`origin/dev is not related to ${head} as an ancestor or accepted descendant.`);
   }
 
+  ensureInfraDocsPr(branch);
   const run = findSuccessfulDeliveryRun(branch, head, ["public-guard", "checks", "temporal-worker-check", "auto-merge-infra-docs"]);
   const receipt = {
     receiptType: DELIVERY_RECEIPT_VERSION,
@@ -1075,6 +1076,15 @@ function readJson(file) {
 function runRequired(args, message) {
   const result = spawnSync(args[0], args.slice(1), { cwd: git("rev-parse", "--show-toplevel"), stdio: "inherit", env: process.env });
   if (result.status !== 0) throw new Error(message);
+}
+
+function ensureInfraDocsPr(branch) {
+  const result = spawnSync("deploy/scripts/accept-preview.sh", [branch], {
+    cwd: git("rev-parse", "--show-toplevel"),
+    stdio: "inherit",
+    env: { ...process.env, BRIGHT_OS_ACCEPT_INFRA_DOCS_ONLY: "true" },
+  });
+  if (result.status !== 0) throw new Error(`Failed to create or enable infra/docs PR for ${branch}.`);
 }
 
 function runJson(args) {

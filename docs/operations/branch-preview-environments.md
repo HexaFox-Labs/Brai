@@ -59,7 +59,7 @@ The verifier requires a clean tree, pushed `origin/<codex-branch>` at `HEAD`, su
 
 The final response format for preview-class work is the top-level handoff contract in `AGENTS.md`: after this command succeeds, the final implementation response starts with the command's `<slot emoji> Preview` header, then includes preview URL, branch, and commit before any summary. Do not print a preview emoji in intermediary updates, status replies, questions, acceptance monitoring, no-preview handoffs, or any reply where the slot or deployed commit is unverified. If the preview letter or URL is missing because every slot is occupied, the response must say the branch is queued and include queue position/source when available. If it is missing for any other reason, the response must say exactly which push, CI, or deploy step blocked it. Ordinary preview-class `codex/*` branch push/deploy is standing Bright OS CI/CD automation and must not be treated as an optional manual confirmation step.
 
-For `infra-docs` no-preview work, the handoff reports the branch, commit, `deliveryClass=infra-docs`, `no_preview_required`, `handoff=passed`, `autoMerge=enabled`, and the merged PR/dev state instead of a preview slot URL.
+For `infra-docs` no-preview work, `node scripts/bright-task.mjs handoff` creates or reuses the PR through the agent's GitHub identity before waiting for the CI auto-merge job. The CI job then reuses that PR, labels it `bright-delivery:infra-docs`, enables auto-merge, and reports the branch, commit, `deliveryClass=infra-docs`, `no_preview_required`, `handoff=passed`, `autoMerge=enabled`, and the merged PR/dev state instead of a preview slot URL.
 
 Preview acceptance flow:
 

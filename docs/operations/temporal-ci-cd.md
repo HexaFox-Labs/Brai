@@ -59,6 +59,11 @@ The no-preview path records delivery handoff with `delivery_handoff_started`,
 `auto_merge_started`, `auto_merge_enabled`, or `auto_merge_failed`. Failed classification,
 handoff, or auto-merge events set `status=waiting_for_fix` and populate `blocker`.
 
+The agent-side `bright-task handoff` may pre-create the infra/docs PR with the agent's GitHub
+identity so CI can reuse it even when the repository keeps the default `GITHUB_TOKEN` unable to
+create pull requests. GitHub Actions still owns the `auto_merge_*` Temporal signals and must not
+push directly to `dev`.
+
 For `infra-docs`, `pr_merged` marks `accepted_for_dev` as passed and completes the preview
 lifecycle without requiring an accepted-preview metadata promotion or preview slot release.
 
