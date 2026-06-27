@@ -35,6 +35,16 @@ fi
 
 ROOT="$(git rev-parse --show-toplevel)"
 
+run_bright_node() {
+  local node_prefix="${BRIGHT_OS_NODE_PREFIX:-/srv/opt/node-v22.16.0/bin}"
+  if [[ -x "$node_prefix/node" ]]; then
+    "$ROOT/scripts/use-node22.sh" node "$@"
+    return
+  fi
+  node "$ROOT/scripts/require-node22.mjs"
+  node "$@"
+}
+
 if [[ -n "$(git status --porcelain)" ]]; then
   echo "Working tree must be clean before accepting preview work." >&2
   exit 1
@@ -55,7 +65,7 @@ while IFS='=' read -r key value; do
     delivery_class) DELIVERY_CLASS="$value" ;;
     requires_preview) REQUIRES_PREVIEW="$value" ;;
   esac
-done < <("$ROOT/scripts/use-node22.sh" node "$ROOT/deploy/scripts/classify-delivery.mjs" \
+done < <(run_bright_node "$ROOT/deploy/scripts/classify-delivery.mjs" \
   --base-ref "origin/$BASE_BRANCH" \
   --head-ref "origin/$BRANCH" \
   --event-name push \
@@ -67,7 +77,7 @@ if [[ "${BRIGHT_OS_ACCEPT_INFRA_DOCS_ONLY:-false}" == "true" && "$DELIVERY_CLASS
 fi
 
 if [[ "$REQUIRES_PREVIEW" == "true" ]]; then
-  "$ROOT/scripts/use-node22.sh" node "$ROOT/scripts/bright-task.mjs" require-preview "$BRANCH" "$HEAD_SHA"
+  run_bright_node "$ROOT/scripts/bright-task.mjs" require-preview "$BRANCH" "$HEAD_SHA"
 fi
 
 PR_NUMBER="$(gh pr list --base "$BASE_BRANCH" --head "$BRANCH" --state open --json number --jq ".[0].number // \"\"")"
