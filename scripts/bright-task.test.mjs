@@ -11,6 +11,7 @@ import {
   dependencySourceRoot,
   deriveTaskState,
   enableGitHooks,
+  findOpenTaskForThread,
   isManualCodexBranchCommand,
   isReadOnlyShellCommand,
   isSensitivePath,
@@ -175,6 +176,35 @@ test("task starter creates sibling worktrees from repo and task worktree roots",
   fs.mkdirSync(canonical, { recursive: true });
   fs.writeFileSync(path.join(canonical, "package.json"), "{}\n");
   assert.equal(dependencySourceRoot(worktree), canonical);
+});
+
+test("task starter blocks another open branch in the same Codex thread", () => {
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), "bright-task-thread-"));
+  const open = path.join(parent, "public-site-live");
+  const accepted = path.join(parent, "accepted-task");
+  for (const [taskPath, branch] of [
+    [open, "codex/public-site-live"],
+    [accepted, "codex/accepted-task"],
+  ]) {
+    fs.mkdirSync(path.join(taskPath, ".bright-task"), { recursive: true });
+    fs.writeFileSync(
+      path.join(taskPath, ".bright-task", "task.json"),
+      `${JSON.stringify({
+        branch,
+        mode: "new",
+        base: "1111111111111111111111111111111111111111",
+        createdAt: "2026-06-26T00:00:00.000Z",
+        threadId: "thread-a",
+      })}\n`,
+    );
+  }
+
+  assert.deepEqual(findOpenTaskForThread(parent, "thread-a", "codex/new-task", (taskPath) => taskPath === accepted), {
+    branch: "codex/public-site-live",
+    path: open,
+  });
+  assert.equal(findOpenTaskForThread(parent, "thread-b", "codex/new-task", () => false), null);
+  assert.equal(findOpenTaskForThread(parent, "thread-a", "codex/public-site-live", (taskPath) => taskPath === accepted), null);
 });
 
 test("task starter links existing dependency dirs into new worktrees", () => {
