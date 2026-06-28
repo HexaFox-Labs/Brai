@@ -16,6 +16,9 @@
 - Keep one canonical Focus session interval across Moscow-day boundaries.
   Day-split rows are read-model/display chunks that point back to the canonical
   session id for edits and deletes.
+- Keep the inline editor and overlap warning bounded to the same table-row
+  footprint as a normal Focus history row. Overlap warning is an 80% opaque
+  overlay on the parent row, not a separate layout element.
 
 ## Data Flow
 

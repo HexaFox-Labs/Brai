@@ -39,6 +39,15 @@ describe("FocusHistoryTable", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "01:00" }));
     fireEvent.change(screen.getByRole("textbox", { name: "Значение времени" }), {
+      target: { value: "0:30" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Применить ввод времени" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "00:30" })).toHaveClass("text-destructive"));
+    expect(screen.getByRole("button", { name: "13:30" })).toHaveClass("text-destructive");
+
+    fireEvent.click(screen.getByRole("button", { name: "00:30" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Значение времени" }), {
       target: { value: "2:00" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Применить ввод времени" }));
@@ -46,6 +55,11 @@ describe("FocusHistoryTable", () => {
     await waitFor(() => expect(screen.getByText("Нельзя наложить на соседний фокус")).toBeInTheDocument());
     expect(onEditSession).not.toHaveBeenCalled();
 
+    fireEvent.click(screen.getByRole("button", { name: "Отменить редактирование фокуса" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Удалить запись фокуса" })).not.toBeInTheDocument());
+
+    fireEvent.click(screen.getByText("13:00"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Удалить запись фокуса" })).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Удалить запись фокуса" }));
     await waitFor(() => expect(onDeleteSession).toHaveBeenCalledWith("session-1"));
   });

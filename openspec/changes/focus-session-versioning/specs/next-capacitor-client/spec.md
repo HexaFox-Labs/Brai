@@ -20,18 +20,30 @@ history rows by tapping or clicking the row itself instead of a pencil icon.
 #### Scenario: Start, duration, and finish are edited
 - **WHEN** the Focus history row editor is open
 - **THEN** it shows start time, duration, and finish time in that order
+- **AND** each value is visually grouped under its own short label
 - **AND** each value can be changed by 5 minute plus/minus controls
 - **AND** clicking a value turns it into an input with check and cancel controls
 - **AND** valid `H:MM` and `HH:MM` inputs normalize to `HH:MM`
 - **AND** changing start shifts finish by the same delta
 - **AND** changing finish keeps start and recalculates duration
 - **AND** changing duration shifts finish
+- **AND** unchanged duration keeps the normal duration accent color
+- **AND** changed direct and derived values use a separate changed-value color
+
+#### Scenario: Focus history editor is closed without saving
+- **WHEN** the Focus history row editor is open
+- **THEN** the editor shows a discard close control, delete control, and save
+  close control as a separate right-side action group
+- **AND** tapping the discard close control closes the editor without queuing an
+  edit or delete event
 
 #### Scenario: Overlap attempt is blocked immediately
 - **WHEN** a Focus history edit would overlap another Focus session
 - **THEN** the client does not queue the edit
 - **AND** the parent row displays `Нельзя наложить на соседний фокус` with an
-  alarm icon and accent background for 3 seconds
+  alarm icon and 80% opaque accent background for 3 seconds
+- **AND** the warning overlays the parent row without changing the row width,
+  row height, or layout of later rows
 
 #### Scenario: Focus history row is deleted
 - **WHEN** the user taps the delete icon in the open Focus history editor

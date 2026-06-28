@@ -28,6 +28,11 @@ import { focusHistoryRows, type FocusHistoryRow } from "./focusHistoryModel";
 type WarningState = { rowId: string; message: string };
 
 const OVERLAP_WARNING = "Нельзя наложить на соседний фокус";
+const FIELD_LABELS: Record<FocusEditField, string> = {
+  start: "Старт",
+  duration: "Итого",
+  end: "Финиш",
+};
 
 export function FocusHistoryTable({
   allSessions,
@@ -89,6 +94,7 @@ export function FocusHistoryTable({
     setDraft(null);
     setEditingField(null);
     setInputValue("");
+    setWarning(null);
   }
 
   useEffect(() => {
@@ -149,54 +155,50 @@ export function FocusHistoryTable({
               return (
                 <Fragment key={row.id}>
                   <TableRow
-                    className={cx("cursor-pointer transition-colors", warned && "cursor-default")}
+                    className={cx("h-12 cursor-pointer overflow-hidden transition-colors", warned && "cursor-default")}
                     data-state={rowDraft ? "selected" : undefined}
                     onClick={() => {
                       if (!warned) void openRow(row);
                     }}
                   >
-                    {warned ? (
-                      <TableCell className="!bg-primary !text-primary-foreground" colSpan={3}>
-                        <div className="flex h-9 items-center gap-2 font-medium">
+                    <TableCell className="h-12 px-1.5 py-0">
+                      {warned ? (
+                        <div className="pointer-events-none absolute inset-0 z-10 flex h-12 w-full items-center gap-2 bg-primary/80 px-2 font-medium text-primary-foreground">
                           <AlarmClock className="size-4 shrink-0" aria-hidden="true" />
                           <span className="min-w-0 truncate">{warning.message}</span>
                         </div>
-                      </TableCell>
-                    ) : (
-                      <>
-                        <TableCell className="px-1.5">
-                          <div className="grid grid-cols-[auto_minmax(3rem,1fr)_auto] items-center gap-2 font-normal tabular-nums">
-                            <div className="justify-self-start">{row.departureTime}</div>
-                            <div className="grid min-w-0 grid-cols-[1fr_auto_1fr] items-center gap-1.5 text-center text-muted-foreground before:border-muted-foreground before:border-t before:border-dashed before:opacity-55 after:border-muted-foreground after:border-t after:border-dashed after:opacity-55">
-                              <span className="shrink-0 font-medium text-primary">{row.duration}</span>
-                            </div>
-                            <div className="justify-self-end text-right">{row.arrivalTime}</div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="min-w-0 px-1.5">
-                          <div className="min-w-0 overflow-hidden font-medium [mask-image:linear-gradient(to_right,#000_calc(100%-1.25rem),transparent)]">
-                            {row.destination}
-                            {row.pending ? <span className="ml-1 text-xs text-muted-foreground">...</span> : null}
-                          </div>
-                        </TableCell>
-                        <TableCell className="px-0.5 text-center">
-                          <Badge aria-label="Фокус" className="h-7 min-w-7 px-0 font-normal tabular-nums" size="lg" title="Фокус" variant="outline">
-                            {row.pending ? <span className="text-xs">...</span> : <Timer aria-hidden="true" />}
-                          </Badge>
-                        </TableCell>
-                      </>
-                    )}
+                      ) : null}
+                      <div className="grid grid-cols-[auto_minmax(3rem,1fr)_auto] items-center gap-2 font-normal tabular-nums">
+                        <div className="justify-self-start">{row.departureTime}</div>
+                        <div className="grid min-w-0 grid-cols-[1fr_auto_1fr] items-center gap-1.5 text-center text-muted-foreground before:border-muted-foreground before:border-t before:border-dashed before:opacity-55 after:border-muted-foreground after:border-t after:border-dashed after:opacity-55">
+                          <span className="shrink-0 font-medium text-primary">{row.duration}</span>
+                        </div>
+                        <div className="justify-self-end text-right">{row.arrivalTime}</div>
+                      </div>
+                    </TableCell>
+                    <TableCell className="h-12 min-w-0 px-1.5 py-0">
+                      <div className="min-w-0 overflow-hidden font-medium [mask-image:linear-gradient(to_right,#000_calc(100%-1.25rem),transparent)]">
+                        {row.destination}
+                        {row.pending ? <span className="ml-1 text-xs text-muted-foreground">...</span> : null}
+                      </div>
+                    </TableCell>
+                    <TableCell className="h-12 px-0.5 py-0 text-center">
+                      <Badge aria-label="Фокус" className="h-7 min-w-7 px-0 font-normal tabular-nums" size="lg" title="Фокус" variant="outline">
+                        {row.pending ? <span className="text-xs">...</span> : <Timer aria-hidden="true" />}
+                      </Badge>
+                    </TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell className="p-0" colSpan={3}>
-                      <div className={cx("grid overflow-hidden transition-[max-height,opacity] duration-200 ease-out", rowDraft ? "max-h-14 opacity-100" : "max-h-0 opacity-0")}>
+                    <TableCell className="!p-0 !ps-0 !pe-0" colSpan={3}>
+                      <div className={cx("grid overflow-hidden transition-[max-height,opacity] duration-200 ease-out", rowDraft ? "max-h-12 opacity-100" : "max-h-0 opacity-0")}>
                         {rowDraft ? (
-                          <div className="grid h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5 px-2" data-nav-swipe-exclusion>
-                            <div className="grid min-w-0 grid-cols-3 gap-1">
+                          <div className="grid h-12 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-2" data-nav-swipe-exclusion>
+                            <div className="grid min-w-0 grid-cols-3 gap-1.5">
                               <TimeEditor
                                 changed={rowDraft.startMs !== rowDraft.originalStartMs}
                                 editing={editingField === "start"}
                                 field="start"
+                                label={FIELD_LABELS.start}
                                 inputValue={inputValue}
                                 onBeginInput={beginInput}
                                 onCancelInput={() => setEditingField(null)}
@@ -208,7 +210,9 @@ export function FocusHistoryTable({
                               <TimeEditor
                                 changed={(rowDraft.endMs - rowDraft.startMs) !== (rowDraft.originalEndMs - rowDraft.originalStartMs)}
                                 editing={editingField === "duration"}
+                                featured
                                 field="duration"
+                                label={FIELD_LABELS.duration}
                                 inputValue={inputValue}
                                 onBeginInput={beginInput}
                                 onCancelInput={() => setEditingField(null)}
@@ -221,6 +225,7 @@ export function FocusHistoryTable({
                                 changed={rowDraft.endMs !== rowDraft.originalEndMs}
                                 editing={editingField === "end"}
                                 field="end"
+                                label={FIELD_LABELS.end}
                                 inputValue={inputValue}
                                 onBeginInput={beginInput}
                                 onCancelInput={() => setEditingField(null)}
@@ -230,14 +235,20 @@ export function FocusHistoryTable({
                                 value={formatTimeInput(rowDraft.endMs)}
                               />
                             </div>
-                            <div className="flex items-center justify-end gap-1">
-                              <Button aria-label="Удалить запись фокуса" className="size-8 text-destructive" onClick={(event) => void deleteRow(row, event)} size="icon" type="button" variant="ghost">
+                            <div className="flex h-9 shrink-0 items-center justify-end gap-0.5 border-l pl-1">
+                              <Button aria-label="Отменить редактирование фокуса" className="size-7 text-muted-foreground" onClick={(event) => {
+                                event.stopPropagation();
+                                closeEditor();
+                              }} size="icon-sm" type="button" variant="ghost">
+                                <X className="size-4" aria-hidden="true" />
+                              </Button>
+                              <Button aria-label="Удалить запись фокуса" className="size-7 text-destructive" onClick={(event) => void deleteRow(row, event)} size="icon-sm" type="button" variant="ghost">
                                 <Trash2 className="size-4" aria-hidden="true" />
                               </Button>
-                              <Button aria-label="Закрыть редактирование фокуса" className="size-8" onClick={(event) => {
+                              <Button aria-label="Закрыть редактирование фокуса" className="size-7" onClick={(event) => {
                                 event.stopPropagation();
                                 void saveActiveDraft({ close: true });
-                              }} size="icon" type="button" variant="ghost">
+                              }} size="icon-sm" type="button" variant="ghost">
                                 <Check className="size-4" aria-hidden="true" />
                               </Button>
                             </div>
@@ -265,8 +276,10 @@ export function FocusHistoryTable({
 function TimeEditor({
   changed,
   editing,
+  featured = false,
   field,
   inputValue,
+  label,
   value,
   onBeginInput,
   onCancelInput,
@@ -276,8 +289,10 @@ function TimeEditor({
 }: {
   changed: boolean;
   editing: boolean;
+  featured?: boolean;
   field: FocusEditField;
   inputValue: string;
+  label: string;
   value: string;
   onBeginInput: (field: FocusEditField) => void;
   onCancelInput: () => void;
@@ -287,68 +302,81 @@ function TimeEditor({
 }) {
   const invalid = editing && normalizedInputValue(field, inputValue) == null;
   return (
-    <div className="grid min-w-0 grid-cols-[1.5rem_minmax(2.75rem,1fr)_1.5rem] items-center gap-0.5">
-      <Button
-        aria-label={editing ? "Отменить ввод времени" : "Уменьшить на 5 минут"}
-        className="size-6"
-        onClick={(event) => {
-          event.stopPropagation();
-          if (editing) {
-            onCancelInput();
-          } else {
-            onStep(-1);
-          }
-        }}
-        size="icon-xs"
-        type="button"
-        variant="ghost"
-      >
-        {editing ? <X className="size-3" aria-hidden="true" /> : <Minus className="size-3" aria-hidden="true" />}
-      </Button>
-      {editing ? (
-        <Input
-          aria-invalid={invalid}
-          aria-label="Значение времени"
-          className={cx("h-7 min-w-0 px-1 text-center text-xs tabular-nums", "text-primary")}
-          inputMode="numeric"
-          onChange={(event) => onInput(event.target.value)}
-          onClick={(event) => event.stopPropagation()}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") onCommitInput();
-            if (event.key === "Escape") onCancelInput();
-          }}
-          value={inputValue}
-        />
-      ) : (
-        <button
-          className={cx("h-7 min-w-0 rounded-md px-1 text-center text-xs font-semibold tabular-nums transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50", changed ? "text-primary" : "text-foreground")}
+    <div
+      className={cx(
+        "grid h-10 min-w-0 grid-rows-[0.75rem_1fr] rounded-md border bg-background/35 px-1 py-0.5 transition-colors",
+        featured && !changed && "border-primary/35 bg-primary/10",
+        changed && "border-destructive/60 bg-destructive/10",
+        editing && "border-ring bg-accent/35",
+      )}
+    >
+      <span className={cx("truncate text-center text-xs leading-3", changed ? "text-destructive" : "text-muted-foreground")}>{label}</span>
+      <div className="grid min-w-0 grid-cols-[1.25rem_minmax(2.1rem,1fr)_1.25rem] items-center gap-0.5">
+        <Button
+          aria-label={editing ? "Отменить ввод времени" : "Уменьшить на 5 минут"}
+          className="size-5 rounded-sm"
           onClick={(event) => {
             event.stopPropagation();
-            onBeginInput(field);
+            if (editing) {
+              onCancelInput();
+            } else {
+              onStep(-1);
+            }
           }}
+          size="icon-xs"
           type="button"
+          variant="ghost"
         >
-          {value}
-        </button>
-      )}
-      <Button
-        aria-label={editing ? "Применить ввод времени" : "Увеличить на 5 минут"}
-        className="size-6"
-        disabled={invalid}
-        onClick={(event) => {
-          event.stopPropagation();
-          if (editing) {
-            onCommitInput();
-          } else {
-            onStep(1);
-          }
-        }}
-        size="icon-xs"
-        type="button"
-        variant="ghost"
-      >
-        {editing ? <Check className="size-3" aria-hidden="true" /> : <Plus className="size-3" aria-hidden="true" />}
-      </Button>
+          {editing ? <X className="size-3" aria-hidden="true" /> : <Minus className="size-3" aria-hidden="true" />}
+        </Button>
+        {editing ? (
+          <Input
+            aria-invalid={invalid}
+            aria-label="Значение времени"
+            className="h-6 min-w-0 px-1 text-center text-xs text-destructive tabular-nums"
+            inputMode="numeric"
+            onChange={(event) => onInput(event.target.value)}
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") onCommitInput();
+              if (event.key === "Escape") onCancelInput();
+            }}
+            value={inputValue}
+          />
+        ) : (
+          <button
+            className={cx(
+              "h-6 min-w-0 rounded-sm px-1 text-center text-sm font-semibold tabular-nums transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+              changed ? "text-destructive" : featured ? "text-primary" : "text-foreground",
+            )}
+            onClick={(event) => {
+              event.stopPropagation();
+              onBeginInput(field);
+            }}
+            type="button"
+          >
+            {value}
+          </button>
+        )}
+        <Button
+          aria-label={editing ? "Применить ввод времени" : "Увеличить на 5 минут"}
+          className="size-5 rounded-sm"
+          disabled={invalid}
+          onClick={(event) => {
+            event.stopPropagation();
+            if (editing) {
+              onCommitInput();
+            } else {
+              onStep(1);
+            }
+          }}
+          size="icon-xs"
+          type="button"
+          variant="ghost"
+        >
+          {editing ? <Check className="size-3" aria-hidden="true" /> : <Plus className="size-3" aria-hidden="true" />}
+        </Button>
+      </div>
     </div>
   );
 }
