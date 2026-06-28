@@ -1,9 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { type ColumnDef, flexRender, getCoreRowModel, getSortedRowModel, type SortingState, useReactTable } from "@tanstack/react-table";
-import { Check, Pencil, Timer, X } from "lucide-react";
-import { MOSCOW_OFFSET_MS } from "@/shared/time/format";
+import { Fragment, type MouseEvent, useEffect, useMemo, useState } from "react";
+import { AlarmClock, Check, Minus, Plus, Timer, Trash2, X } from "lucide-react";
 import type { TimerSession } from "@/shared/types/timer";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
@@ -11,176 +9,249 @@ import { CardFrame } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
 import { Table, TableBody, TableCell, TableRow } from "@/shared/ui/table";
 import { cx } from "../../appUtils";
+import {
+  applyFocusInput,
+  applyFocusStep,
+  canonicalSessionId,
+  createFocusEditDraft,
+  draftChanged,
+  draftUtcRange,
+  formatDurationInput,
+  formatTimeInput,
+  hasFocusOverlap,
+  normalizedInputValue,
+  type FocusEditDraft,
+  type FocusEditField,
+} from "./focusHistoryEditModel";
 import { focusHistoryRows, type FocusHistoryRow } from "./focusHistoryModel";
 
-type EditingRow = { id: string; start: string; end: string; error: string | null };
+type WarningState = { rowId: string; message: string };
+
+const OVERLAP_WARNING = "Нельзя наложить на соседний фокус";
 
 export function FocusHistoryTable({
+  allSessions,
   sessions,
+  onDeleteSession,
   onEditSession,
 }: {
+  allSessions: TimerSession[];
   sessions: TimerSession[];
+  onDeleteSession?: (sessionId: string) => void | Promise<void>;
   onEditSession?: (sessionId: string, startedAtUtc: string, endedAtUtc: string) => void | Promise<void>;
 }) {
-  const [sorting, setSorting] = useState<SortingState>([
-    {
-      desc: true,
-      id: "departureTime",
-    },
-  ]);
-  const [editing, setEditing] = useState<EditingRow | null>(null);
-  const rows = useMemo<FocusHistoryRow[]>(
-    () => focusHistoryRows(sessions),
-    [sessions],
+  const rows = useMemo<FocusHistoryRow[]>(() => focusHistoryRows(sessions), [sessions]);
+  const displaySessions = useMemo(() => new Map(sessions.map((session) => [session.id, session])), [sessions]);
+  const canonicalSessions = useMemo(
+    () => new Map(allSessions.map((session) => [canonicalSessionId(session), session])),
+    [allSessions],
   );
-  const columns: ColumnDef<FocusHistoryRow>[] = [
-    {
-      accessorKey: "departureTime",
-      cell: ({ row }) => {
-        if (editing?.id === row.original.id) {
-          return (
-            <div className="grid min-w-0 gap-1.5">
-              <div className="grid min-w-0 grid-cols-2 gap-1.5">
-                <Input
-                  aria-label="Начало фокуса"
-                  className="h-8 min-w-0 px-2 text-xs tabular-nums"
-                  onChange={(event) => setEditing({ ...editing, start: event.target.value, error: null })}
-                  type="datetime-local"
-                  value={editing.start}
-                />
-                <Input
-                  aria-label="Финиш фокуса"
-                  className="h-8 min-w-0 px-2 text-xs tabular-nums"
-                  onChange={(event) => setEditing({ ...editing, end: event.target.value, error: null })}
-                  type="datetime-local"
-                  value={editing.end}
-                />
-              </div>
-              {editing.error ? <div className="text-xs text-destructive">{editing.error}</div> : null}
-            </div>
-          );
-        }
+  const [activeRowId, setActiveRowId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<FocusEditDraft | null>(null);
+  const [editingField, setEditingField] = useState<FocusEditField | null>(null);
+  const [inputValue, setInputValue] = useState("");
+  const [warning, setWarning] = useState<WarningState | null>(null);
 
-        return (
-          <div className="grid grid-cols-[auto_minmax(3rem,1fr)_auto] items-center gap-2 font-normal tabular-nums">
-            <div className="justify-self-start">{row.original.departureTime}</div>
-            <div className="grid min-w-0 grid-cols-[1fr_auto_1fr] items-center gap-1.5 text-center text-muted-foreground before:border-muted-foreground before:border-t before:border-dashed before:opacity-55 after:border-muted-foreground after:border-t after:border-dashed after:opacity-55">
-              <span className="shrink-0 font-medium text-primary">{row.original.duration}</span>
-            </div>
-            <div className="justify-self-end text-right">{row.original.arrivalTime}</div>
-          </div>
-        );
-      },
-      header: "Time",
-      size: editing ? 248 : 168,
-    },
-    {
-      accessorKey: "destination",
-      cell: ({ row }) => (
-        <div className="min-w-0 overflow-hidden font-medium [mask-image:linear-gradient(to_right,#000_calc(100%-1.25rem),transparent)]">
-          {row.getValue<string>("destination")}
-          {row.original.pending ? <span className="ml-1 text-xs text-muted-foreground">...</span> : null}
-        </div>
-      ),
-      header: "Destination",
-      size: 176,
-    },
-    {
-      id: "terminal",
-      cell: ({ row }) => (
-        <Badge aria-label="Фокус" className="h-7 min-w-7 px-0 font-normal tabular-nums" size="lg" title="Фокус" variant="outline">
-          {row.original.pending ? <span className="text-xs">...</span> : <Timer aria-hidden="true" />}
-        </Badge>
-      ),
-      header: "Terminal",
-      size: 34,
-    },
-    ...(onEditSession ? [{
-      id: "edit",
-      cell: ({ row }) => editing?.id === row.original.id ? (
-        <div className="flex items-center justify-end gap-1">
-          <Button aria-label="Сохранить время фокуса" className="size-8" onClick={() => void saveEdit()} size="icon" type="button" variant="ghost">
-            <Check className="size-4" aria-hidden="true" />
-          </Button>
-          <Button aria-label="Отменить изменение времени фокуса" className="size-8" onClick={() => setEditing(null)} size="icon" type="button" variant="ghost">
-            <X className="size-4" aria-hidden="true" />
-          </Button>
-        </div>
-      ) : (
-        <Button aria-label="Изменить время фокуса" className="size-8" onClick={() => startEdit(row.original)} size="icon" type="button" variant="ghost">
-          <Pencil className="size-4" aria-hidden="true" />
-        </Button>
-      ),
-      header: "Edit",
-      size: 72,
-    } satisfies ColumnDef<FocusHistoryRow>] : []),
-  ];
-
-  function startEdit(row: FocusHistoryRow) {
-    if (!row.endedAtUtc) return;
-    setEditing({
-      id: row.id,
-      start: toMoscowInputValue(row.startedAtUtc),
-      end: toMoscowInputValue(row.endedAtUtc),
-      error: null,
-    });
+  async function openRow(row: FocusHistoryRow) {
+    if (activeRowId === row.id) return;
+    if (!(await saveActiveDraft({ close: false }))) return;
+    const session = canonicalSessions.get(row.sessionId) ?? displaySessions.get(row.id);
+    if (!session?.ended_at_utc) return;
+    const nextDraft = createFocusEditDraft(session);
+    if (!nextDraft) return;
+    setActiveRowId(row.id);
+    setDraft(nextDraft);
+    setEditingField(null);
   }
 
-  async function saveEdit() {
-    if (!editing || !onEditSession) return;
-    const startedAtUtc = fromMoscowInputValue(editing.start);
-    const endedAtUtc = fromMoscowInputValue(editing.end);
-    if (!startedAtUtc || !endedAtUtc || Date.parse(endedAtUtc) <= Date.parse(startedAtUtc)) {
-      setEditing({ ...editing, error: "Финиш должен быть позже старта." });
+  async function saveActiveDraft({ close }: { close: boolean }) {
+    if (!draft || !activeRowId) return true;
+    if (hasFocusOverlap(draft, allSessions)) {
+      showOverlapWarning(activeRowId);
+      return false;
+    }
+    if (draftChanged(draft) && onEditSession) {
+      const range = draftUtcRange(draft);
+      await onEditSession(draft.sessionId, range.startedAtUtc, range.endedAtUtc);
+    }
+    if (close) closeEditor();
+    return true;
+  }
+
+  async function deleteRow(row: FocusHistoryRow, event: MouseEvent) {
+    event.stopPropagation();
+    closeEditor();
+    await onDeleteSession?.(row.sessionId);
+  }
+
+  function closeEditor() {
+    setActiveRowId(null);
+    setDraft(null);
+    setEditingField(null);
+    setInputValue("");
+  }
+
+  useEffect(() => {
+    if (!activeRowId || rows.some((row) => row.id === activeRowId)) return;
+    closeEditor();
+  }, [activeRowId, rows]);
+
+  useEffect(() => {
+    if (!warning) return undefined;
+    const timeout = window.setTimeout(() => setWarning(null), 3000);
+    return () => window.clearTimeout(timeout);
+  }, [warning]);
+
+  function showOverlapWarning(rowId: string) {
+    setWarning({ rowId, message: OVERLAP_WARNING });
+  }
+
+  function updateDraft(rowId: string, nextDraft: FocusEditDraft | null) {
+    if (!nextDraft || hasFocusOverlap(nextDraft, allSessions)) {
+      showOverlapWarning(rowId);
       return;
     }
-    await onEditSession(editing.id, startedAtUtc, endedAtUtc);
-    setEditing(null);
+    setDraft(nextDraft);
   }
 
-  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Table returns handler functions by design.
-  const table = useReactTable({
-    columns,
-    data: rows,
-    enableSortingRemoval: false,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    onSortingChange: setSorting,
-    state: {
-      sorting,
-    },
-  });
+  function beginInput(field: FocusEditField) {
+    if (!draft) return;
+    setEditingField(field);
+    setInputValue(field === "duration" ? formatDurationInput(draft.startMs, draft.endMs) : formatTimeInput(field === "start" ? draft.startMs : draft.endMs));
+  }
+
+  function commitInput(rowId: string) {
+    if (!draft || !editingField) return;
+    const nextDraft = applyFocusInput(draft, editingField, inputValue);
+    if (!nextDraft) return;
+    if (hasFocusOverlap(nextDraft, allSessions)) {
+      showOverlapWarning(rowId);
+      return;
+    }
+    setDraft(nextDraft);
+    setInputValue(normalizedInputValue(editingField, inputValue) ?? inputValue);
+    setEditingField(null);
+  }
 
   return (
     <CardFrame className="w-full">
       <Table variant="card" className="table-fixed">
         <colgroup>
-          {columns.map((column, index) => (
-            <col key={index} style={column.size ? { width: `${column.size}px` } : undefined} />
-          ))}
+          <col style={{ width: "168px" }} />
+          <col />
+          <col style={{ width: "34px" }} />
         </colgroup>
         <TableBody>
-          {table.getRowModel().rows.length ? (
-            table.getRowModel().rows.map((row) => (
-              <TableRow key={row.id}>
-                {row.getVisibleCells().map((cell) => (
-                  <TableCell
-                    className={cx(
-                      cell.column.id === "destination" && "min-w-0 px-1.5",
-                      cell.column.id === "departureTime" && "px-1.5",
-                      cell.column.id === "terminal" && "px-0.5 text-center",
-                      cell.column.id === "edit" && "px-0.5 text-right",
-                    )}
-                    key={cell.id}
+          {rows.length ? (
+            rows.map((row) => {
+              const rowDraft = activeRowId === row.id ? draft : null;
+              const warned = warning?.rowId === row.id;
+              return (
+                <Fragment key={row.id}>
+                  <TableRow
+                    className={cx("cursor-pointer transition-colors", warned && "cursor-default")}
+                    data-state={rowDraft ? "selected" : undefined}
+                    onClick={() => {
+                      if (!warned) void openRow(row);
+                    }}
                   >
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </TableCell>
-                ))}
-              </TableRow>
-            ))
+                    {warned ? (
+                      <TableCell className="!bg-primary !text-primary-foreground" colSpan={3}>
+                        <div className="flex h-9 items-center gap-2 font-medium">
+                          <AlarmClock className="size-4 shrink-0" aria-hidden="true" />
+                          <span className="min-w-0 truncate">{warning.message}</span>
+                        </div>
+                      </TableCell>
+                    ) : (
+                      <>
+                        <TableCell className="px-1.5">
+                          <div className="grid grid-cols-[auto_minmax(3rem,1fr)_auto] items-center gap-2 font-normal tabular-nums">
+                            <div className="justify-self-start">{row.departureTime}</div>
+                            <div className="grid min-w-0 grid-cols-[1fr_auto_1fr] items-center gap-1.5 text-center text-muted-foreground before:border-muted-foreground before:border-t before:border-dashed before:opacity-55 after:border-muted-foreground after:border-t after:border-dashed after:opacity-55">
+                              <span className="shrink-0 font-medium text-primary">{row.duration}</span>
+                            </div>
+                            <div className="justify-self-end text-right">{row.arrivalTime}</div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="min-w-0 px-1.5">
+                          <div className="min-w-0 overflow-hidden font-medium [mask-image:linear-gradient(to_right,#000_calc(100%-1.25rem),transparent)]">
+                            {row.destination}
+                            {row.pending ? <span className="ml-1 text-xs text-muted-foreground">...</span> : null}
+                          </div>
+                        </TableCell>
+                        <TableCell className="px-0.5 text-center">
+                          <Badge aria-label="Фокус" className="h-7 min-w-7 px-0 font-normal tabular-nums" size="lg" title="Фокус" variant="outline">
+                            {row.pending ? <span className="text-xs">...</span> : <Timer aria-hidden="true" />}
+                          </Badge>
+                        </TableCell>
+                      </>
+                    )}
+                  </TableRow>
+                  <TableRow>
+                    <TableCell className="p-0" colSpan={3}>
+                      <div className={cx("grid overflow-hidden transition-[max-height,opacity] duration-200 ease-out", rowDraft ? "max-h-14 opacity-100" : "max-h-0 opacity-0")}>
+                        {rowDraft ? (
+                          <div className="grid h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5 px-2" data-nav-swipe-exclusion>
+                            <div className="grid min-w-0 grid-cols-3 gap-1">
+                              <TimeEditor
+                                changed={rowDraft.startMs !== rowDraft.originalStartMs}
+                                editing={editingField === "start"}
+                                field="start"
+                                inputValue={inputValue}
+                                onBeginInput={beginInput}
+                                onCancelInput={() => setEditingField(null)}
+                                onCommitInput={() => commitInput(row.id)}
+                                onInput={setInputValue}
+                                onStep={(direction) => updateDraft(row.id, applyFocusStep(rowDraft, "start", direction))}
+                                value={formatTimeInput(rowDraft.startMs)}
+                              />
+                              <TimeEditor
+                                changed={(rowDraft.endMs - rowDraft.startMs) !== (rowDraft.originalEndMs - rowDraft.originalStartMs)}
+                                editing={editingField === "duration"}
+                                field="duration"
+                                inputValue={inputValue}
+                                onBeginInput={beginInput}
+                                onCancelInput={() => setEditingField(null)}
+                                onCommitInput={() => commitInput(row.id)}
+                                onInput={setInputValue}
+                                onStep={(direction) => updateDraft(row.id, applyFocusStep(rowDraft, "duration", direction))}
+                                value={formatDurationInput(rowDraft.startMs, rowDraft.endMs)}
+                              />
+                              <TimeEditor
+                                changed={rowDraft.endMs !== rowDraft.originalEndMs}
+                                editing={editingField === "end"}
+                                field="end"
+                                inputValue={inputValue}
+                                onBeginInput={beginInput}
+                                onCancelInput={() => setEditingField(null)}
+                                onCommitInput={() => commitInput(row.id)}
+                                onInput={setInputValue}
+                                onStep={(direction) => updateDraft(row.id, applyFocusStep(rowDraft, "end", direction))}
+                                value={formatTimeInput(rowDraft.endMs)}
+                              />
+                            </div>
+                            <div className="flex items-center justify-end gap-1">
+                              <Button aria-label="Удалить запись фокуса" className="size-8 text-destructive" onClick={(event) => void deleteRow(row, event)} size="icon" type="button" variant="ghost">
+                                <Trash2 className="size-4" aria-hidden="true" />
+                              </Button>
+                              <Button aria-label="Закрыть редактирование фокуса" className="size-8" onClick={(event) => {
+                                event.stopPropagation();
+                                void saveActiveDraft({ close: true });
+                              }} size="icon" type="button" variant="ghost">
+                                <Check className="size-4" aria-hidden="true" />
+                              </Button>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                </Fragment>
+              );
+            })
           ) : (
             <TableRow>
-              <TableCell className="h-24 text-center" colSpan={columns.length}>
+              <TableCell className="h-24 text-center" colSpan={3}>
                 Сессий нет.
               </TableCell>
             </TableRow>
@@ -191,15 +262,93 @@ export function FocusHistoryTable({
   );
 }
 
-function toMoscowInputValue(utcIso: string): string {
-  const ms = Date.parse(utcIso);
-  if (!Number.isFinite(ms)) return "";
-  return new Date(ms + MOSCOW_OFFSET_MS).toISOString().slice(0, 16);
-}
-
-function fromMoscowInputValue(value: string): string | null {
-  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value);
-  if (!match) return null;
-  const [, year, month, day, hour, minute] = match.map(Number);
-  return new Date(Date.UTC(year, month - 1, day, hour, minute) - MOSCOW_OFFSET_MS).toISOString();
+function TimeEditor({
+  changed,
+  editing,
+  field,
+  inputValue,
+  value,
+  onBeginInput,
+  onCancelInput,
+  onCommitInput,
+  onInput,
+  onStep,
+}: {
+  changed: boolean;
+  editing: boolean;
+  field: FocusEditField;
+  inputValue: string;
+  value: string;
+  onBeginInput: (field: FocusEditField) => void;
+  onCancelInput: () => void;
+  onCommitInput: () => void;
+  onInput: (value: string) => void;
+  onStep: (direction: -1 | 1) => void;
+}) {
+  const invalid = editing && normalizedInputValue(field, inputValue) == null;
+  return (
+    <div className="grid min-w-0 grid-cols-[1.5rem_minmax(2.75rem,1fr)_1.5rem] items-center gap-0.5">
+      <Button
+        aria-label={editing ? "Отменить ввод времени" : "Уменьшить на 5 минут"}
+        className="size-6"
+        onClick={(event) => {
+          event.stopPropagation();
+          if (editing) {
+            onCancelInput();
+          } else {
+            onStep(-1);
+          }
+        }}
+        size="icon-xs"
+        type="button"
+        variant="ghost"
+      >
+        {editing ? <X className="size-3" aria-hidden="true" /> : <Minus className="size-3" aria-hidden="true" />}
+      </Button>
+      {editing ? (
+        <Input
+          aria-invalid={invalid}
+          aria-label="Значение времени"
+          className={cx("h-7 min-w-0 px-1 text-center text-xs tabular-nums", "text-primary")}
+          inputMode="numeric"
+          onChange={(event) => onInput(event.target.value)}
+          onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") onCommitInput();
+            if (event.key === "Escape") onCancelInput();
+          }}
+          value={inputValue}
+        />
+      ) : (
+        <button
+          className={cx("h-7 min-w-0 rounded-md px-1 text-center text-xs font-semibold tabular-nums transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50", changed ? "text-primary" : "text-foreground")}
+          onClick={(event) => {
+            event.stopPropagation();
+            onBeginInput(field);
+          }}
+          type="button"
+        >
+          {value}
+        </button>
+      )}
+      <Button
+        aria-label={editing ? "Применить ввод времени" : "Увеличить на 5 минут"}
+        className="size-6"
+        disabled={invalid}
+        onClick={(event) => {
+          event.stopPropagation();
+          if (editing) {
+            onCommitInput();
+          } else {
+            onStep(1);
+          }
+        }}
+        size="icon-xs"
+        type="button"
+        variant="ghost"
+      >
+        {editing ? <Check className="size-3" aria-hidden="true" /> : <Plus className="size-3" aria-hidden="true" />}
+      </Button>
+    </div>
+  );
 }
