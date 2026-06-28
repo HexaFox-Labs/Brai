@@ -41,6 +41,7 @@ export {
   deriveTaskState,
   enableGitHooks,
   isManualCodexBranchCommand,
+  isManualBranchCommand,
   isReadOnlyShellCommand,
   isSensitivePath,
   isWriteLikeCommand,
@@ -185,10 +186,13 @@ function preToolUse() {
   const analysis = analyzeHookInput(readStdin());
   if (!analysis.ok) return blockHook(analysis.reason);
   if (analysis.manualCodexBranch) {
-    return blockHook(`Manual codex/* branch creation or switching is blocked.\n\n${taskStartGuidance()}`);
+    return blockHook(`Manual branch or worktree commands are blocked.\n\n${taskStartGuidance()}`);
+  }
+  if (!analysis.write && !analysis.officialTaskStarter) return allowHook();
+  if (!currentThreadId()) {
+    return blockHook("Bright OS cannot verify the current Codex thread id; blocking project-file writes fail-closed.");
   }
   if (analysis.officialTaskStarter) return allowHook();
-  if (!analysis.write) return allowHook();
 
   fetchAcceptedBase();
   const validation = validateTaskBranch({ requireExpectedUpstream: false });
@@ -839,11 +843,14 @@ function isReadOnlyShellSegment(segment) {
 }
 
 function isManualCodexBranchCommand(commandText) {
+  return isManualBranchCommand(commandText);
+}
+
+function isManualBranchCommand(commandText) {
   return splitShellSegments(commandText).some((segment) =>
-    /^git\s+(?:switch|checkout)\b.*(?:\s|=)codex\/[A-Za-z0-9._/-]+/.test(segment) ||
-    /^git\s+(?:switch|checkout)\b.*\s-(?:c|C|b|B)\s+codex\/[A-Za-z0-9._/-]+/.test(segment) ||
-    /^git\s+branch\s+(?!--show-current\b).*codex\/[A-Za-z0-9._/-]+/.test(segment) ||
-    /^git\s+worktree\s+add\b.*(?:\s|=)codex\/[A-Za-z0-9._/-]+/.test(segment),
+    /^git\s+(?:switch|checkout)\b/.test(segment) ||
+    /^git\s+branch\b(?!\s+--show-current$)/.test(segment) ||
+    /^git\s+worktree\b/.test(segment),
   );
 }
 

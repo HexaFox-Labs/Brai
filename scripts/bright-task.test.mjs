@@ -14,6 +14,7 @@ import {
   deriveTaskState,
   enableGitHooks,
   findOpenTaskForThread,
+  isManualBranchCommand,
   isManualCodexBranchCommand,
   isReadOnlyShellCommand,
   isSensitivePath,
@@ -49,12 +50,16 @@ test("write-like shell commands are detected", () => {
   assert.equal(isWriteLikeCommand("some-new-cli --maybe-write"), true);
 });
 
-test("manual codex branch commands are hard blocked", () => {
+test("manual branch commands are hard blocked", () => {
   assert.equal(isManualCodexBranchCommand("git switch -c codex/foo origin/main"), true);
   assert.equal(isManualCodexBranchCommand("git checkout -b codex/foo origin/main"), true);
   assert.equal(isManualCodexBranchCommand("git branch codex/foo"), true);
   assert.equal(isManualCodexBranchCommand("git worktree add ../foo -b codex/foo origin/main"), true);
   assert.equal(isManualCodexBranchCommand("git branch --show-current"), false);
+  assert.equal(isManualBranchCommand("git switch -c feature/foo origin/main"), true);
+  assert.equal(isManualBranchCommand("git checkout main"), true);
+  assert.equal(isManualBranchCommand("git branch"), true);
+  assert.equal(isManualBranchCommand("git worktree list"), true);
 });
 
 test("hook analysis detects namespaced custom and nested write tools", () => {
@@ -95,6 +100,9 @@ test("hook analysis allows read-only shell and official task starter", () => {
 
   const manual = analyzeHookInput(JSON.stringify({ tool_name: "functions.exec_command", tool_input: { cmd: "git switch -c codex/foo origin/main" } }));
   assert.equal(manual.manualCodexBranch, true);
+
+  const nonCodexManual = analyzeHookInput(JSON.stringify({ tool_name: "functions.exec_command", tool_input: { cmd: "git switch main" } }));
+  assert.equal(nonCodexManual.manualCodexBranch, true);
 });
 
 test("sensitive paths are rejected for commits", () => {
@@ -182,6 +190,86 @@ test("task marker is bound to the current Codex thread when one exists", () => {
   assert.deepEqual(validateTaskThread({ threadId: "thread-a" }, "thread-a"), { ok: true });
   assert.match(validateTaskThread({}, "thread-a").message, /no Codex thread id/);
   assert.match(validateTaskThread({ threadId: "thread-b" }, "thread-a").message, /thread-b/);
+});
+
+test("task state rejects a branch with another task marker", () => {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "bright-task-wrong-marker-"));
+  const previous = process.cwd();
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "test@example.invalid"], repo);
+    git(["config", "user.name", "Bright Test"], repo);
+    fs.writeFileSync(path.join(repo, ".gitignore"), ".bright-task/\n");
+    fs.writeFileSync(path.join(repo, "base.txt"), "base\n");
+    git(["add", ".gitignore", "base.txt"], repo);
+    git(["commit", "-m", "base"], repo);
+    git(["checkout", "-b", "codex/current-task"], repo);
+    git(["update-ref", "refs/remotes/origin/main", "HEAD"], repo);
+    fs.mkdirSync(path.join(repo, ".bright-task"));
+    fs.writeFileSync(
+      path.join(repo, ".bright-task", "task.json"),
+      `${JSON.stringify({
+        branch: "codex/old-task",
+        mode: "new",
+        base: git(["rev-parse", "HEAD"], repo).stdout.trim(),
+        createdAt: "2026-06-26T00:00:00.000Z",
+        writeIntentAt: "2026-06-26T00:01:00.000Z",
+        ...(process.env.CODEX_THREAD_ID ? { threadId: process.env.CODEX_THREAD_ID } : {}),
+      })}\n`,
+    );
+    process.chdir(repo);
+
+    const state = deriveTaskState();
+    assert.equal(state.ok, false);
+    assert.match(state.reuse.message, /codex\/old-task/);
+  } finally {
+    process.chdir(previous);
+  }
+});
+
+test("task state rejects origin-dev based branch that is not based on current origin-main", () => {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "bright-task-origin-main-"));
+  const previous = process.cwd();
+  try {
+    git(["init"], repo);
+    git(["config", "user.email", "test@example.invalid"], repo);
+    git(["config", "user.name", "Bright Test"], repo);
+    fs.writeFileSync(path.join(repo, ".gitignore"), ".bright-task/\n");
+    fs.writeFileSync(path.join(repo, "base.txt"), "base\n");
+    git(["add", ".gitignore", "base.txt"], repo);
+    git(["commit", "-m", "dev base"], repo);
+    git(["update-ref", "refs/remotes/origin/dev", "HEAD"], repo);
+    git(["checkout", "-b", "codex/from-old-dev"], repo);
+    const branchHead = git(["rev-parse", "HEAD"], repo).stdout.trim();
+    fs.writeFileSync(path.join(repo, "branch.txt"), "branch\n");
+    git(["add", "branch.txt"], repo);
+    git(["commit", "-m", "branch change"], repo);
+    fs.writeFileSync(path.join(repo, "main.txt"), "main\n");
+    git(["checkout", "-b", "main", branchHead], repo);
+    git(["add", "main.txt"], repo);
+    git(["commit", "-m", "current main"], repo);
+    git(["update-ref", "refs/remotes/origin/main", "HEAD"], repo);
+    git(["checkout", "codex/from-old-dev"], repo);
+    fs.mkdirSync(path.join(repo, ".bright-task"));
+    fs.writeFileSync(
+      path.join(repo, ".bright-task", "task.json"),
+      `${JSON.stringify({
+        branch: "codex/from-old-dev",
+        mode: "new",
+        base: branchHead,
+        createdAt: "2026-06-26T00:00:00.000Z",
+        writeIntentAt: "2026-06-26T00:01:00.000Z",
+        ...(process.env.CODEX_THREAD_ID ? { threadId: process.env.CODEX_THREAD_ID } : {}),
+      })}\n`,
+    );
+    process.chdir(repo);
+
+    const state = deriveTaskState();
+    assert.equal(state.ok, false);
+    assert.match(state.validation.message, /origin\/main is not an ancestor/);
+  } finally {
+    process.chdir(previous);
+  }
 });
 
 test("task start guidance requires escalation and forbids manual branch fallback", () => {
