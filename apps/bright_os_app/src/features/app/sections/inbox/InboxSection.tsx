@@ -14,6 +14,15 @@ import { ScrollArea } from "@/shared/ui/scroll-area";
 import { cx, fitTextareaHeight } from "../../appUtils";
 import { useMobileSheetDrag } from "../../hooks/useMobileSheetDrag";
 import { isMobileNavigationViewport } from "../../navigation/useSectionSwipeNavigation";
+import {
+  DetailAttachments,
+  DetailDbReference,
+  DetailEmptyTab,
+  DetailFields,
+  DetailHistory,
+  DetailPanelTabBar,
+  type DetailPanelTab,
+} from "../DetailPanelTabs";
 import { ActionsInfoPanel } from "../actions/ActionsInfoPanel";
 import { ACTION_DELETE_REVEAL_WIDTH, ACTION_ROW_SERVICE_SELECTOR, ACTIONS_SPLIT_DEFAULT_PERCENT, ACTIONS_SPLIT_MIN_PERCENT, clampActionsSplitPercent, loadActivityMarkdownPreviewMode, saveActivityMarkdownPreviewMode } from "../actions/constants";
 
@@ -677,6 +686,7 @@ function InboxDetailEditor({
   const initialTitle = titleDraft ?? item.title;
   const [description, setDescription] = useState(normalizeDescription(item.description_md));
   const [markdownPreview, setMarkdownPreview] = useState(loadActivityMarkdownPreviewMode);
+  const [activeTab, setActiveTab] = useState<DetailPanelTab>("info");
   const titleRef = useRef<HTMLTextAreaElement | null>(null);
   const descriptionRef = useRef<HTMLTextAreaElement | null>(null);
   const latestRef = useRef<{ title: string; descriptionMd: string } | null>(null);
@@ -810,6 +820,52 @@ function InboxDetailEditor({
   const PreviewModeIcon = markdownPreview ? Pencil : BookOpen;
   const previewModeLabel = markdownPreview ? "Редактировать описание" : "Читать описание";
   const titleValue = titleDraft ?? item.title;
+  const detailContent =
+    activeTab === "info" ? (
+      <ScrollArea className="actions-detail-description-scroll min-h-0 w-full min-w-0" role="tabpanel">
+        <div className="min-h-full w-full min-w-0 px-0 pb-6 pt-1">
+          <DetailAttachments links={item.attachment_links} />
+          {markdownPreview ? (
+            <div
+              className="actions-detail-description actions-detail-description-preview min-h-full w-full min-w-0"
+              aria-label="MD просмотр описания входящего"
+            >
+              {visibleDescriptionPreview(description) ? (
+                hasMarkdownSyntax(description) ? (
+                  <MarkdownContent source={markdownPreviewSource(description)} />
+                ) : (
+                  <div className="whitespace-pre-wrap text-sm font-normal leading-[1.48] tracking-normal text-foreground max-[860px]:text-base">
+                    {description}
+                  </div>
+                )
+              ) : (
+                <p className="m-0 text-sm font-normal leading-[1.48] text-muted-foreground">Введите описание</p>
+              )}
+            </div>
+          ) : (
+            <textarea
+              ref={descriptionRef}
+              className="actions-detail-description block min-h-full w-full min-w-0 resize-none overflow-hidden border-0 bg-transparent p-0 text-sm font-normal leading-[1.48] tracking-normal text-foreground placeholder:text-muted-foreground focus:outline-0 max-[860px]:text-base"
+              value={description}
+              placeholder="Введите описание"
+              aria-label="Описание входящего"
+              onChange={(event) => {
+                setDescription(event.target.value);
+                schedule(titleValue, event.target.value);
+              }}
+            />
+          )}
+        </div>
+      </ScrollArea>
+    ) : activeTab === "history" ? (
+      <DetailHistory kind="inbox" item={item} />
+    ) : activeTab === "details" ? (
+      <DetailFields kind="inbox" item={item} />
+    ) : activeTab === "db" ? (
+      <DetailDbReference kind="inbox" />
+    ) : (
+      <DetailEmptyTab />
+    );
   const editorBody = (
     <>
       <header
@@ -824,18 +880,20 @@ function InboxDetailEditor({
             <span className="actions-detail-grabber h-1.5 w-[50px] rounded-full bg-muted-foreground/30" aria-hidden="true" />
           </div>
         ) : null}
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          className={cx("actions-detail-preview-toggle text-muted-foreground hover:text-foreground", mode === "mobile" && "absolute right-0 top-1")}
-          aria-label={previewModeLabel}
-          aria-pressed={markdownPreview}
-          title={previewModeLabel}
-          onClick={() => setPreviewMode(!markdownPreview)}
-        >
-          <PreviewModeIcon aria-hidden="true" />
-        </Button>
+        {activeTab === "info" ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className={cx("actions-detail-preview-toggle text-muted-foreground hover:text-foreground", mode === "mobile" && "absolute right-0 top-1")}
+            aria-label={previewModeLabel}
+            aria-pressed={markdownPreview}
+            title={previewModeLabel}
+            onClick={() => setPreviewMode(!markdownPreview)}
+          >
+            <PreviewModeIcon aria-hidden="true" />
+          </Button>
+        ) : null}
         <button
           type="button"
           className={cx(
@@ -858,38 +916,8 @@ function InboxDetailEditor({
         aria-label="Название входящего"
         onChange={(event) => schedule(event.target.value, description)}
       />
-      <ScrollArea className="actions-detail-description-scroll min-h-0 w-full min-w-0">
-        {markdownPreview ? (
-          <div
-            className="actions-detail-description actions-detail-description-preview min-h-full w-full min-w-0 px-0 pb-6 pt-1"
-            aria-label="MD просмотр описания входящего"
-          >
-            {visibleDescriptionPreview(description) ? (
-              hasMarkdownSyntax(description) ? (
-                <MarkdownContent source={markdownPreviewSource(description)} />
-              ) : (
-                <div className="whitespace-pre-wrap text-sm font-normal leading-[1.48] tracking-normal text-foreground max-[860px]:text-base">
-                  {description}
-                </div>
-              )
-            ) : (
-              <p className="m-0 text-sm font-normal leading-[1.48] text-muted-foreground">Введите описание</p>
-            )}
-          </div>
-        ) : (
-          <textarea
-            ref={descriptionRef}
-            className="actions-detail-description block min-h-full w-full min-w-0 resize-none overflow-hidden border-0 bg-transparent px-0 pb-6 pt-1 text-sm font-normal leading-[1.48] tracking-normal text-foreground placeholder:text-muted-foreground focus:outline-0 max-[860px]:text-base"
-            value={description}
-            placeholder="Введите описание"
-            aria-label="Описание входящего"
-            onChange={(event) => {
-              setDescription(event.target.value);
-              schedule(titleValue, event.target.value);
-            }}
-          />
-        )}
-      </ScrollArea>
+      <DetailPanelTabBar activeTab={activeTab} onChange={setActiveTab} />
+      {detailContent}
     </>
   );
 
@@ -899,7 +927,7 @@ function InboxDetailEditor({
         <div ref={backdropRef} className="absolute inset-0 bg-foreground/20 dark:bg-background/80" style={backdropStyle} aria-hidden="true" />
         <aside
           ref={sheetRef}
-          className="actions-detail-panel mobile absolute inset-x-0 bottom-0 top-[env(safe-area-inset-top)] z-[1] grid min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3 overflow-hidden rounded-t-2xl border-t border-border bg-card px-[18px] pb-[env(safe-area-inset-bottom)] pt-2 shadow-xl animate-[mobile-detail-sheet-in_180ms_ease-out] will-change-transform"
+          className="actions-detail-panel mobile absolute inset-x-0 bottom-0 top-[env(safe-area-inset-top)] z-[1] grid min-h-0 min-w-0 grid-rows-[auto_auto_auto_minmax(0,1fr)] gap-3 overflow-hidden rounded-t-2xl border-t border-border bg-card px-[18px] pb-[env(safe-area-inset-bottom)] pt-2 shadow-xl animate-[mobile-detail-sheet-in_180ms_ease-out] will-change-transform"
           style={mobileSheetStyle}
           aria-label="Редактирование входящего"
           onKeyDown={onKeyDown}
@@ -913,7 +941,7 @@ function InboxDetailEditor({
 
   return (
     <aside
-      className="actions-detail-panel desktop grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3 overflow-hidden pl-7 pr-7 max-[860px]:hidden"
+      className="actions-detail-panel desktop grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_auto_minmax(0,1fr)] gap-3 overflow-hidden pl-7 pr-7 max-[860px]:hidden"
       aria-label="Редактирование входящего"
       data-nav-swipe-exclusion
       onKeyDown={onKeyDown}
