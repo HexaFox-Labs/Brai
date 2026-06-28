@@ -1,0 +1,181 @@
+{
+  "actions": {
+    "fields": [
+      {
+        "name": "id",
+        "meaning": "Технический ID действия",
+        "filledBy": "UI или синхронизация действий"
+      },
+      {
+        "name": "title",
+        "meaning": "Название действия",
+        "filledBy": "UI"
+      },
+      {
+        "name": "description_md",
+        "meaning": "Описание действия в Markdown",
+        "filledBy": "UI"
+      },
+      {
+        "name": "status",
+        "meaning": "Текущий статус действия",
+        "filledBy": "UI"
+      },
+      {
+        "name": "created_at_utc",
+        "meaning": "Когда действие создано",
+        "filledBy": "Событие create"
+      },
+      {
+        "name": "updated_at_utc",
+        "meaning": "Когда действие обновлено",
+        "filledBy": "create, edit, set_status, reorder, delete, restore"
+      },
+      {
+        "name": "completed_at_utc",
+        "meaning": "Когда действие завершено",
+        "filledBy": "Событие set_status"
+      },
+      {
+        "name": "sort_order",
+        "meaning": "Порядок действия в списке",
+        "filledBy": "Событие reorder"
+      },
+      {
+        "name": "deleted_at_utc",
+        "meaning": "Soft delete timestamp",
+        "filledBy": "Событие delete"
+      },
+      {
+        "name": "restored_at_utc",
+        "meaning": "Когда действие восстановлено из архива",
+        "filledBy": "Событие restore"
+      }
+    ],
+    "recordTypes": []
+  },
+  "inbox": {
+    "fields": [
+      {
+        "name": "id",
+        "meaning": "Технический ID входящей записи",
+        "filledBy": "UI или inbound API"
+      },
+      {
+        "name": "title",
+        "meaning": "Заголовок входящего",
+        "filledBy": "UI вводит; inbound генерирует из text"
+      },
+      {
+        "name": "description_text",
+        "sourceKey": "description_md",
+        "meaning": "Описание / основное содержимое, фактически Markdown-текст",
+        "filledBy": "UI редактирует; inbound берет description* / content*"
+      },
+      {
+        "name": "source",
+        "meaning": "Источник входящего",
+        "filledBy": "inbound, default inbound; UI пусто"
+      },
+      {
+        "name": "item_date",
+        "meaning": "Дата самого материала / входящего объекта",
+        "filledBy": "Зарезервировано, текущий код не выставляет"
+      },
+      {
+        "name": "author",
+        "meaning": "Автор материала",
+        "filledBy": "Зарезервировано, текущий код не выставляет"
+      },
+      {
+        "name": "preliminary_section",
+        "meaning": "Предварительный раздел, куда это может попасть после разборки",
+        "filledBy": "Зарезервировано"
+      },
+      {
+        "name": "urgency",
+        "meaning": "Срочность / важность",
+        "filledBy": "Зарезервировано"
+      },
+      {
+        "name": "attachment_links_json",
+        "sourceKey": "attachment_links",
+        "meaning": "JSON-массив ссылок на вложения",
+        "filledBy": "inbound attachments"
+      },
+      {
+        "name": "explanation_text",
+        "meaning": "Пояснение / сырой текст входящего запроса",
+        "filledBy": "inbound text; из него делается title"
+      },
+      {
+        "name": "normalization_text",
+        "meaning": "Текст нормализации: как разобрали/во что превратили",
+        "filledBy": "Зарезервировано"
+      },
+      {
+        "name": "is_normalized",
+        "meaning": "Флаг уже нормализовано / обработано из Inbox",
+        "filledBy": "Зарезервировано, default 0"
+      },
+      {
+        "name": "created_at_utc",
+        "meaning": "Когда запись создана",
+        "filledBy": "Событие create"
+      },
+      {
+        "name": "updated_at_utc",
+        "meaning": "Когда запись обновлена",
+        "filledBy": "create, edit, delete"
+      },
+      {
+        "name": "deleted_at_utc",
+        "meaning": "Soft delete timestamp",
+        "filledBy": "Событие delete"
+      },
+      {
+        "name": "last_event_id",
+        "meaning": "Последнее событие, из которого спроецирована строка",
+        "filledBy": "Event projector"
+      },
+      {
+        "name": "source_key",
+        "meaning": "Стабильный внешний ключ источника, для группировки цепочки",
+        "filledBy": "inbound source_key"
+      },
+      {
+        "name": "response_required",
+        "meaning": "Нужен ли ответ",
+        "filledBy": "inbound boolean, пока для будущей маршрутизации ответа"
+      },
+      {
+        "name": "related_inbox_id",
+        "meaning": "Ссылка на предыдущую Inbox-запись",
+        "filledBy": "inbound, если текст просит добавить/прикрепить к предыдущему"
+      },
+      {
+        "name": "record_type_id",
+        "meaning": "Тип происхождения записи",
+        "filledBy": "1/2/3/4, см. ниже"
+      }
+    ],
+    "recordTypes": [
+      {
+        "id": 1,
+        "meaning": "Входящее от человека по API"
+      },
+      {
+        "id": 2,
+        "meaning": "Входящее от агента по API"
+      },
+      {
+        "id": 3,
+        "meaning": "Внутреннее входящее от агента"
+      },
+      {
+        "id": 4,
+        "meaning": "Человек добавил из интерфейса"
+      }
+    ]
+  }
+}

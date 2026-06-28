@@ -125,6 +125,16 @@ describe("BrightOsApp actions", () => {
     const detailTitle = screen.getByRole("textbox", { name: "Название действия" });
     expect(detailTitle).toHaveClass("whitespace-pre-wrap");
     expect(detailTitle).toHaveClass("overflow-hidden");
+    expect(screen.getByRole("tab", { name: "Инфо" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Связи" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "AI" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "История" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Детали" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "БД" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Детали" }));
+    expect(screen.getByText("status")).toBeInTheDocument();
+    expect(screen.getByText("New")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Инфо" }));
     const splitSlider = screen.getByRole("slider", { name: "Изменить ширину панелей" });
     expect(splitSlider).toHaveAttribute("aria-valuenow", "50");
     fireEvent.keyDown(splitSlider, { key: "End" });

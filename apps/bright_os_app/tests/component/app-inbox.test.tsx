@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { BrightOsApp } from "@/features/app/BrightOsApp";
-import { pendingInboxEvents } from "@/shared/storage/inboxStore";
+import { pendingInboxEvents, saveInboxState } from "@/shared/storage/inboxStore";
 import { setupBrightOsAppTest } from "./app-test-support";
 
 describe("BrightOsApp inbox", () => {
@@ -70,5 +70,84 @@ describe("BrightOsApp inbox", () => {
         ]),
       );
     });
+  });
+
+  it("shows inbox detail tabs with attachments, fields, and DB reference", async () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({
+        matches: false,
+        media: "(max-width: 860px)",
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    );
+    Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 1200 });
+    await saveInboxState({
+      server_time_utc: "2026-06-28T12:00:00.000Z",
+      server_revision: 7,
+      inbox: [
+        {
+          id: "inbox-tabs",
+          title: "Входящее с файлами",
+          description_md: "Описание",
+          source: "telegram",
+          source_key: "chain-1",
+          response_required: true,
+          related_inbox_id: null,
+          record_type_id: 2,
+          item_date: null,
+          author: "",
+          preliminary_section: "",
+          urgency: "",
+          attachment_links: ["/v1/inbox/attachments/photo.png", "/v1/inbox/attachments/brief.pdf"],
+          explanation_text: "Сырой текст",
+          normalization_text: "",
+          is_normalized: false,
+          created_at_utc: "2026-06-28T10:00:00.000Z",
+          updated_at_utc: "2026-06-28T11:00:00.000Z",
+          deleted_at_utc: null,
+        },
+      ],
+    });
+
+    render(<BrightOsApp />);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Входящие" }).at(-1) as HTMLElement);
+    const title = await screen.findByRole("textbox", { name: "Название входящего: Входящее с файлами" });
+    fireEvent.click(title);
+
+    expect(screen.getByRole("tab", { name: "Инфо" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Связи" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "AI" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "История" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Детали" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "БД" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Прикрепленные файлы")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /brief\.pdf/ })).toHaveAttribute("href", "/api/v1/inbox/attachments/brief.pdf");
+    expect(screen.getByRole("link", { name: /brief\.pdf/ })).toHaveAttribute("download", "brief.pdf");
+
+    fireEvent.click(screen.getByRole("button", { name: "Открыть вложение photo.png" }));
+    expect(screen.getByRole("dialog", { name: "photo.png" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Закрыть вложение" }));
+    expect(screen.queryByRole("dialog", { name: "photo.png" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Детали" }));
+    expect(screen.getByRole("tab", { name: "Детали" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("source_key")).toBeInTheDocument();
+    expect(screen.getByText("chain-1")).toBeInTheDocument();
+    expect(screen.getByText("record_type_id")).toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Пустые поля/ }));
+    expect(screen.getByText("author")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "БД" }));
+    expect(screen.getByText("description_text")).toBeInTheDocument();
+    expect(screen.getByText("Описание / основное содержимое, фактически Markdown-текст")).toBeInTheDocument();
+    expect(screen.getByText("Входящее от агента по API")).toBeInTheDocument();
   });
 });
