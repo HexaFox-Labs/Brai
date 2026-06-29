@@ -25,14 +25,31 @@ const IMAGE_BASE64 = PNG_BYTES.toString('base64');
 const PDF_BYTES = Buffer.from('%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF\n');
 const TEXT_BYTES = Buffer.from('hello inbound file\n', 'utf8');
 
-test('inbound inbox endpoint returns a bearer-protected handshake', async () => {
+test('inbound short endpoint returns an api-key protected default inbox handshake', async () => {
   const fixture = await createFixture(['2026-06-27T10:00:00.000Z']);
 
   try {
-    const response = await inboundRequest(fixture.url, '/v1/in/inbox');
+    const response = await inboundRequest(fixture.url, '/v1/');
 
     assert.equal(response.status, 200);
     assert.deepEqual(response.body, { ok: true, target: 'inbox' });
+  } finally {
+    await fixture.close();
+  }
+});
+
+test('inbound old URLs are not supported', async () => {
+  const fixture = await createFixture(['2026-06-27T10:00:00.000Z']);
+
+  try {
+    const shortOld = await inboundRequest(fixture.url, '/v1/in');
+    const targetOld = await inboundRequest(fixture.url, '/v1/in/inbox');
+
+    assert.equal(shortOld.status, 404);
+    assert.equal(targetOld.status, 404);
+    assert.equal(shortOld.body.error, 'not_found');
+    assert.equal(targetOld.body.error, 'not_found');
+    assert.equal(tableCount(fixture, 'inbox'), 0);
   } finally {
     await fixture.close();
   }
@@ -46,7 +63,7 @@ test('inbound inbox POST creates an inbox row with explanation and attachment li
   });
 
   try {
-    const response = await inboundRequest(fixture.url, '/v1/in/inbox', {
+    const response = await inboundRequest(fixture.url, '/v1/', {
       method: 'POST',
       body: JSON.stringify({
         text: 'Положить это во входящие',
@@ -78,7 +95,7 @@ test('inbound inbox POST creates an inbox row with explanation and attachment li
     assert.equal(file.headers.get('content-type'), 'image/png');
     assert.deepEqual(Buffer.from(await file.arrayBuffer()), PNG_BYTES);
 
-    const duplicate = await inboundRequest(fixture.url, '/v1/in/inbox', {
+    const duplicate = await inboundRequest(fixture.url, '/v1/', {
       method: 'POST',
       body: JSON.stringify({
         text: 'Положить это во входящие',
@@ -96,6 +113,32 @@ test('inbound inbox POST creates an inbox row with explanation and attachment li
   }
 });
 
+test('inbound short POST accepts destination from body or header', async () => {
+  const fixture = await createFixture(['2026-06-27T10:00:00.000Z']);
+
+  try {
+    const bodyTarget = await inboundRequest(fixture.url, '/v1/', {
+      method: 'POST',
+      headers: { 'x-bright-target': 'inbox' },
+      body: JSON.stringify({
+        target: 'finance',
+        text: 'Пока не сохранять в неизвестное место'
+      })
+    });
+    const headerTarget = await inboundRequest(fixture.url, '/v1/', {
+      headers: { 'x-bright-target': 'finance' }
+    });
+
+    assert.equal(bodyTarget.status, 404);
+    assert.equal(headerTarget.status, 404);
+    assert.equal(bodyTarget.body.error, 'unsupported_target');
+    assert.equal(headerTarget.body.error, 'unsupported_target');
+    assert.equal(tableCount(fixture, 'inbox'), 0);
+  } finally {
+    await fixture.close();
+  }
+});
+
 test('inbound inbox accepts multiple attachments, description content, and metadata', async () => {
   const storageRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'bright-inbound-files-'));
   const fixture = await createFixture(['2026-06-27T10:00:00.000Z'], {
@@ -104,7 +147,7 @@ test('inbound inbox accepts multiple attachments, description content, and metad
   });
 
   try {
-    const response = await inboundRequest(fixture.url, '/v1/in/inbox', {
+    const response = await inboundRequest(fixture.url, '/v1/', {
       method: 'POST',
       body: JSON.stringify({
         text: 'Принять пачку вложений',
@@ -152,7 +195,7 @@ test('inbound inbox links attach-to-previous messages to the previous inbox item
   });
 
   try {
-    const first = await inboundRequest(fixture.url, '/v1/in/inbox', {
+    const first = await inboundRequest(fixture.url, '/v1/', {
       method: 'POST',
       body: JSON.stringify({
         text: 'создай первую запись',
@@ -160,7 +203,7 @@ test('inbound inbox links attach-to-previous messages to the previous inbox item
         source_key: 'chat-1'
       })
     });
-    const second = await inboundRequest(fixture.url, '/v1/in/inbox', {
+    const second = await inboundRequest(fixture.url, '/v1/', {
       method: 'POST',
       body: JSON.stringify({
         text: 'прикрепи эти данные к предыдущему сообщению',
@@ -181,7 +224,7 @@ test('inbound inbox rejects unsupported API record types', async () => {
   const fixture = await createFixture(['2026-06-27T10:00:00.000Z']);
 
   try {
-    const response = await inboundRequest(fixture.url, '/v1/in/inbox', {
+    const response = await inboundRequest(fixture.url, '/v1/', {
       method: 'POST',
       body: JSON.stringify({
         text: 'Не принимать неверный тип',
@@ -197,16 +240,16 @@ test('inbound inbox rejects unsupported API record types', async () => {
   }
 });
 
-test('inbound inbox rejects invalid bearer without mutating inbox', async () => {
+test('inbound inbox rejects invalid api key without mutating inbox', async () => {
   const fixture = await createFixture(['2026-06-27T10:00:00.000Z']);
 
   try {
     const response = await inboundRequest(
       fixture.url,
-      '/v1/in/inbox',
+      '/v1/',
       {
         method: 'POST',
-        headers: { authorization: 'Bearer wrong' },
+        headers: { 'x-bright-api-key': 'wrong' },
         body: JSON.stringify({
           text: 'Не сохранять',
           image_base64: IMAGE_BASE64,
@@ -224,11 +267,28 @@ test('inbound inbox rejects invalid bearer without mutating inbox', async () => 
   }
 });
 
+test('inbound inbox still accepts legacy bearer authorization', async () => {
+  const fixture = await createFixture(['2026-06-27T10:00:00.000Z']);
+
+  try {
+    const response = await inboundRequest(fixture.url, '/v1/', {
+      headers: { authorization: 'Bearer test-inbound-token' }
+    }, false);
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body, { ok: true, target: 'inbox' });
+  } finally {
+    await fixture.close();
+  }
+});
+
 test('inbound API returns unsupported target for unknown connectors', async () => {
   const fixture = await createFixture(['2026-06-27T10:00:00.000Z']);
 
   try {
-    const response = await inboundRequest(fixture.url, '/v1/in/finance');
+    const response = await inboundRequest(fixture.url, '/v1/', {
+      headers: { 'x-bright-target': 'finance' }
+    });
 
     assert.equal(response.status, 404);
     assert.equal(response.body.error, 'unsupported_target');
@@ -241,7 +301,7 @@ test('inbound inbox rejects invalid images without mutating inbox', async () => 
   const fixture = await createFixture(['2026-06-27T10:00:00.000Z']);
 
   try {
-    const response = await inboundRequest(fixture.url, '/v1/in/inbox', {
+    const response = await inboundRequest(fixture.url, '/v1/', {
       method: 'POST',
       body: JSON.stringify({
         text: 'Не сохранять',
@@ -296,7 +356,7 @@ process.stdin.on('end', () => {
       `)
       .run('CUSTOM DB PROMPT\n\n{{text}}');
 
-    const response = await inboundRequest(fixture.url, '/v1/in/inbox', {
+    const response = await inboundRequest(fixture.url, '/v1/', {
       method: 'POST',
       body: JSON.stringify({
         text: 'Проверить генерацию заголовка через Codex CLI',
@@ -321,7 +381,7 @@ test('inbound inbox falls back to a local title when Codex title generation fail
   });
 
   try {
-    const response = await inboundRequest(fixture.url, '/v1/in/inbox', {
+    const response = await inboundRequest(fixture.url, '/v1/', {
       method: 'POST',
       body: JSON.stringify({
         text: 'Очень длинное сообщение для заголовка и контекста',

@@ -39,15 +39,24 @@ const DEFAULT_TITLE_PROMPT_TEMPLATE = [
   '{{text}}'
 ].join('\n');
 
-export function inboundPathTarget(pathname) {
-  const prefix = '/v1/in/';
-  if (!pathname.startsWith(prefix)) return null;
-  const target = pathname.slice(prefix.length);
-  return target && !target.includes('/') ? target : null;
+export function inboundRequestTarget(req, body = {}) {
+  return inboundTarget(body?.target ?? body?.destination)
+    ?? inboundTarget(req.headers['x-bright-target'] ?? req.headers['x-bright-destination'])
+    ?? 'inbox';
 }
 
-export function hasInboundToken(req, token) {
-  return Boolean(token) && req.headers.authorization === `Bearer ${token}`;
+export function hasInboundApiKey(req, apiKey) {
+  if (!apiKey) return false;
+  return req.headers['x-bright-api-key'] === apiKey
+    || req.headers['x-api-key'] === apiKey
+    || req.headers.authorization === `Bearer ${apiKey}`;
+}
+
+function inboundTarget(value) {
+  if (value == null || value === '') return null;
+  const target = optionalText(value);
+  if (target && !target.includes('/')) return target;
+  throwStatus('invalid_target', 400);
 }
 
 export async function receiveInboxInbound({
