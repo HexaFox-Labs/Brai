@@ -26,17 +26,22 @@ describe("engineSectionView", () => {
     expect(compareBrightVersions("0.10.52.1", "0.11.1.1")).toBeLessThan(0);
   });
 
-  it("does not invent the latest version from the installed web build", () => {
+  it("does not let a stale ledger version hide the installed web build", () => {
     const view = engineSectionView({
-      appBuild: "0.0.1.1",
-      appVersionState: null,
+      appBuild: "0.11.52.1",
+      appVersionState: {
+        server_time_utc: "2026-06-29T12:00:00.000Z",
+        version: "0.0.1.1",
+        parts: { canon: 0, release: 0, build: 1, apk: 1 },
+        latest: { canon: null, release: null, build: null, apk: null },
+      },
       otaRefreshing: false,
       otaState: null,
       versionError: false,
       versionRefreshing: false,
     });
 
-    expect(view.latestVersion).toBeNull();
+    expect(view.latestVersion).toBe("0.11.52.1");
     expect(view.nativeApk).toBeNull();
     expect(view.hasUpdate).toBe(false);
   });

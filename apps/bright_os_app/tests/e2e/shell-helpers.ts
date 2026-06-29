@@ -157,7 +157,7 @@ export async function openSettingsFromProfile(page: Page) {
 }
 
 export async function openEngineFromProfile(page: Page) {
-  await openProfileMenuItem(page, /^Angen(?: v.+)?$/);
+  await openProfileMenuItem(page, /^Engine(?: v.+)?$/);
 }
 
 export async function openProfileMenuItem(page: Page, name: string | RegExp) {

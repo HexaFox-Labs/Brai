@@ -306,7 +306,7 @@ function EngineMenuItem({
     versionRefreshing,
   });
   const Icon = view.hasUpdate ? Download : Cpu;
-  const label = view.latestVersion ? `Angen v${view.latestVersion}` : "Angen";
+  const label = view.latestVersion ? `Engine v${view.latestVersion}` : "Engine";
 
   return <ActionMenuItem icon={Icon} label={label} active={active} onClick={onClick} />;
 }
