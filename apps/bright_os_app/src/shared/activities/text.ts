@@ -1,5 +1,9 @@
+export function singleLineTitle(value: unknown): string {
+  return typeof value === "string" ? value.replace(/[\r\n]+/g, " ") : "";
+}
+
 export function cleanTitle(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
+  return singleLineTitle(value).replace(/\s+/g, " ").trim();
 }
 
 export function normalizeDescription(value: unknown): string {

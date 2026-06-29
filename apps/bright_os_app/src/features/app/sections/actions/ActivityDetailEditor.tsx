@@ -4,7 +4,7 @@ import type { KeyboardEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import { BookOpen, Pencil } from "lucide-react";
 import { installAndroidBackHandler } from "@/shared/platform/platform";
-import { markdownPreviewSource, visibleDescriptionPreview } from "@/shared/activities/text";
+import { cleanTitle, markdownPreviewSource, singleLineTitle, visibleDescriptionPreview } from "@/shared/activities/text";
 import type { ActivityItem } from "@/shared/types/activities";
 import { Button } from "@/shared/ui/button";
 import { hasMarkdownSyntax, MarkdownContent } from "@/shared/ui/markdown-content";
@@ -40,11 +40,11 @@ export function ActivityDetailEditor({
   onAutosaveDetails: (action: ActivityItem, title: string, descriptionMd: string) => Promise<void>;
 }) {
   const initial = activityDraftValues(action);
-  const title = titleDraft ?? initial.title;
+  const title = singleLineTitle(titleDraft ?? initial.title);
   const [description, setDescription] = useState(initial.descriptionMd);
   const [markdownPreview, setMarkdownPreview] = useState(loadActivityMarkdownPreviewMode);
   const [activeTab, setActiveTab] = useState<DetailPanelTab>("info");
-  const titleRef = useRef<HTMLTextAreaElement | null>(null);
+  const titleRef = useRef<HTMLInputElement | null>(null);
   const descriptionRef = useRef<HTMLTextAreaElement | null>(null);
   const autosave = useActivityDraftAutosave(action, onAutosaveDetails);
   const suppressPopRef = useRef(false);
@@ -68,10 +68,6 @@ export function ActivityDetailEditor({
     const end = titleRef.current.value.length;
     titleRef.current.setSelectionRange(end, end);
   }, [action.id, focusTitleRequest, mode]);
-
-  useEffect(() => {
-    fitTextareaHeight(titleRef.current);
-  }, [title, mode]);
 
   useEffect(() => {
     if (!markdownPreview) fitTextareaHeight(descriptionRef.current);
@@ -147,6 +143,19 @@ export function ActivityDetailEditor({
     }
   }
 
+  function onTitleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    schedule(cleanTitle(event.currentTarget.value), description);
+    if (activeTab === "info" && !markdownPreview && descriptionRef.current) {
+      descriptionRef.current.focus();
+      const end = descriptionRef.current.value.length;
+      descriptionRef.current.setSelectionRange(end, end);
+    } else {
+      event.currentTarget.blur();
+    }
+  }
+
   const PreviewModeIcon = markdownPreview ? Pencil : BookOpen;
   const previewModeLabel = markdownPreview ? "Редактировать описание" : "Читать описание";
   const detailContent =
@@ -166,7 +175,7 @@ export function ActivityDetailEditor({
                 </div>
               )
             ) : (
-              <p className="m-0 text-sm font-normal leading-[1.48] text-muted-foreground">
+              <p className="m-0 text-sm font-normal leading-[1.48] text-muted-foreground/55">
                 Введите описание
               </p>
             )}
@@ -174,7 +183,7 @@ export function ActivityDetailEditor({
         ) : (
           <textarea
             ref={descriptionRef}
-            className="actions-detail-description block min-h-full w-full min-w-0 resize-none overflow-hidden border-0 bg-transparent px-0 pb-6 pt-1 text-sm font-normal leading-[1.48] tracking-normal text-foreground placeholder:text-muted-foreground focus:outline-0 max-[860px]:text-base"
+            className="actions-detail-description block min-h-full w-full min-w-0 resize-none overflow-hidden border-0 bg-transparent px-0 pb-6 pt-1 text-sm font-normal leading-[1.48] tracking-normal text-foreground placeholder:text-muted-foreground/55 focus:outline-0 max-[860px]:text-base"
             value={description}
             placeholder="Введите описание"
             aria-label="Описание действия"
@@ -243,17 +252,17 @@ export function ActivityDetailEditor({
           {mode === "mobile" ? "✓" : "×"}
         </button>
       </header>
-      <textarea
+      <input
         ref={titleRef}
         className={cx(
-          "actions-detail-title block min-h-11 w-full min-w-0 resize-none overflow-hidden [overflow-wrap:anywhere] whitespace-pre-wrap border-0 bg-transparent p-0 text-2xl font-semibold leading-[1.18] text-foreground tracking-normal focus:outline-0 max-[860px]:min-h-[46px] max-[860px]:text-xl",
+          "actions-detail-title block min-h-11 w-full min-w-0 truncate border-0 bg-transparent p-0 text-2xl font-semibold leading-[1.18] text-foreground tracking-normal focus:outline-0 max-[860px]:min-h-[46px] max-[860px]:text-xl",
         )}
-        rows={1}
         value={title}
         aria-label="Название действия"
         onChange={(event) => {
-          schedule(event.target.value, description);
+          schedule(singleLineTitle(event.target.value), description);
         }}
+        onKeyDown={onTitleKeyDown}
       />
       <DetailPanelTabBar activeTab={activeTab} onChange={setActiveTab} />
       {detailContent}

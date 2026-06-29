@@ -23,7 +23,7 @@ describe("action store", () => {
   it("stores local action events and projects visible state", async () => {
     const created = await enqueueActivityEvent({
       type: "create",
-      payload: { title: " Фокус " },
+      payload: { title: " Фокус\r\nглубокий " },
       baseServerRevision: 0,
     });
     await enqueueActivityEvent({
@@ -40,7 +40,7 @@ describe("action store", () => {
     expect(projected.actions).toHaveLength(1);
     expect(projected.actions[0]).toMatchObject({
       id: created.actionId,
-      title: "Фокус",
+      title: "Фокус глубокий",
       description_md: "",
       status: "Done",
       sort_order: null,

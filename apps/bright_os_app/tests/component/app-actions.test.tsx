@@ -123,8 +123,7 @@ describe("BrightOsApp actions", () => {
     expect(screen.getByRole("button", { name: "Закрыть редактор" })).toBeInTheDocument();
     expect(screen.getByLabelText("Редактирование действия")).toHaveClass("pr-7");
     const detailTitle = screen.getByRole("textbox", { name: "Название действия" });
-    expect(detailTitle).toHaveClass("whitespace-pre-wrap");
-    expect(detailTitle).toHaveClass("overflow-hidden");
+    expect(detailTitle).toHaveClass("truncate");
     expect(screen.getByRole("tab", { name: "Инфо" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("tab", { name: "Связи" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "AI" })).toBeInTheDocument();
@@ -278,9 +277,16 @@ describe("BrightOsApp actions", () => {
     const detailTitle = await screen.findByRole("textbox", { name: "Название действия" });
     expect(document.activeElement).toBe(detailTitle);
 
-    fireEvent.change(detailTitle, { target: { value: "Из detail" } });
-    const mirroredListTitle = await screen.findByRole("textbox", { name: "Название действия: Из detail" });
-    expect(mirroredListTitle).toHaveTextContent("Из detail");
+    fireEvent.change(detailTitle, { target: { value: "Из detail без переноса" } });
+    const mirroredListTitle = await screen.findByRole("textbox", { name: "Название действия: Из detail без переноса" });
+    expect(detailTitle).toHaveValue("Из detail без переноса");
+    expect(mirroredListTitle).toHaveTextContent("Из detail без переноса");
+
+    const description = screen.getByRole("textbox", { name: "Описание действия" }) as HTMLTextAreaElement;
+    fireEvent.change(description, { target: { value: "Описание" } });
+    fireEvent.keyDown(detailTitle, { key: "Enter" });
+    expect(document.activeElement).toBe(description);
+    expect(description.selectionStart).toBe("Описание".length);
 
     mirroredListTitle.textContent = "Из списка";
     fireEvent.input(mirroredListTitle);

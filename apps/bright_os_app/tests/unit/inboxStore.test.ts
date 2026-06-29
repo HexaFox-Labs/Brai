@@ -13,7 +13,7 @@ describe("inbox store", () => {
   it("stores local inbox events and projects visible state without statuses", async () => {
     const created = await enqueueInboxEvent({
       type: "create",
-      payload: { title: " Входящее ", description_md: "строка\r\n2" },
+      payload: { title: " Входящее\r\nважное ", description_md: "строка\r\n2" },
       baseServerRevision: 0,
     });
 
@@ -25,7 +25,7 @@ describe("inbox store", () => {
     expect(projected.inbox).toHaveLength(1);
     expect(item).toMatchObject({
       id: created.inboxId,
-      title: "Входящее",
+      title: "Входящее важное",
       description_md: "строка\n2",
       source: "",
       is_normalized: false,

@@ -4,7 +4,7 @@ import type { CSSProperties, FormEvent, KeyboardEvent, MouseEvent, PointerEvent 
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { BookOpen, FileText, Inbox, Link2, Mail, MessageSquare, Pencil, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { useSwipeable } from "react-swipeable";
-import { cleanTitle, markdownPreviewSource, normalizeDescription, visibleDescriptionPreview } from "@/shared/activities/text";
+import { cleanTitle, markdownPreviewSource, normalizeDescription, singleLineTitle, visibleDescriptionPreview } from "@/shared/activities/text";
 import { installAndroidBackHandler } from "@/shared/platform/platform";
 import type { InboxItem, InboxState } from "@/shared/types/inbox";
 import { Button } from "@/shared/ui/button";
@@ -629,7 +629,9 @@ function InboxTitleEditor({
 
   function onInput() {
     titleRef.current?.animate?.([{ opacity: 0.72 }, { opacity: 1 }], { duration: 140, easing: "ease-out" });
-    onTitleDraftChange(item.id, titleRef.current?.textContent ?? "");
+    const nextTitle = singleLineTitle(titleRef.current?.textContent ?? "");
+    if (titleRef.current && titleRef.current.textContent !== nextTitle) titleRef.current.textContent = nextTitle;
+    onTitleDraftChange(item.id, nextTitle);
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLSpanElement>) {
@@ -683,11 +685,10 @@ function InboxDetailEditor({
   onTitleDraftChange: (itemId: string, title: string | null) => void;
   onAutosaveDetails: (item: InboxItem, title: string, descriptionMd: string) => Promise<void>;
 }) {
-  const initialTitle = titleDraft ?? item.title;
   const [description, setDescription] = useState(normalizeDescription(item.description_md));
   const [markdownPreview, setMarkdownPreview] = useState(loadActivityMarkdownPreviewMode);
   const [activeTab, setActiveTab] = useState<DetailPanelTab>("info");
-  const titleRef = useRef<HTMLTextAreaElement | null>(null);
+  const titleRef = useRef<HTMLInputElement | null>(null);
   const descriptionRef = useRef<HTMLTextAreaElement | null>(null);
   const latestRef = useRef<{ title: string; descriptionMd: string } | null>(null);
   const timerRef = useRef<number | null>(null);
@@ -714,10 +715,6 @@ function InboxDetailEditor({
     titleRef.current.focus();
     titleRef.current.setSelectionRange(titleRef.current.value.length, titleRef.current.value.length);
   }, [item.id, focusTitleRequest, mode]);
-
-  useEffect(() => {
-    fitTextareaHeight(titleRef.current);
-  }, [initialTitle, mode]);
 
   useEffect(() => {
     if (!markdownPreview) fitTextareaHeight(descriptionRef.current);
@@ -817,9 +814,22 @@ function InboxDetailEditor({
     }
   }
 
+  function onTitleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    schedule(cleanTitle(event.currentTarget.value), description);
+    if (activeTab === "info" && !markdownPreview && descriptionRef.current) {
+      descriptionRef.current.focus();
+      const end = descriptionRef.current.value.length;
+      descriptionRef.current.setSelectionRange(end, end);
+    } else {
+      event.currentTarget.blur();
+    }
+  }
+
   const PreviewModeIcon = markdownPreview ? Pencil : BookOpen;
   const previewModeLabel = markdownPreview ? "Редактировать описание" : "Читать описание";
-  const titleValue = titleDraft ?? item.title;
+  const titleValue = singleLineTitle(titleDraft ?? item.title);
   const detailContent =
     activeTab === "info" ? (
       <ScrollArea className="actions-detail-description-scroll min-h-0 w-full min-w-0" role="tabpanel">
@@ -839,13 +849,13 @@ function InboxDetailEditor({
                   </div>
                 )
               ) : (
-                <p className="m-0 text-sm font-normal leading-[1.48] text-muted-foreground">Введите описание</p>
+                <p className="m-0 text-sm font-normal leading-[1.48] text-muted-foreground/55">Введите описание</p>
               )}
             </div>
           ) : (
             <textarea
               ref={descriptionRef}
-              className="actions-detail-description block min-h-full w-full min-w-0 resize-none overflow-hidden border-0 bg-transparent p-0 text-sm font-normal leading-[1.48] tracking-normal text-foreground placeholder:text-muted-foreground focus:outline-0 max-[860px]:text-base"
+              className="actions-detail-description block min-h-full w-full min-w-0 resize-none overflow-hidden border-0 bg-transparent p-0 text-sm font-normal leading-[1.48] tracking-normal text-foreground placeholder:text-muted-foreground/55 focus:outline-0 max-[860px]:text-base"
               value={description}
               placeholder="Введите описание"
               aria-label="Описание входящего"
@@ -908,13 +918,13 @@ function InboxDetailEditor({
           <X className={mode === "mobile" ? "h-7 w-7" : "h-4 w-4"} aria-hidden="true" />
         </button>
       </header>
-      <textarea
+      <input
         ref={titleRef}
-        className="actions-detail-title block min-h-11 w-full min-w-0 resize-none overflow-hidden [overflow-wrap:anywhere] whitespace-pre-wrap border-0 bg-transparent p-0 text-2xl font-semibold leading-[1.18] tracking-normal text-foreground focus:outline-0 max-[860px]:min-h-[46px] max-[860px]:text-xl"
-        rows={1}
+        className="actions-detail-title block min-h-11 w-full min-w-0 truncate border-0 bg-transparent p-0 text-2xl font-semibold leading-[1.18] tracking-normal text-foreground focus:outline-0 max-[860px]:min-h-[46px] max-[860px]:text-xl"
         value={titleValue}
         aria-label="Название входящего"
-        onChange={(event) => schedule(event.target.value, description)}
+        onChange={(event) => schedule(singleLineTitle(event.target.value), description)}
+        onKeyDown={onTitleKeyDown}
       />
       <DetailPanelTabBar activeTab={activeTab} onChange={setActiveTab} />
       {detailContent}
