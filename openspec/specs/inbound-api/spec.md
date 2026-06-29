@@ -5,13 +5,13 @@
 This specification defines the stable external inbound API shape for connector-style writes into Bright OS.
 ## Requirements
 ### Requirement: Inbound API routes by target
-Bright OS SHALL expose a universal inbound API at `/v1/in` where omitted
+Bright OS SHALL expose a universal inbound API at `/v1/` where omitted
 destination defaults to `inbox`, and explicit destination can be selected by
 request body `target`/`destination`, header `X-Bright-Target`/
-`X-Bright-Destination`, or the legacy `/v1/in/:target` path.
+`X-Bright-Destination`.
 
 #### Scenario: Inbound target handshakes
-- **WHEN** an external app sends `GET /v1/in` with the inbound API key
+- **WHEN** an external app sends `GET /v1/` with the inbound API key
 - **THEN** the API returns `{ "ok": true, "target": "inbox" }`
 
 #### Scenario: Unknown target is requested
@@ -20,7 +20,7 @@ request body `target`/`destination`, header `X-Bright-Target`/
 - **AND** no inbox data is mutated
 
 ### Requirement: Inbound Inbox receives text and attachments
-Bright OS SHALL support `POST /v1/in` for the default inbound Inbox connector.
+Bright OS SHALL support `POST /v1/` for the default inbound Inbox connector.
 
 #### Scenario: Inbox payload is received
 - **WHEN** an external app sends text with the inbound API key

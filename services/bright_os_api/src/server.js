@@ -128,7 +128,7 @@ export function createBrightOsServer({
         return;
       }
 
-      if (url.pathname === '/v1/in' || url.pathname.startsWith('/v1/in/')) {
+      if (url.pathname === '/v1/') {
         if (!hasInboundApiKey(req, inboundApiKey ?? inboundToken)) {
           sendJson(req, res, 401, { error: 'unauthorized' });
           return;
@@ -136,7 +136,7 @@ export function createBrightOsServer({
 
         const requestNow = now();
         const body = req.method === 'POST' ? await readJson(req, { limit: INBOUND_BODY_LIMIT_BYTES }) : {};
-        const target = inboundRequestTarget(req, url.pathname, body);
+        const target = inboundRequestTarget(req, body);
         const inboundHandler = target ? inboundHandlers.get(target) : null;
         if (!target || !inboundHandler) {
           sendJson(req, res, 404, { error: 'unsupported_target' });
@@ -157,6 +157,11 @@ export function createBrightOsServer({
         }
 
         sendJson(req, res, 405, { error: 'method_not_allowed' });
+        return;
+      }
+
+      if (url.pathname === '/v1/in' || url.pathname.startsWith('/v1/in/')) {
+        sendJson(req, res, 404, { error: 'not_found' });
         return;
       }
 

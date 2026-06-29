@@ -39,17 +39,8 @@ const DEFAULT_TITLE_PROMPT_TEMPLATE = [
   '{{text}}'
 ].join('\n');
 
-export function inboundPathTarget(pathname) {
-  if (pathname === '/v1/in') return null;
-  const prefix = '/v1/in/';
-  if (!pathname.startsWith(prefix)) return null;
-  const target = pathname.slice(prefix.length);
-  return target && !target.includes('/') ? target : null;
-}
-
-export function inboundRequestTarget(req, pathname, body = {}) {
-  return inboundPathTarget(pathname)
-    ?? inboundTarget(body?.target ?? body?.destination)
+export function inboundRequestTarget(req, body = {}) {
+  return inboundTarget(body?.target ?? body?.destination)
     ?? inboundTarget(req.headers['x-bright-target'] ?? req.headers['x-bright-destination'])
     ?? 'inbox';
 }

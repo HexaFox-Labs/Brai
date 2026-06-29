@@ -12,14 +12,14 @@ Bright OS.
 Bright OS использует короткий inbound endpoint:
 
 ```text
-/v1/in
+/v1/
 ```
 
 Если request не указывает точку назначения, API использует `inbox`. Явная точка
 назначения передается в JSON body через `target`/`destination` или в header
 `X-Bright-Target`/`X-Bright-Destination`.
 
-Старый маршрут `/v1/in/:target` остается legacy alias. Сейчас поддерживается:
+Сейчас поддерживается:
 
 | Target | Статус | Назначение |
 | --- | --- | --- |
@@ -31,15 +31,17 @@ routes.
 
 ## URL
 
-Внутри Node-сервиса основной маршрут всегда `/v1/in`.
+Внутри Node-сервиса основной маршрут всегда `/v1/`.
 
 | Окружение | Внешний URL |
 | --- | --- |
-| Production | `https://api.brightos.world/v1/in` |
-| Preview | `https://<slot>.test.brightos.world/api/v1/in` |
+| Production | `https://api.brightos.world/v1/` |
+| Preview | `https://<slot>.test.brightos.world/api/v1/` |
 
 В preview сегмент `/api` нужен только из-за Caddy: он проксирует
 `/api/*` в API service и срезает `/api` перед Node-сервисом.
+
+Старые inbound routes `/v1/in` и `/v1/in/:target` не поддерживаются.
 
 ## Авторизация
 
@@ -66,7 +68,7 @@ X-Bright-API-Key: <BRIGHT_OS_INBOUND_API_KEY>
 будет слать данные.
 
 ```http
-GET /v1/in
+GET /v1/
 X-Bright-API-Key: <api-key>
 ```
 
@@ -88,14 +90,14 @@ X-Bright-API-Key: <api-key>
 Можно проверить будущий target через header:
 
 ```http
-GET /v1/in
+GET /v1/
 X-Bright-API-Key: <api-key>
 X-Bright-Target: finance
 ```
 
 ## Прием Inbox
 
-`POST /v1/in` принимает JSON. Если `target`/`destination` не указан, payload
+`POST /v1/` принимает JSON. Если `target`/`destination` не указан, payload
 попадает в `inbox`.
 
 Минимальный payload:
