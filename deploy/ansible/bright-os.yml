@@ -135,6 +135,12 @@
         group: "{{ bright_os_deploy_user }}"
         mode: "0775"
 
+    - name: Ensure public landing root exists
+      ansible.builtin.file:
+        path: "{{ bright_os_public_site_root }}"
+        state: directory
+        mode: "0755"
+
     - name: Allow deploy user to publish production web and OTA assets
       ansible.builtin.file:
         path: "{{ item }}"
