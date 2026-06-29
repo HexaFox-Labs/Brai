@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { openProfileMenuItem, setupBrightOsAppTest, stubAndroidCapacitor } from "./app-test-support";
 import { BrightOsApp } from "@/features/app/BrightOsApp";
@@ -18,7 +18,7 @@ describe("BrightOsApp shell", () => {
       expect(screen.getAllByRole("button", { name: title }).length).toBeGreaterThan(0);
     });
     expect(screen.queryByRole("button", { name: "Цели фокусировки" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Настройки" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Настройки" }).length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "Открыть меню" })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("button", { name: "Информация о действиях" })).toBeInTheDocument());
     expect(screen.getAllByLabelText("Информация о действиях").length).toBeGreaterThan(0);
@@ -840,6 +840,7 @@ describe("BrightOsApp shell", () => {
     expect(rail).toHaveTextContent("Меню страницы");
     expect(rail).toHaveTextContent("Фокус");
     expect(rail).not.toHaveTextContent("Действия");
+    expect(rail).not.toHaveTextContent("Настройки");
   });
 
   it("restores the collapsed desktop rail after reload", async () => {
@@ -866,7 +867,11 @@ describe("BrightOsApp shell", () => {
     expect(document.querySelector(".mobile-profile-drawer")).not.toHaveTextContent("Platform");
     expect(document.querySelector(".mobile-profile-drawer")).not.toHaveTextContent("Time");
     expect(document.querySelector(".mobile-profile-drawer")).not.toHaveTextContent("Фокус");
-    expect(screen.getAllByRole("button", { name: "Открыть меню профиля" }).length).toBeGreaterThan(0);
+    const drawer = document.querySelector(".mobile-profile-drawer") as HTMLElement;
+    expect(within(drawer).getByRole("button", { name: "Настройки" })).toBeInTheDocument();
+    expect(within(drawer).getByRole("button", { name: "Архив" })).toBeInTheDocument();
+    expect(within(drawer).getByRole("button", { name: "Выйти" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Открыть меню профиля" })).not.toBeInTheDocument();
 
     fireEvent.click(document.querySelector(".mobile-menu-backdrop") as HTMLElement);
     await waitFor(() => expect(document.querySelector(".mobile-menu-backdrop")).not.toBeInTheDocument());
@@ -878,6 +883,7 @@ describe("BrightOsApp shell", () => {
     expect(document.querySelector(".mobile-profile-drawer")).toHaveTextContent("Меню страницы");
     expect(document.querySelector(".mobile-profile-drawer")).toHaveTextContent("Фокус");
     expect(document.querySelector(".mobile-profile-drawer")).not.toHaveTextContent("Действия");
+    expect(within(document.querySelector(".mobile-profile-drawer") as HTMLElement).queryByRole("button", { name: "Настройки" })).not.toBeInTheDocument();
   });
 });
 

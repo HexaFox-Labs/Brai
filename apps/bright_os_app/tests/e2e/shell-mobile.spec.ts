@@ -24,18 +24,17 @@ test("opens the mobile profile drawer with navigation over dimmed content", asyn
   await expect(page.locator(".mobile-menu-backdrop")).toHaveCount(0);
 });
 
-test("opens Settings from the mobile profile dropdown", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "mobile", "mobile-only profile menu");
+test("opens Settings from the mobile action rail", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile", "mobile-only action rail");
 
   await page.goto("/");
   await page.locator(".section-page-current .mobile-menu-button").click();
   await expect(page.locator(".mobile-profile-drawer")).toContainText("Workspace");
 
-  await page.getByRole("button", { name: "Открыть меню профиля" }).click();
-  await expect(page.getByRole("menuitem", { name: "Настройки" })).toBeVisible();
-  await expect(page.getByRole("menuitem", { name: "Архив" })).toBeVisible();
-  await expect(page.getByRole("menuitem", { name: "Выйти" })).toBeVisible();
-  await page.getByRole("menuitem", { name: "Настройки" }).click();
+  await expect(page.getByRole("button", { name: "Настройки" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Архив" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Выйти" })).toBeVisible();
+  await page.getByRole("button", { name: "Настройки" }).click();
 
   await expect(page.locator(".mobile-menu-backdrop")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Настройки" })).toBeVisible();

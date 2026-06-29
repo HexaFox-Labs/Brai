@@ -107,13 +107,12 @@ test("keeps the desktop floating dock fixed near the bottom center", async ({ pa
   expect(Math.abs((after?.y ?? 0) - (before?.y ?? 0))).toBeLessThanOrEqual(1);
 });
 
-test("keeps Evil Eye out of the desktop profile menu", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "desktop-only profile menu");
+test("keeps Evil Eye out of the desktop action rail", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "desktop-only action rail");
 
   await page.goto("/");
-  await page.getByRole("button", { name: "Открыть меню профиля" }).click();
-  await expect(page.getByRole("menuitem", { name: "Настройки" })).toBeVisible();
-  await expect(page.getByRole("menuitem", { name: "Evil Eye" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Настройки" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Evil Eye" })).toHaveCount(0);
 });
 
 test("uses full-width left-aligned desktop content", async ({ page }, testInfo) => {

@@ -92,23 +92,16 @@ export function stubAndroidCapacitor() {
 
 export async function openProfileMenu() {
   fireEvent.click(screen.getByRole("button", { name: "Открыть меню" }));
-  const drawer = await waitFor(() => {
+  return await waitFor(() => {
     const current = document.querySelector(".mobile-profile-drawer");
     expect(current).toBeInstanceOf(HTMLElement);
     return current as HTMLElement;
   });
-  const profileButton = within(drawer).getByRole("button", { name: "Открыть меню профиля" });
-  fireEvent.pointerDown(profileButton, {
-    button: 0,
-    ctrlKey: false,
-    pointerType: "mouse",
-  });
-  fireEvent.click(profileButton);
 }
 
 export async function openProfileMenuItem(name: string) {
-  await openProfileMenu();
-  fireEvent.touchEnd(await screen.findByRole("menuitem", { name }));
+  const drawer = await openProfileMenu();
+  fireEvent.click(within(drawer).getByRole("button", { name }));
 }
 
 export async function openSettingsFromProfile() {

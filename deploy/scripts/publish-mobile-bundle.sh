@@ -168,7 +168,9 @@ if [[ "$RETAIN_PREVIOUS" =~ ^[0-9]+$ ]]; then
     if [[ "$INDEX" -le "$KEEP_COUNT" || "$DIR" == "$BUNDLE_DIR" ]]; then
       continue
     fi
-    rm -rf "$DIR"
+    if ! rm -rf "$DIR"; then
+      echo "Warning: failed to remove old OTA bundle directory: $DIR" >&2
+    fi
   done
 fi
 

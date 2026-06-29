@@ -1,10 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, type KeyboardEvent, type PointerEvent, type TouchEvent, type TouchEventHandler } from "react";
-import { Archive, ChevronsUpDown, LogOut, Menu, PanelLeftClose, Settings } from "lucide-react";
+import { useCallback, useEffect, useRef, type TouchEventHandler } from "react";
+import { Archive, LogOut, Menu, PanelLeftClose, Settings, type LucideIcon } from "lucide-react";
 import { installAndroidBackHandler } from "@/shared/platform/platform";
 import { Avatar, AvatarFallback } from "@/shared/ui/avatar";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/shared/ui/dropdown-menu";
 import { FloatingDock } from "@/shared/ui/floating-dock";
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarRail, useSidebar } from "@/shared/ui/sidebar";
 import { cx } from "../appUtils";
@@ -32,11 +31,11 @@ export function DesktopRail({
       aria-label="Основная навигация"
     >
       <SidebarHeader>
-        <ProfileMenu onSettings={onSettings} onArchive={onArchive} onLogout={onLogout} />
+        <ProfileMenu />
         <RailCollapseButton />
       </SidebarHeader>
       <SidebarContent>
-        <PageMenu expanded={expanded} section={section} />
+        <PageMenu expanded={expanded} section={section} onSettings={onSettings} onArchive={onArchive} onLogout={onLogout} />
       </SidebarContent>
       <SidebarRail />
     </Sidebar>
@@ -135,56 +134,79 @@ export function MobileProfileDrawer({
         {...sheetDragHandlers}
         onClick={(event) => event.stopPropagation()}
       >
-        <ProfileMenu
+        <ProfileMenu />
+        <PageMenu
+          expanded
+          section={section}
           onSettings={() => closeThen(onSettings)}
           onArchive={() => closeThen(onArchive)}
           onLogout={() => closeThenAsync(onLogout)}
         />
-        <PageMenu expanded section={section} />
       </aside>
     </div>
   );
 }
 
-function PageMenu({ expanded, section }: { expanded: boolean; section: SectionId }) {
-  if (!expanded) return null;
-
-  return (
-    <SidebarGroup>
-      <SidebarGroupLabel>Меню страницы</SidebarGroupLabel>
-      <SidebarGroupContent>
-        <div className="px-2 py-1.5 text-sm font-medium text-sidebar-foreground">{sectionTitle(section)}</div>
-      </SidebarGroupContent>
-    </SidebarGroup>
-  );
-}
-
-function ProfileMenu({
+function PageMenu({
+  expanded,
+  section,
   onSettings,
   onArchive,
   onLogout,
 }: {
+  expanded: boolean;
+  section: SectionId;
   onSettings: () => void;
   onArchive: () => void;
   onLogout: () => void | Promise<void>;
 }) {
+  if (!expanded) return null;
+
+  return (
+    <>
+      <SidebarGroup>
+        <SidebarGroupLabel>Меню страницы</SidebarGroupLabel>
+        <SidebarGroupContent>
+          <div className="px-2 py-1.5 text-sm font-medium text-sidebar-foreground">{sectionTitle(section)}</div>
+        </SidebarGroupContent>
+      </SidebarGroup>
+      {section === "actions" ? (
+        <SidebarGroup>
+          <SidebarGroupLabel>Действия</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <ActionMenuItem icon={Settings} label="Настройки" onClick={onSettings} />
+              <ActionMenuItem icon={Archive} label="Архив" onClick={onArchive} />
+              <ActionMenuItem icon={LogOut} label="Выйти" onClick={onLogout} />
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      ) : null}
+    </>
+  );
+}
+
+function ActionMenuItem({
+  icon: Icon,
+  label,
+  onClick,
+}: {
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void | Promise<void>;
+}) {
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton type="button" onClick={() => void onClick()}>
+        <Icon aria-hidden="true" />
+        <span>{label}</span>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+}
+
+function ProfileMenu() {
   const { isMobile, setOpen, state } = useSidebar();
-  function actionProps(action: () => void | Promise<void>) {
-    if (!isMobile) return { onSelect: () => void action() };
-    return {
-      onPointerDown: (event: PointerEvent) => {
-        if (event.pointerType === "mouse" || event.pointerType === "touch" || event.pointerType === "pen") void action();
-      },
-      onSelect: () => void action(),
-      onKeyDown: (event: KeyboardEvent) => {
-        if (event.key === "Enter" || event.key === " ") void action();
-      },
-      onTouchEnd: (event: TouchEvent) => {
-        event.preventDefault();
-        void action();
-      },
-    };
-  }
 
   if (!isMobile && state === "collapsed") {
     return (
@@ -209,44 +231,10 @@ function ProfileMenu({
   return (
     <SidebarMenu>
       <SidebarMenuItem>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <SidebarMenuButton
-              size="lg"
-              className="rail-profile data-[state=open]:bg-accent data-[state=open]:text-accent-foreground"
-              data-profile-trigger
-              data-nav-swipe-exclusion
-              type="button"
-              aria-label="Открыть меню профиля"
-            >
-              <ProfileAvatar />
-              <ProfileText />
-              <ChevronsUpDown className="ml-auto size-4" />
-            </SidebarMenuButton>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            className="profile-menu z-[100] w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
-            side={isMobile ? "bottom" : "right"}
-            align="end"
-            sideOffset={4}
-          >
-            <DropdownMenuGroup>
-              <DropdownMenuItem className="text-base" {...actionProps(onSettings)}>
-                <Settings />
-                <span>Настройки</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem className="text-base" {...actionProps(onArchive)}>
-                <Archive />
-                <span>Архив</span>
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-base" {...actionProps(onLogout)}>
-              <LogOut />
-              <span>Выйти</span>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div className="rail-profile flex h-12 w-full items-center gap-2 rounded-md p-2 text-left text-sm">
+          <ProfileAvatar />
+          <ProfileText />
+        </div>
       </SidebarMenuItem>
     </SidebarMenu>
   );

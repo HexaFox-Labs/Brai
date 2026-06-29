@@ -20,7 +20,6 @@ describe("BrightOsApp settings", () => {
     expect(screen.queryByRole("heading", { name: "Сессия" })).not.toBeInTheDocument();
     expect(screen.getByText("APK")).toBeInTheDocument();
     expect(screen.getByText("0.0.10.1")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Выйти" })).not.toBeInTheDocument();
   });
 
   it("shows when an Android OTA update is ready for restart", async () => {

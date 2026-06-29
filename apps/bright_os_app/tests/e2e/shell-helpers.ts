@@ -157,12 +157,10 @@ export async function openSettingsFromProfile(page: Page) {
 }
 
 export async function openProfileMenuItem(page: Page, name: string) {
-  const profile = page.getByRole("button", { name: "Открыть меню профиля" });
-  if ((await profile.count()) === 0) {
+  if ((await page.getByRole("button", { name }).count()) === 0) {
     await page.getByRole("button", { name: "Открыть меню" }).click();
   }
-  await page.getByRole("button", { name: "Открыть меню профиля" }).click();
-  await page.getByRole("menuitem", { name }).click();
+  await page.getByRole("button", { name }).click();
 }
 
 export function horizontalCenterOffset(
