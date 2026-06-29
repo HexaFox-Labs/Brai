@@ -4,7 +4,7 @@ bright_os_node_root: /srv/opt/node-v22.16.0
 bright_os_node_bin: /srv/opt/node-v22.16.0/bin/node
 bright_os_caddyfile: /etc/caddy/Caddyfile
 bright_os_public_site_domain: brightos.world
-bright_os_public_site_root: "{{ bright_os_repo }}/apps/bright_os_site/public"
+bright_os_public_site_root: "{{ bright_os_repo }}/landing/public"
 bright_os_deploy_user: bright-deploy
 bright_os_deploy_writers: []
 bright_os_service_user: bright-os

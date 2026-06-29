@@ -38,7 +38,7 @@ dist/
 coverage/
 *.apk
 *.aab
-apps/bright_os_site/
+/landing/
 deploy/web/
 deploy/site/
 deploy/releases/
