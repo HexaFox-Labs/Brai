@@ -81,7 +81,8 @@ VERSION="${BRIGHT_OS_APP_VERSION:-$("$NODE_BIN" "$SCRIPT_DIR/resolve-app-version
   --root "$ROOT" \
   --db "$DB_PATH" \
   --prod-db "${BRIGHT_OS_PROD_DB:-}" \
-  --prod-web-version-json "${BRIGHT_OS_PROD_WEB_VERSION_JSON:-}")}"
+  --prod-web-version-json "${BRIGHT_OS_PROD_WEB_VERSION_JSON:-}" \
+  --mobile-target "$MOBILE_TARGET")}"
 
 if [[ "$ENVIRONMENT" == "prod" ]]; then
   BUNDLE_VERSION="${BRIGHT_OS_MOBILE_BUNDLE_VERSION:-$VERSION}"

@@ -18,6 +18,7 @@ SLOT="${META[1]}"
 DOMAIN="${META[2]}"
 GRADLE_TASK="${META[3]}"
 RELEASE_KEY="${META[4]}"
+ENV_PATH="${META[5]}"
 
 ANDROID_API="https://$DOMAIN/api"
 if [[ "$ENVIRONMENT" == "prod" ]]; then
@@ -32,7 +33,9 @@ export BRIGHT_OS_APP_VERSION="${BRIGHT_OS_APP_VERSION:-$("$NODE_BIN" "$SCRIPT_DI
   --environment "$ENVIRONMENT" \
   --root "$ROOT" \
   --db "${BRIGHT_OS_DB:-}" \
-  --prod-web-version-json "${BRIGHT_OS_PROD_WEB_VERSION_JSON:-}")}"
+  --prod-db "${BRIGHT_OS_PROD_DB:-}" \
+  --prod-web-version-json "${BRIGHT_OS_PROD_WEB_VERSION_JSON:-}" \
+  --mobile-target "${BRIGHT_OS_MOBILE_TARGET:-${BRIGHT_OS_ENVS_ROOT:-/srv/projects/bright-os-envs}/$ENV_PATH/mobile-update}")}"
 export NEXT_PUBLIC_BRIGHT_OS_ENVIRONMENT="$ENVIRONMENT"
 export NEXT_PUBLIC_BRIGHT_OS_PREVIEW_SLOT="$SLOT"
 export NEXT_PUBLIC_BRIGHT_OS_BRANCH="${BRIGHT_OS_BRANCH:-}"
