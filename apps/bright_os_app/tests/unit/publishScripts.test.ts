@@ -242,13 +242,29 @@ const { BrightOsStore } = await import(pathToFileURL(process.argv[1]));
 const store = new BrightOsStore(process.argv[2]);
 try {
   store.upsertBuildVersion({
-    majorVersion: 0,
-    releaseVersion: 5,
-    buildVersion: 43,
-    apkVersion: 1,
-    version: "0.5.43.1",
+    versionTypeId: "release",
+    version: 5,
+    includedInVersionId: null,
     shortChanges: "Production release",
     detailedChanges: "Production release",
+    reason: "Needed for test",
+    releasedAtUtc: "2026-06-28T17:29:00.000Z",
+  });
+  store.upsertBuildVersion({
+    versionTypeId: "build",
+    version: 43,
+    includedInVersionId: null,
+    shortChanges: "Production build",
+    detailedChanges: "Production build",
+    reason: "Needed for test",
+    releasedAtUtc: "2026-06-28T17:29:00.000Z",
+  });
+  store.upsertBuildVersion({
+    versionTypeId: "apk",
+    version: 1,
+    includedInVersionId: null,
+    shortChanges: "Production APK",
+    detailedChanges: "Production APK",
     reason: "Needed for test",
     releasedAtUtc: "2026-06-28T17:29:00.000Z",
   });
