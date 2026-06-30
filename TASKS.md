@@ -8,3 +8,4 @@
 
 - 2026-06-30 — `scripts/bright-task-start.sh` в Codex Desktop нужно запускать с `sandbox_permissions=require_escalated`; без этого starter не сможет нормально сделать fetch и записать git/worktree metadata; использовать эскалацию сразу для этого starter.
 - 2026-06-30 — `git add` в `.codex-worktrees/<task-slug>` из sandbox падает на создании `.git/worktrees/<task-slug>/index.lock`; повторять stage с `sandbox_permissions=require_escalated`, потому что git metadata лежит вне writable worktree.
+- 2026-06-30 — после escalated операций task worktree может стать owned by `nobody`, обычный `git` падает с `dubious ownership`/`not a git repository`, а patch не может писать файлы; восстановить ownership worktree на `mark:mark` перед продолжением.
