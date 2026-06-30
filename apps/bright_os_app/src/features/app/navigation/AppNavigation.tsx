@@ -180,27 +180,29 @@ export function MobileProfileDrawer({
       <div ref={backdropRef} className="absolute inset-0 bg-foreground/15 dark:bg-background/80" style={backdropStyle} aria-hidden="true" />
       <aside
         ref={sheetRef}
-        className="mobile-profile-drawer flex h-full w-4/5 flex-col border-r border-border bg-card px-2 pb-[calc(5rem+env(safe-area-inset-bottom))] pt-[calc(12px+env(safe-area-inset-top))] shadow-xl animate-[mobile-drawer-in_180ms_ease-out] [touch-action:pan-y] will-change-transform"
+        className="mobile-profile-drawer flex h-full w-4/5 flex-col border-r border-border bg-card px-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-[calc(12px+env(safe-area-inset-top))] shadow-xl animate-[mobile-drawer-in_180ms_ease-out] [touch-action:pan-y] will-change-transform"
         style={sheetStyle}
         aria-label="Профиль"
         {...sheetDragHandlers}
         onClick={(event) => event.stopPropagation()}
       >
         <ProfileMenu />
-        <PageMenu
-          forceActionMenu
-          expanded
-          section={section}
-          appVersionState={appVersionState}
-          otaRefreshing={otaRefreshing}
-          otaState={otaState}
-          versionError={versionError}
-          versionRefreshing={versionRefreshing}
-          onSettings={() => closeThen(onSettings)}
-          onEngine={() => closeThen(onEngine)}
-          onArchive={() => closeThen(onArchive)}
-          onLogout={() => closeThenAsync(onLogout)}
-        />
+        <div className="flex min-h-0 flex-1 flex-col">
+          <PageMenu
+            forceActionMenu
+            expanded
+            section={section}
+            appVersionState={appVersionState}
+            otaRefreshing={otaRefreshing}
+            otaState={otaState}
+            versionError={versionError}
+            versionRefreshing={versionRefreshing}
+            onSettings={() => closeThen(onSettings)}
+            onEngine={() => closeThen(onEngine)}
+            onArchive={() => closeThen(onArchive)}
+            onLogout={() => closeThenAsync(onLogout)}
+          />
+        </div>
       </aside>
     </div>
   );

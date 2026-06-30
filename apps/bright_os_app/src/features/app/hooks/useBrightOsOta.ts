@@ -11,7 +11,7 @@ import { platformName } from "@/shared/platform/platform";
 
 const OTA_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 const OTA_STATE_POLL_MS = 5000;
-const OTA_ACTIVE_POLL_MS = 1000;
+const OTA_ACTIVE_POLL_MS = 250;
 
 /**
  * Exposes Android OTA state plus the current web bundle metadata.

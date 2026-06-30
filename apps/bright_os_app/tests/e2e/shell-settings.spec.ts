@@ -61,6 +61,8 @@ test("keeps Android Engine download progress compact on mobile", async ({ page }
     const win = window as Window & {
       androidBridge?: unknown;
       Capacitor?: {
+        isNativePlatform?: () => boolean;
+        getPlatform?: () => string;
         PluginHeaders?: Array<{ name: string; methods: Array<{ name: string; rtype: "promise" }> }>;
         nativePromise?: (pluginName: string, methodName: string) => Promise<unknown>;
       };
@@ -74,6 +76,8 @@ test("keeps Android Engine download progress compact on mobile", async ({ page }
     };
     win.androidBridge = {};
     win.Capacitor = {
+      isNativePlatform: () => true,
+      getPlatform: () => "android",
       PluginHeaders: [
         {
           name: "BrightOta",
@@ -143,6 +147,27 @@ test("keeps Android Engine download progress compact on mobile", async ({ page }
   await expect
     .poll(async () => (await progressBlock.boundingBox())?.height ?? 0)
     .toBeLessThan(72);
+});
+
+test("pins Engine to the bottom of the mobile profile drawer", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile", "mobile-only layout");
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Открыть меню" }).click();
+
+  const drawer = page.locator(".mobile-profile-drawer");
+  const engineButton = drawer.getByRole("button", { name: /^Engine(?: v.+)?$/ });
+  await expect(drawer).toBeVisible();
+  await expect(engineButton).toBeVisible();
+  await expect
+    .poll(async () => {
+      const drawerBox = await drawer.boundingBox();
+      const engineBox = await engineButton.boundingBox();
+      if (!drawerBox || !engineBox) return Number.POSITIVE_INFINITY;
+      const bottomGap = drawerBox.y + drawerBox.height - (engineBox.y + engineBox.height);
+      return bottomGap / drawerBox.height;
+    })
+    .toBeLessThan(0.08);
 });
 
 test("keeps Engine text out of the collapsed desktop rail on load", async ({ page }, testInfo) => {
