@@ -49,6 +49,7 @@ export function useBrightOsAppState(initialSection: SectionId) {
   const historyGoalRevisionRef = useRef(0);
   const activeRef = useRef(false);
   const androidStopInFlightRef = useRef(false);
+  const timerFlushTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stopTimerRef = useRef<() => Promise<void>>(async () => undefined);
   const [timer, setTimer] = useState<TimerState>(() => emptyTimerState());
   const [actions, setActions] = useState<ActionsState>(() => emptyActionsState());
@@ -237,6 +238,14 @@ export function useBrightOsAppState(initialSection: SectionId) {
       await markFailure(queued, error instanceof Error ? error.message : "sync_failed");
       handleError(error);
     }
+  }
+
+  function flushPendingSoon() {
+    if (timerFlushTimeoutRef.current) return;
+    timerFlushTimeoutRef.current = setTimeout(() => {
+      timerFlushTimeoutRef.current = null;
+      void flushPending().catch(handleError);
+    }, 0);
   }
 
   async function refreshHistoryAndGoal(sourceApi = apiRef.current, serverRevision = timer.server_revision) {
@@ -468,7 +477,7 @@ export function useBrightOsAppState(initialSection: SectionId) {
     setHistory((current) => projectHistoryData(current, queued));
     setPendingCount(queued.length);
     setSyncStatus("pending_sync");
-    void flushPending().catch(handleError);
+    flushPendingSoon();
   }
 
   async function onLogin(password: string) {

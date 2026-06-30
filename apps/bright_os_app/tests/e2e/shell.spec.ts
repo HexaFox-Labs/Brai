@@ -556,21 +556,26 @@ test("pins the active desktop action focus timer to the right edge", async ({ pa
     )
     .toEqual({ focusX: focusXBeforeHover, order: true, touches: true });
 
+  const focusDock = page.locator('.main-dock [aria-label="Фокус"]').filter({ visible: true });
+  await focusDock.hover();
   await expect
     .poll(() =>
-      page.locator('.main-dock [aria-label="Фокус"]').filter({ visible: true }).evaluate((element) => {
+      focusDock.evaluate((element) => {
         const circle = element.querySelector(":scope > div")?.getBoundingClientRect();
-        const icon = element.querySelector("span[aria-hidden='true']")?.getBoundingClientRect();
-        const timer = element.querySelector("span[aria-hidden='true'] > span:last-child");
-        if (!circle || !icon || !timer) return null;
+        const icon = element.querySelector(".focus-dock-icon")?.getBoundingClientRect();
+        const timer = element.querySelector(".focus-dock-timer")?.getBoundingClientRect();
+        const orbit = element.querySelector(".focus-dock-orbit")?.parentElement;
+        if (!circle || !icon || !timer || !orbit) return null;
         return {
-          fontSize: Number.parseFloat(getComputedStyle(timer).fontSize),
           heightGap: Math.round(Math.abs(circle.height - icon.height)),
+          slow: Number.parseFloat(getComputedStyle(orbit).animationDuration) >= 28,
+          textFits: timer.width < icon.width * 0.74,
+          textScales: timer.height > 18,
           widthGap: Math.round(Math.abs(circle.width - icon.width)),
         };
       }),
     )
-    .toEqual({ fontSize: 14, heightGap: 0, widthGap: 0 });
+    .toEqual({ heightGap: 0, slow: true, textFits: true, textScales: true, widthGap: 0 });
 });
 
 test("reorders desktop actions by dragging the row handle", async ({ page }, testInfo) => {

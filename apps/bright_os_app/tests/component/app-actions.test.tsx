@@ -66,6 +66,7 @@ describe("BrightOsApp actions", () => {
     await waitFor(() => expect(screen.getByRole("heading", { name: "Архив" })).toBeInTheDocument());
     const archiveList = screen.getByLabelText("Удаленные действия");
     expect(within(archiveList).getByText("Фокус")).toBeInTheDocument();
+    expect(archiveList.querySelector(".action-focus-button")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Восстановить: Фокус", hidden: true }));
     await waitFor(() => expect(within(archiveList).queryByText("Фокус")).not.toBeInTheDocument());

@@ -70,6 +70,7 @@ export function ActionRow({
   const hasDragHandle = Boolean(dragHandle);
   const preview = visibleDescriptionPreview(action.description_md);
   const restoreControl = control === "restore";
+  const focusControlAvailable = !restoreControl && (activeFocus || Boolean(onStartFocus) || Boolean(onStopFocus));
   const checkboxId = useId();
   const [dragX, setDragX] = useState(0);
   const [dragging, setDragging] = useState(false);
@@ -197,7 +198,7 @@ export function ActionRow({
         className={cx(
           "action-row-surface grid min-h-[54px] w-full min-w-0 grid-cols-[20px_28px_minmax(0,1fr)] items-center gap-x-1.5 py-2.5 transition-transform duration-150 will-change-transform max-[860px]:min-h-[54px] max-[860px]:grid-cols-[38px_minmax(0,1fr)] max-[860px]:py-[9px]",
           hasDragHandle && "has-drag-handle",
-          activeFocus && "pr-12 max-[860px]:pr-[50px]",
+          activeFocus && focusControlAvailable && "pr-[52px] max-[860px]:pr-[54px]",
         )}
         {...mobileDragProps}
         onClick={openDetailsFromRow}
@@ -249,10 +250,10 @@ export function ActionRow({
             "action-delete-button grid min-h-[54px] w-0 min-w-0 place-items-center overflow-hidden border-0 bg-transparent transition-[width,opacity,transform] duration-150 hover:opacity-70 focus-visible:opacity-70 focus-visible:outline-0",
             restoreControl ? "text-primary" : "text-destructive",
             actionControlOpen
-              ? "visible pointer-events-auto w-11 scale-100 opacity-[0.42] max-[860px]:w-[46px]"
+              ? "visible pointer-events-auto w-9 scale-100 opacity-[0.42] max-[860px]:w-[46px]"
               : "invisible pointer-events-none scale-[0.96] opacity-0",
-            "group-hover:visible group-hover:pointer-events-auto group-hover:w-11 group-hover:scale-100 group-hover:opacity-[0.42] min-[861px]:group-hover:w-11",
-            !activeFocus && "group-focus-within:visible group-focus-within:pointer-events-auto group-focus-within:w-11 group-focus-within:scale-100 group-focus-within:opacity-[0.42] min-[861px]:group-focus-within:w-11",
+            "group-hover:visible group-hover:pointer-events-auto group-hover:w-9 group-hover:scale-100 group-hover:opacity-[0.42] max-[860px]:group-hover:w-[46px] min-[861px]:group-hover:w-9",
+            !activeFocus && "group-focus-within:visible group-focus-within:pointer-events-auto group-focus-within:w-9 group-focus-within:scale-100 group-focus-within:opacity-[0.42] max-[860px]:group-focus-within:w-[46px] min-[861px]:group-focus-within:w-9",
           )}
           data-action-row-control
           data-action-delete
@@ -267,25 +268,27 @@ export function ActionRow({
         >
           {restoreControl ? <Undo2 className="size-5" aria-hidden="true" /> : <Trash2 className="size-5" aria-hidden="true" />}
         </button>
-        <button
-          type="button"
-          className={cx(
-            "action-focus-button group/focus-control grid min-h-[54px] w-0 min-w-0 place-items-center overflow-hidden border-0 bg-transparent text-primary transition-[width,opacity,transform] duration-150 hover:opacity-80 focus-visible:opacity-90 focus-visible:outline-0",
-            activeFocus
-              ? "visible pointer-events-auto w-11 scale-100 opacity-100 max-[860px]:w-[46px]"
-              : actionControlOpen
-                ? "visible pointer-events-auto w-11 scale-100 opacity-[0.65] max-[860px]:w-[46px]"
-                : "invisible pointer-events-none scale-[0.96] opacity-0",
-            !activeFocus && "group-hover:visible group-hover:pointer-events-auto group-hover:w-11 group-hover:scale-100 group-hover:opacity-[0.65] group-focus-within:visible group-focus-within:pointer-events-auto group-focus-within:w-11 group-focus-within:scale-100 group-focus-within:opacity-[0.65] min-[861px]:group-hover:w-11 min-[861px]:group-focus-within:w-11",
-          )}
-          data-action-row-control
-          data-action-focus
-          aria-label={activeFocus ? `Остановить фокус: ${title}` : `Фокусироваться: ${title}`}
-          title={activeFocus ? "Стоп" : "Фокус"}
-          onClick={(event) => void requestFocusAction(event)}
-        >
-          {activeFocus ? <ActionFocusTime armed={focusStopArmed} seconds={activeFocusElapsedSeconds} /> : <Timer className="size-5" aria-hidden="true" />}
-        </button>
+        {focusControlAvailable ? (
+          <button
+            type="button"
+            className={cx(
+              "action-focus-button group/focus-control grid min-h-[54px] w-0 min-w-0 place-items-center overflow-hidden border-0 bg-transparent text-primary transition-[width,opacity,transform] duration-150 hover:opacity-80 focus-visible:opacity-90 focus-visible:outline-0",
+              activeFocus
+                ? "visible pointer-events-auto w-[52px] scale-100 opacity-100 max-[860px]:w-[54px]"
+                : actionControlOpen
+                  ? "visible pointer-events-auto w-9 scale-100 opacity-[0.65] max-[860px]:w-[46px]"
+                  : "invisible pointer-events-none scale-[0.96] opacity-0",
+              !activeFocus && "group-hover:visible group-hover:pointer-events-auto group-hover:w-9 group-hover:scale-100 group-hover:opacity-[0.65] group-focus-within:visible group-focus-within:pointer-events-auto group-focus-within:w-9 group-focus-within:scale-100 group-focus-within:opacity-[0.65] max-[860px]:group-hover:w-[46px] max-[860px]:group-focus-within:w-[46px] min-[861px]:group-hover:w-9 min-[861px]:group-focus-within:w-9",
+            )}
+            data-action-row-control
+            data-action-focus
+            aria-label={activeFocus ? `Остановить фокус: ${title}` : `Фокусироваться: ${title}`}
+            title={activeFocus ? "Стоп" : "Фокус"}
+            onClick={(event) => void requestFocusAction(event)}
+          >
+            {activeFocus ? <ActionFocusTime armed={focusStopArmed} seconds={activeFocusElapsedSeconds} /> : <Timer className="size-5" aria-hidden="true" />}
+          </button>
+        ) : null}
       </div>
     </div>
   );
@@ -293,18 +296,17 @@ export function ActionRow({
 
 function ActionFocusTime({ armed, seconds }: { armed: boolean; seconds: number }) {
   const value = formatHourMinute(seconds);
-  const [hours, minutes] = value.split(":");
-  if (armed) return <Square className="size-5 fill-current" aria-hidden="true" />;
-  return (
-    <span className="relative grid min-w-10 text-sm font-semibold tabular-nums leading-none">
-      <span className="grid grid-cols-[1fr_auto_1fr] transition-opacity min-[861px]:group-hover/focus-control:opacity-0 min-[861px]:group-focus-visible/focus-control:opacity-0">
-        <span className="text-right">{hours}</span>
-        <span className="animate-pulse px-px">:</span>
-        <span className="text-left">{minutes}</span>
-      </span>
-      <span className="pointer-events-none absolute inset-0 grid place-items-center opacity-0 transition-opacity min-[861px]:group-hover/focus-control:opacity-100 min-[861px]:group-focus-visible/focus-control:opacity-100">
+  if (armed) {
+    return (
+      <span className="grid h-5 w-11 place-items-center">
         <Square className="size-5 fill-current" aria-hidden="true" />
       </span>
+    );
+  }
+  return (
+    <span className="relative grid h-5 w-11 place-items-center text-sm font-semibold tabular-nums leading-none">
+      <span className="transition-opacity min-[861px]:group-hover/focus-control:opacity-0 min-[861px]:group-focus-visible/focus-control:opacity-0">{value}</span>
+      <Square className="pointer-events-none absolute left-1/2 top-1/2 size-5 -translate-x-1/2 -translate-y-1/2 fill-current opacity-0 transition-opacity min-[861px]:group-hover/focus-control:opacity-100 min-[861px]:group-focus-visible/focus-control:opacity-100" aria-hidden="true" />
     </span>
   );
 }

@@ -18,7 +18,7 @@ export type FocusHistoryRow = {
 
 export function focusHistoryRows(sessions: TimerSession[]): FocusHistoryRow[] {
   return sessions.map((session) => {
-    const intervals = session.intervals ?? [];
+    const intervals = contiguousSessionIntervals(session);
     const actionIntervals = intervals.filter((interval) => interval.activity_id);
     return {
       arrivalTime: moscowTime(session.ended_at_utc),
@@ -34,6 +34,67 @@ export function focusHistoryRows(sessions: TimerSession[]): FocusHistoryRow[] {
       startedAtUtc: session.started_at_utc,
     };
   });
+}
+
+function contiguousSessionIntervals(session: TimerSession): FocusSessionInterval[] {
+  const intervals = (session.intervals ?? [])
+    .slice()
+    .sort((left, right) => Date.parse(left.started_at_utc) - Date.parse(right.started_at_utc));
+  if (intervals.length < 2) return intervals;
+
+  const sessionStartMs = Date.parse(session.started_at_utc);
+  const sessionEndMs = Date.parse(session.ended_at_utc ?? "");
+  let cursorMs = Number.isFinite(sessionStartMs) ? sessionStartMs : Date.parse(intervals[0]?.started_at_utc ?? "");
+  const packed: FocusSessionInterval[] = [];
+
+  for (const interval of intervals) {
+    const originalStartMs = Date.parse(interval.started_at_utc);
+    const originalEndMs = Date.parse(interval.ended_at_utc ?? "");
+    if (!Number.isFinite(originalStartMs) || !Number.isFinite(originalEndMs) || originalEndMs <= originalStartMs || !Number.isFinite(cursorMs)) {
+      packed.push(interval);
+      cursorMs = originalEndMs;
+      continue;
+    }
+
+    let startMs = originalStartMs;
+    let endMs = originalEndMs;
+    if (startMs > cursorMs) {
+      const previous = packed[packed.length - 1];
+      if (previous?.activity_id == null && previous.ended_at_utc) {
+        packed[packed.length - 1] = intervalWithRange(previous, Date.parse(previous.started_at_utc), startMs);
+      } else if (interval.activity_id == null) {
+        startMs = cursorMs;
+      } else {
+        endMs = cursorMs + (endMs - startMs);
+        startMs = cursorMs;
+      }
+    } else if (startMs < cursorMs) {
+      endMs = cursorMs + (endMs - startMs);
+      startMs = cursorMs;
+    }
+
+    packed.push(intervalWithRange(interval, startMs, endMs));
+    cursorMs = endMs;
+  }
+
+  if (Number.isFinite(sessionEndMs) && Number.isFinite(cursorMs) && sessionEndMs > cursorMs && packed.length > 0) {
+    const last = packed[packed.length - 1];
+    packed[packed.length - 1] = intervalWithRange(last, Date.parse(last.started_at_utc), sessionEndMs);
+  }
+
+  return packed;
+}
+
+function intervalWithRange(interval: FocusSessionInterval, startMs: number, endMs: number): FocusSessionInterval {
+  const startedAtUtc = new Date(startMs).toISOString();
+  const endedAtUtc = new Date(endMs).toISOString();
+  if (interval.started_at_utc === startedAtUtc && interval.ended_at_utc === endedAtUtc) return interval;
+  return {
+    ...interval,
+    started_at_utc: startedAtUtc,
+    ended_at_utc: endedAtUtc,
+    duration_seconds: Math.max(0, Math.floor((endMs - startMs) / 1000)),
+  };
 }
 
 function historyTitle(session: TimerSession, actionIntervals: FocusSessionInterval[]) {

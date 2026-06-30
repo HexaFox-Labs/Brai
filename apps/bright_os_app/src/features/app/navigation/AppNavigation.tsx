@@ -330,11 +330,35 @@ export function MainDock({
 }
 
 function FocusDockIcon({ seconds }: { seconds: number }) {
+  const value = formatHourMinute(seconds);
+  const fontSize = value.length >= 5 ? 23 : value.length >= 4 ? 27 : 30;
   return (
-    <span className="relative grid h-full w-full place-items-center overflow-hidden rounded-full" aria-hidden="true">
-      <span className="absolute inset-px rounded-full border-2 border-primary/25 border-t-primary animate-spin" />
-      <span className="relative text-sm font-bold leading-none tabular-nums">{formatHourMinute(seconds)}</span>
-    </span>
+    <svg className="focus-dock-icon block h-full w-full" viewBox="0 0 100 100" aria-hidden="true">
+      <circle className="text-primary/20" cx="50" cy="50" r="41" fill="none" stroke="currentColor" strokeWidth="5" />
+      <g className="origin-center animate-[spin_28s_linear_infinite]">
+        <circle
+          className="focus-dock-orbit text-primary"
+          cx="50"
+          cy="50"
+          r="41"
+          fill="none"
+          stroke="currentColor"
+          strokeDasharray="34 258"
+          strokeLinecap="round"
+          strokeWidth="5"
+        />
+      </g>
+      <text
+        className="focus-dock-timer fill-current font-bold tabular-nums"
+        dominantBaseline="middle"
+        style={{ fontSize }}
+        textAnchor="middle"
+        x="50"
+        y="52"
+      >
+        {value}
+      </text>
+    </svg>
   );
 }
 

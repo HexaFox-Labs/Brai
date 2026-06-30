@@ -93,11 +93,13 @@ export function applyFocusInput(draft: FocusEditDraft, field: FocusEditField, va
   return validDraft({ ...draft, endMs: draft.startMs + minutes * 60000 });
 }
 
-export function hasFocusOverlap(draft: FocusEditDraft, sessions: TimerSession[]): boolean {
+export function hasFocusOverlap(draft: FocusEditDraft, sessions: TimerSession[], ignoredIntervalIds: string[] = []): boolean {
+  const ignoredIntervals = new Set(ignoredIntervalIds);
+  if (draft.intervalId) ignoredIntervals.add(draft.intervalId);
   return sessions.some((session) => {
     if (draft.intervalId && session.intervals?.some((interval) => interval.id === draft.intervalId)) {
       return session.intervals.some((interval) => {
-        if (interval.id === draft.intervalId) return false;
+        if (ignoredIntervals.has(interval.id)) return false;
         const startMs = Date.parse(interval.started_at_utc);
         const endMs = interval.ended_at_utc ? Date.parse(interval.ended_at_utc) : Number.POSITIVE_INFINITY;
         return Number.isFinite(startMs) && startMs < draft.endMs && endMs > draft.startMs;

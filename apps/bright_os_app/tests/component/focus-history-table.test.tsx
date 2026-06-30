@@ -125,23 +125,86 @@ describe("FocusHistoryTable", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Закрыть редактирование фокуса" })).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "00:30" }));
     fireEvent.change(screen.getByRole("textbox", { name: "Значение времени" }), {
-      target: { value: "0:20" },
+      target: { value: "0:35" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Применить ввод времени" }));
     fireEvent.click(screen.getByRole("button", { name: "Закрыть редактирование фокуса" }));
 
-    await waitFor(() =>
-      expect(onEditInterval).toHaveBeenCalledWith(
-        "interval-1",
-        "session-intervals",
-        "2026-06-14T10:00:00.000Z",
-        "2026-06-14T10:20:00.000Z",
-      ),
+    await waitFor(() => expect(onEditInterval).toHaveBeenCalledTimes(2));
+    expect(onEditInterval).toHaveBeenNthCalledWith(
+      1,
+      "interval-2",
+      "session-intervals",
+      "2026-06-14T10:35:00.000Z",
+      "2026-06-14T10:40:00.000Z",
+    );
+    expect(onEditInterval).toHaveBeenNthCalledWith(
+      2,
+      "interval-1",
+      "session-intervals",
+      "2026-06-14T10:00:00.000Z",
+      "2026-06-14T10:35:00.000Z",
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Удалить сессию" }));
     expect(onDeleteSession).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Подтвердить удаление" }));
     await waitFor(() => expect(onDeleteSession).toHaveBeenCalledWith("session-intervals"));
+  });
+
+  it("shows expanded multi-interval sessions as a continuous timeline", async () => {
+    const session: TimerSession = {
+      id: "session-gaps",
+      started_at_utc: "2026-06-14T08:50:00.000Z",
+      ended_at_utc: "2026-06-14T11:00:00.000Z",
+      duration_seconds: 7800,
+      intervals: [
+        {
+          id: "interval-focus-a",
+          focus_session_id: "session-gaps",
+          activity_id: null,
+          activity_title: null,
+          started_at_utc: "2026-06-14T08:50:00.000Z",
+          ended_at_utc: "2026-06-14T09:15:00.000Z",
+          duration_seconds: 1500,
+        },
+        {
+          id: "interval-write",
+          focus_session_id: "session-gaps",
+          activity_id: "action-write",
+          activity_title: "Demo: написать письмо",
+          started_at_utc: "2026-06-14T09:30:00.000Z",
+          ended_at_utc: "2026-06-14T10:00:00.000Z",
+          duration_seconds: 1800,
+        },
+        {
+          id: "interval-call",
+          focus_session_id: "session-gaps",
+          activity_id: "action-call",
+          activity_title: "Demo: созвон",
+          started_at_utc: "2026-06-14T10:03:00.000Z",
+          ended_at_utc: "2026-06-14T10:17:00.000Z",
+          duration_seconds: 840,
+        },
+        {
+          id: "interval-focus-b",
+          focus_session_id: "session-gaps",
+          activity_id: null,
+          activity_title: null,
+          started_at_utc: "2026-06-14T10:20:00.000Z",
+          ended_at_utc: "2026-06-14T11:00:00.000Z",
+          duration_seconds: 2400,
+        },
+      ],
+    };
+
+    render(<FocusHistoryTable allSessions={[session]} sessions={[session]} />);
+
+    fireEvent.click(screen.getByText("Demo: написать письмо"));
+
+    expect(await screen.findByText("11:50-12:30 · 0:40")).toBeInTheDocument();
+    expect(screen.getByText("12:30-13:00 · 0:30")).toBeInTheDocument();
+    expect(screen.getByText("13:00-13:14 · 0:14")).toBeInTheDocument();
+    expect(screen.getByText("13:14-14:00 · 0:46")).toBeInTheDocument();
   });
 });

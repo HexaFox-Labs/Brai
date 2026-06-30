@@ -28,6 +28,7 @@ import {
 import { focusHistoryRows, type FocusHistoryRow } from "./focusHistoryModel";
 
 type WarningState = { rowId: string; message: string };
+type IntervalRangeEdit = { intervalId: string; sessionId: string; startedAtUtc: string; endedAtUtc: string };
 
 const OVERLAP_WARNING = "Нельзя наложить на соседний фокус";
 const FIELD_LABELS: Record<FocusEditField, string> = {
@@ -93,13 +94,19 @@ export function FocusHistoryTable({
 
   async function saveActiveDraft({ close }: { close: boolean }) {
     if (!draft || !activeRowId) return true;
-    if (hasFocusOverlap(draft, allSessions)) {
+    if (hasFocusOverlap(draft, allSessions, ignoredIntervalIdsForDraft(draft))) {
       showOverlapWarning(activeRowId);
       return false;
     }
     if (draftChanged(draft) && draft.intervalId && onEditInterval) {
-      const range = draftUtcRange(draft);
-      await onEditInterval(draft.intervalId, draft.sessionId, range.startedAtUtc, range.endedAtUtc);
+      const edits = intervalRangeEdits(draft);
+      if (!edits) {
+        showOverlapWarning(activeRowId);
+        return false;
+      }
+      for (const edit of edits) {
+        await onEditInterval(edit.intervalId, edit.sessionId, edit.startedAtUtc, edit.endedAtUtc);
+      }
     } else if (draftChanged(draft) && onEditSession) {
       const range = draftUtcRange(draft);
       await onEditSession(draft.sessionId, range.startedAtUtc, range.endedAtUtc);
@@ -149,7 +156,7 @@ export function FocusHistoryTable({
   }
 
   function updateDraft(rowId: string, nextDraft: FocusEditDraft | null) {
-    if (!nextDraft || hasFocusOverlap(nextDraft, allSessions)) {
+    if (!nextDraft || hasFocusOverlap(nextDraft, allSessions, ignoredIntervalIdsForDraft(nextDraft)) || !intervalRangeEdits(nextDraft)) {
       showOverlapWarning(rowId);
       return;
     }
@@ -166,13 +173,68 @@ export function FocusHistoryTable({
     if (!draft || !editingField) return;
     const nextDraft = applyFocusInput(draft, editingField, inputValue);
     if (!nextDraft) return;
-    if (hasFocusOverlap(nextDraft, allSessions)) {
+    if (hasFocusOverlap(nextDraft, allSessions, ignoredIntervalIdsForDraft(nextDraft)) || !intervalRangeEdits(nextDraft)) {
       showOverlapWarning(rowId);
       return;
     }
     setDraft(nextDraft);
     setInputValue(normalizedInputValue(editingField, inputValue) ?? inputValue);
     setEditingField(null);
+  }
+
+  function activeIntervalRow(nextDraft: FocusEditDraft): FocusHistoryRow | null {
+    if (!nextDraft.intervalId) return null;
+    return rows.find((row) => row.intervals.some((interval) => interval.id === nextDraft.intervalId)) ?? null;
+  }
+
+  function ignoredIntervalIdsForDraft(nextDraft: FocusEditDraft): string[] {
+    const row = activeIntervalRow(nextDraft);
+    if (!row || !nextDraft.intervalId) return [];
+    const index = row.intervals.findIndex((interval) => interval.id === nextDraft.intervalId);
+    return [row.intervals[index - 1]?.id, row.intervals[index + 1]?.id].filter(Boolean) as string[];
+  }
+
+  function intervalRangeEdits(nextDraft: FocusEditDraft): IntervalRangeEdit[] | null {
+    if (!nextDraft.intervalId) return [];
+    const row = activeIntervalRow(nextDraft);
+    if (!row) return null;
+    const index = row.intervals.findIndex((interval) => interval.id === nextDraft.intervalId);
+    const interval = row.intervals[index];
+    if (!interval?.ended_at_utc) return null;
+    const beforeSelected: IntervalRangeEdit[] = [];
+    const afterSelected: IntervalRangeEdit[] = [];
+
+    const previous = row.intervals[index - 1];
+    const intervalStartMs = Date.parse(interval.started_at_utc);
+    if (previous?.ended_at_utc && Number.isFinite(intervalStartMs) && nextDraft.startMs !== intervalStartMs) {
+      const previousStartMs = Date.parse(previous.started_at_utc);
+      if (!Number.isFinite(previousStartMs) || nextDraft.startMs <= previousStartMs) return null;
+      const previousEdit = rangeEdit(previous.id, nextDraft.sessionId, previousStartMs, nextDraft.startMs);
+      if (nextDraft.startMs < intervalStartMs) {
+        beforeSelected.push(previousEdit);
+      } else {
+        afterSelected.push(previousEdit);
+      }
+    }
+
+    const next = row.intervals[index + 1];
+    const intervalEndMs = Date.parse(interval.ended_at_utc);
+    if (next?.ended_at_utc && Number.isFinite(intervalEndMs) && nextDraft.endMs !== intervalEndMs) {
+      const nextEndMs = Date.parse(next.ended_at_utc);
+      if (!Number.isFinite(nextEndMs) || nextDraft.endMs >= nextEndMs) return null;
+      const nextEdit = rangeEdit(next.id, nextDraft.sessionId, nextDraft.endMs, nextEndMs);
+      if (nextDraft.endMs > intervalEndMs) {
+        beforeSelected.push(nextEdit);
+      } else {
+        afterSelected.push(nextEdit);
+      }
+    }
+
+    return [
+      ...beforeSelected,
+      rangeEdit(interval.id, nextDraft.sessionId, nextDraft.startMs, nextDraft.endMs),
+      ...afterSelected,
+    ];
   }
 
   function renderEditorRow(row: FocusHistoryRow, rowDraft: FocusEditDraft, warningRowId: string) {
@@ -518,6 +580,15 @@ function TimeEditor({
 
 function moscowIntervalLabel(interval: FocusSessionInterval) {
   return `${moscowTime(interval.started_at_utc)}-${moscowTime(interval.ended_at_utc)} · ${formatHourMinute(interval.duration_seconds)}`;
+}
+
+function rangeEdit(intervalId: string, sessionId: string, startMs: number, endMs: number): IntervalRangeEdit {
+  return {
+    intervalId,
+    sessionId,
+    startedAtUtc: new Date(startMs).toISOString(),
+    endedAtUtc: new Date(endMs).toISOString(),
+  };
 }
 
 function toggleSetValue(values: Set<string>, value: string) {
