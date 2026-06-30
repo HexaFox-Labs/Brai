@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { BookOpen, Crown, Info, Settings } from "lucide-react";
 import { APP_ENVIRONMENT, APP_OTA_CHANNEL, APP_PREVIEW_SLOT } from "@/shared/config/runtime";
 import { installAndroidBackHandler } from "@/shared/platform/platform";
@@ -26,11 +26,13 @@ import type { MobileCreateDraft } from "./sections/MobileCreateComposer";
 
 const SECTION_PAGE_INSET_CLASS = "grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] pb-11 pl-7 pr-0 pt-3.5 max-[860px]:px-3.5 max-[860px]:pb-7 max-[860px]:pt-[var(--mobile-top-padding)]";
 const EMPTY_MOBILE_CREATE_DRAFT: MobileCreateDraft = { title: "", descriptionMd: "" };
+const ACTIONS_MOBILE_CREATE_DRAFT_STORAGE_KEY = "bright_os_actions_mobile_create_draft";
+const INBOX_MOBILE_CREATE_DRAFT_STORAGE_KEY = "bright_os_inbox_mobile_create_draft";
 
 export function BrightOsApp({ initialSection = "actions" }: { initialSection?: SectionId }) {
   const app = useBrightOsAppState(initialSection);
-  const [actionsMobileCreateDraft, setActionsMobileCreateDraft] = useState<MobileCreateDraft>(EMPTY_MOBILE_CREATE_DRAFT);
-  const [inboxMobileCreateDraft, setInboxMobileCreateDraft] = useState<MobileCreateDraft>(EMPTY_MOBILE_CREATE_DRAFT);
+  const [actionsMobileCreateDraft, setActionsMobileCreateDraft] = useStoredMobileCreateDraft(ACTIONS_MOBILE_CREATE_DRAFT_STORAGE_KEY);
+  const [inboxMobileCreateDraft, setInboxMobileCreateDraft] = useStoredMobileCreateDraft(INBOX_MOBILE_CREATE_DRAFT_STORAGE_KEY);
   const mobileViewport = useMountedMobileNavigationViewport();
   const sectionRef = useRef(app.section);
   const selectSectionRef = useRef(app.selectSection);
@@ -241,6 +243,43 @@ function subscribeMobileNavigationViewport(onStoreChange: () => void) {
   const query = window.matchMedia("(max-width: 860px)");
   query.addEventListener("change", onStoreChange);
   return () => query.removeEventListener("change", onStoreChange);
+}
+
+function useStoredMobileCreateDraft(storageKey: string) {
+  const [draft, setDraftState] = useState<MobileCreateDraft>(() => loadMobileCreateDraft(storageKey));
+  const setDraft = useCallback((nextDraft: MobileCreateDraft) => {
+    setDraftState(nextDraft);
+    saveMobileCreateDraft(storageKey, nextDraft);
+  }, [storageKey]);
+  return [draft, setDraft] as const;
+}
+
+function loadMobileCreateDraft(storageKey: string): MobileCreateDraft {
+  if (typeof window === "undefined") return EMPTY_MOBILE_CREATE_DRAFT;
+  try {
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) return EMPTY_MOBILE_CREATE_DRAFT;
+    const parsed = JSON.parse(raw) as Partial<MobileCreateDraft>;
+    return {
+      title: typeof parsed.title === "string" ? parsed.title : "",
+      descriptionMd: typeof parsed.descriptionMd === "string" ? parsed.descriptionMd : "",
+    };
+  } catch {
+    return EMPTY_MOBILE_CREATE_DRAFT;
+  }
+}
+
+function saveMobileCreateDraft(storageKey: string, draft: MobileCreateDraft) {
+  if (typeof window === "undefined") return;
+  try {
+    if (!draft.title.trim() && !draft.descriptionMd.trim()) {
+      window.localStorage.removeItem(storageKey);
+      return;
+    }
+    window.localStorage.setItem(storageKey, JSON.stringify(draft));
+  } catch {
+    // localStorage can be unavailable in constrained WebViews.
+  }
 }
 
 function isDevPreviewApkIncompatible(otaState: BrightOtaState | null): boolean {

@@ -302,7 +302,8 @@ test("opens the mobile bottom-sheet activity detail editor", async ({ page }, te
   test.skip(testInfo.project.name !== "mobile", "mobile-only detail editor");
 
   await page.goto("/");
-  await createMobileAction(page, "Описание mobile");
+  const longTitle = "Очень длинный заголовок детали который обязан переноситься полностью на несколько строк без троеточия";
+  await createMobileAction(page, longTitle);
 
   const rowSurface = page.locator(".action-row-surface").first();
   const rowSurfaceBox = await rowSurface.boundingBox();
@@ -317,13 +318,23 @@ test("opens the mobile bottom-sheet activity detail editor", async ({ page }, te
   await expect(page.locator(".actions-detail-backdrop")).toBeVisible();
   await expect(page.locator(".actions-detail-grabber")).toBeVisible();
   const editorLocator = page.locator(".actions-detail-panel.mobile");
-  await expect.poll(async () => (await editorLocator.boundingBox())?.y ?? 999).toBeLessThanOrEqual(20);
+  const topbar = await page.locator(".section-page-current .topbar").boundingBox();
+  const topbarBottom = (topbar?.y ?? 0) + (topbar?.height ?? 0);
+  await expect.poll(async () => Math.abs(((await editorLocator.boundingBox())?.y ?? 999) - Math.ceil(topbarBottom))).toBeLessThanOrEqual(1);
   const editor = await editorLocator.boundingBox();
   const viewport = page.viewportSize();
-  expect(editor?.y ?? 0).toBeGreaterThanOrEqual(0);
+  expect(editor?.y ?? 0).toBeGreaterThanOrEqual(topbarBottom - 1);
   expect(editor?.height ?? 999).toBeLessThanOrEqual((viewport?.height ?? 0) + 1);
   expect((editor?.y ?? 0) + (editor?.height ?? 0)).toBeGreaterThanOrEqual((viewport?.height ?? 0) - 1);
   await expect(editorLocator).toHaveCSS("border-top-width", "1px");
+  const tabsBox = await editorLocator.locator(".actions-detail-tabs").boundingBox();
+  const detailTitle = page.getByRole("textbox", { name: "Название действия", exact: true });
+  const titleBox = await detailTitle.boundingBox();
+  await expect(detailTitle).toHaveValue(longTitle);
+  expect(tabsBox?.y ?? 0).toBeLessThan(titleBox?.y ?? 0);
+  expect(titleBox?.height ?? 0).toBeGreaterThan(44);
+  await expect(editorLocator.locator(".actions-detail-header .actions-detail-preview-toggle")).toHaveCount(0);
+  await expect(editorLocator.locator(".actions-detail-description-scroll .actions-detail-preview-toggle")).toBeVisible();
 
   await page.locator(".actions-detail-backdrop").click({ position: { x: 8, y: 8 } });
   await expect(page.getByRole("button", { name: "Сохранить и закрыть" })).toBeVisible();
@@ -336,7 +347,7 @@ test("opens the mobile bottom-sheet activity detail editor", async ({ page }, te
   };
   await swipeTouch(page, dragStart, { x: dragStart.x, y: dragStart.y + 80 });
   await expect(page.getByRole("button", { name: "Сохранить и закрыть" })).toBeVisible();
-  await expect.poll(async () => (await editorLocator.boundingBox())?.y ?? 999).toBeLessThanOrEqual(20);
+  await expect.poll(async () => Math.abs(((await editorLocator.boundingBox())?.y ?? 999) - Math.ceil(topbarBottom))).toBeLessThanOrEqual(1);
 
   await page.getByRole("textbox", { name: "Описание действия" }).fill("мобильное **описание**");
   await page.getByRole("button", { name: "Читать описание" }).click();

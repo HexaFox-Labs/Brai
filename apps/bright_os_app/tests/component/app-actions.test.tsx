@@ -132,6 +132,26 @@ describe("BrightOsApp actions", () => {
     expect(within(actionOverlay()).getByRole("textbox", { name: "Добавить входящее" })).toHaveValue("Черновик входящего");
   });
 
+  it("restores a mobile create draft after the app remounts", async () => {
+    const { unmount } = render(<BrightOsApp />);
+
+    fireEvent.click(document.querySelector(".actions-fab") as HTMLElement);
+    const overlay = () => document.querySelector(".actions-mobile-overlay") as HTMLElement;
+    fireEvent.change(within(overlay()).getByRole("textbox", { name: "Добавить действие" }), {
+      target: { value: "Черновик после закрытия" },
+    });
+    fireEvent.change(within(overlay()).getByRole("textbox", { name: "Описание действия" }), {
+      target: { value: "Описание тоже осталось" },
+    });
+
+    unmount();
+    render(<BrightOsApp />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Продолжить черновик действия" }));
+    expect(within(overlay()).getByRole("textbox", { name: "Добавить действие" })).toHaveValue("Черновик после закрытия");
+    expect(within(overlay()).getByRole("textbox", { name: "Описание действия" })).toHaveValue("Описание тоже осталось");
+  });
+
   it("does not complete an action when its title is clicked", async () => {
     render(<BrightOsApp />);
     const input = screen.getByRole("textbox", { name: "Добавить" });
