@@ -701,11 +701,11 @@ function InboxDetailEditor({
 
   useEffect(() => {
     if (!markdownPreview) fitTextareaHeight(descriptionRef.current);
-  }, [description, markdownPreview, mode]);
+  }, [activeTab, description, markdownPreview, mode]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     fitTextareaHeight(titleRef.current);
-  }, [titleValue]);
+  }, [activeTab, mode, titleValue]);
 
   useEffect(() => {
     const node = titleRef.current;
@@ -713,7 +713,7 @@ function InboxDetailEditor({
     const observer = new ResizeObserver(() => fitTextareaHeight(node));
     observer.observe(node);
     return () => observer.disconnect();
-  }, []);
+  }, [activeTab]);
 
   useEffect(() => {
     if (latestRef.current) return;

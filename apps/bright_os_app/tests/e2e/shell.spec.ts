@@ -742,6 +742,8 @@ test("keeps the desktop inbox detail info after tab switches", async ({ page }, 
   await expect(detailTitle).toHaveCSS("overflow-wrap", "anywhere");
   expect(tabsBox?.y ?? 0).toBeLessThan(titleBox?.y ?? 0);
   expect(titleBox?.height ?? 0).toBeGreaterThan(44);
+  await expect.poll(() => detailTitle.evaluate((node) => node.scrollHeight <= node.clientHeight + 1)).toBe(true);
+  const titleHeightBeforeTabSwitch = titleBox?.height ?? 0;
   await expect(panel.locator(".actions-detail-header .actions-detail-preview-toggle")).toHaveCount(0);
   await expect(panel.locator(".actions-detail-description-scroll .actions-detail-preview-toggle")).toBeVisible();
 
@@ -750,7 +752,11 @@ test("keeps the desktop inbox detail info after tab switches", async ({ page }, 
   await expect(page.locator(".actions-detail-description-preview")).toContainText("Контекст");
   await expect(page.locator(".actions-detail-description-preview")).toContainText("Д Л");
   await page.getByRole("tab", { name: "Детали" }).click();
+  await expect.poll(() => detailTitle.evaluate((node) => node.scrollHeight <= node.clientHeight + 1)).toBe(true);
+  expect(Math.abs(((await detailTitle.boundingBox())?.height ?? 0) - titleHeightBeforeTabSwitch)).toBeLessThanOrEqual(2);
   await page.getByRole("tab", { name: "Инфо" }).click();
+  await expect.poll(() => detailTitle.evaluate((node) => node.scrollHeight <= node.clientHeight + 1)).toBe(true);
+  expect(Math.abs(((await detailTitle.boundingBox())?.height ?? 0) - titleHeightBeforeTabSwitch)).toBeLessThanOrEqual(2);
   await expect(page.locator(".actions-detail-description-preview")).toContainText("Контекст");
   await expect(page.locator(".actions-detail-description-preview")).toContainText("Д Л");
 });

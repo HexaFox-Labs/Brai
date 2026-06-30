@@ -1,7 +1,7 @@
 "use client";
 
 import type { CSSProperties, KeyboardEvent } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { BookOpen, Pencil } from "lucide-react";
 import { installAndroidBackHandler } from "@/shared/platform/platform";
 import {
@@ -82,11 +82,11 @@ export function ActivityDetailEditor({
 
   useEffect(() => {
     if (!markdownPreview) fitTextareaHeight(descriptionRef.current);
-  }, [description, markdownPreview, mode]);
+  }, [activeTab, description, markdownPreview, mode]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     fitTextareaHeight(titleRef.current);
-  }, [title]);
+  }, [activeTab, mode, title]);
 
   useEffect(() => {
     const node = titleRef.current;
@@ -94,7 +94,7 @@ export function ActivityDetailEditor({
     const observer = new ResizeObserver(() => fitTextareaHeight(node));
     observer.observe(node);
     return () => observer.disconnect();
-  }, []);
+  }, [activeTab]);
 
   useEffect(() => {
     function flushOnHide() {
