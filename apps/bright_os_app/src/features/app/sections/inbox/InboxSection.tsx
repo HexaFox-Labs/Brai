@@ -23,7 +23,7 @@ import {
   DetailPanelTabBar,
   type DetailPanelTab,
 } from "../DetailPanelTabs";
-import { MobileCreateComposer } from "../MobileCreateComposer";
+import { MobileCreateComposer, type MobileCreateDraft } from "../MobileCreateComposer";
 import { ActionsInfoPanel } from "../actions/ActionsInfoPanel";
 import { ACTION_DELETE_REVEAL_WIDTH, ACTION_ROW_SERVICE_SELECTOR, ACTIONS_SPLIT_DEFAULT_PERCENT, ACTIONS_SPLIT_MIN_PERCENT, clampActionsSplitPercent, loadActivityMarkdownPreviewMode, saveActivityMarkdownPreviewMode } from "../actions/constants";
 
@@ -49,6 +49,7 @@ export function InboxSection({
   onMobileOverlayChange: (open: boolean) => void;
 }) {
   const [draft, setDraft] = useState("");
+  const [mobileCreateDraft, setMobileCreateDraft] = useState<MobileCreateDraft>({ title: "", descriptionMd: "" });
   const [mobileCreateOpen, setMobileCreateOpen] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [mobileEditItemId, setMobileEditItemId] = useState<string | null>(null);
@@ -139,8 +140,9 @@ export function InboxSection({
   }
 
   async function submitMobile(title: string, descriptionMd: string) {
-    closeMobileCreate();
     await onCreate(title, descriptionMd);
+    setMobileCreateDraft({ title: "", descriptionMd: "" });
+    closeMobileCreate();
   }
 
   useEffect(() => {
@@ -344,10 +346,12 @@ export function InboxSection({
           onClick={closeMobileCreate}
         >
           <MobileCreateComposer
+            draft={mobileCreateDraft}
             titleLabel="Добавить входящее"
             descriptionLabel="Описание входящего"
             submitLabel="Добавить входящее"
             onCancel={closeMobileCreate}
+            onDraftChange={setMobileCreateDraft}
             onSubmit={submitMobile}
           />
         </div>

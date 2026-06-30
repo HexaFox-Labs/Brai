@@ -7,6 +7,11 @@ import { cleanTitle, normalizeDescription, singleLineTitle } from "@/shared/acti
 import { Button } from "@/shared/ui/button";
 import { cx, fitTextareaHeight } from "../appUtils";
 
+export interface MobileCreateDraft {
+  title: string;
+  descriptionMd: string;
+}
+
 const MOBILE_CREATE_TOOL_ICONS = [
   ["calendar", "Дата", CalendarDays],
   ["flag", "Флаг", Flag],
@@ -17,39 +22,44 @@ const MOBILE_CREATE_TOOL_ICONS = [
 ] as const;
 
 export function MobileCreateComposer({
+  draft,
   descriptionLabel,
   submitLabel,
   titleLabel,
   onCancel,
+  onDraftChange,
   onSubmit,
 }: {
+  draft: MobileCreateDraft;
   descriptionLabel: string;
   submitLabel: string;
   titleLabel: string;
   onCancel: () => void;
+  onDraftChange: (draft: MobileCreateDraft) => void;
   onSubmit: (title: string, descriptionMd: string) => Promise<void>;
 }) {
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
   const [descriptionActive, setDescriptionActive] = useState(false);
   const titleRef = useRef<HTMLTextAreaElement | null>(null);
   const descriptionRef = useRef<HTMLTextAreaElement | null>(null);
-  const canSubmit = Boolean(cleanTitle(title));
+  const canSubmit = Boolean(cleanTitle(draft.title));
 
   useEffect(() => {
-    titleRef.current?.focus();
+    const input = titleRef.current;
+    if (!input) return;
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
   }, []);
 
   useEffect(() => {
     fitTextareaHeight(titleRef.current);
     fitTextareaHeight(descriptionRef.current);
-  }, [description, title]);
+  }, [draft.descriptionMd, draft.title]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const trimmed = cleanTitle(title);
+    const trimmed = cleanTitle(draft.title);
     if (!trimmed) return;
-    await onSubmit(trimmed, normalizeDescription(description));
+    await onSubmit(trimmed, normalizeDescription(draft.descriptionMd));
   }
 
   function onTitleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -72,42 +82,42 @@ export function MobileCreateComposer({
 
   return (
     <form
-      className="actions-mobile-editor flex max-h-[calc(100dvh_-_env(safe-area-inset-top)_-_8px)] w-full flex-col overflow-hidden rounded-t-2xl bg-card px-6 pb-2 pt-5 shadow-xl"
+      className="actions-mobile-editor flex max-h-[calc(100dvh_-_env(safe-area-inset-top)_-_8px)] w-full flex-col overflow-hidden rounded-t-2xl bg-card px-5 pb-1 pt-4 shadow-xl"
       onClick={(event) => event.stopPropagation()}
       onSubmit={submit}
     >
-      <div className="mobile-create-text min-h-[84px] min-w-0 overflow-y-auto overscroll-contain">
+      <div className="mobile-create-text min-h-[76px] min-w-0 overflow-hidden">
         <textarea
           ref={titleRef}
-          className="actions-mobile-create-title block min-h-7 w-full min-w-0 resize-none overflow-hidden border-0 bg-transparent p-0 text-lg/7 font-medium tracking-normal text-foreground placeholder:text-muted-foreground/65 focus:outline-0"
-          value={title}
+          className="actions-mobile-create-title block max-h-[calc(100dvh_-_env(safe-area-inset-top)_-_164px)] min-h-6 w-full min-w-0 resize-none overflow-y-auto border-0 bg-transparent p-0 text-lg/7 font-semibold tracking-normal text-foreground placeholder:text-muted-foreground/65 focus:outline-0"
+          value={draft.title}
           rows={1}
           enterKeyHint="enter"
           placeholder="Что бы вы хотели сделать?"
           aria-label={titleLabel}
-          onChange={(event) => setTitle(singleLineTitle(event.target.value))}
+          onChange={(event) => onDraftChange({ ...draft, title: singleLineTitle(event.target.value) })}
           onKeyDown={onTitleKeyDown}
         />
         <textarea
           ref={descriptionRef}
-          className="actions-mobile-create-description mt-2 block min-h-12 w-full min-w-0 resize-none overflow-hidden border-0 bg-transparent p-0 text-base/6 font-normal tracking-normal text-muted-foreground placeholder:text-muted-foreground/65 focus:outline-0"
-          value={description}
+          className="actions-mobile-create-description mt-1.5 block min-h-10 w-full min-w-0 resize-none overflow-y-auto border-0 bg-transparent p-0 text-sm/5 font-normal tracking-normal text-muted-foreground/75 placeholder:text-muted-foreground/60 focus:outline-0"
+          value={draft.descriptionMd}
           rows={2}
           enterKeyHint="enter"
-          placeholder={descriptionActive || description ? "Описание" : ""}
+          placeholder={descriptionActive || draft.descriptionMd ? "Описание" : ""}
           aria-label={descriptionLabel}
           onFocus={() => setDescriptionActive(true)}
-          onChange={(event) => setDescription(event.target.value)}
+          onChange={(event) => onDraftChange({ ...draft, descriptionMd: event.target.value })}
           onKeyDown={onDescriptionKeyDown}
         />
       </div>
-      <div className="mobile-create-toolbar mt-3 flex h-10 shrink-0 items-center justify-between gap-4 text-muted-foreground">
-        <div className="flex min-w-0 items-center gap-3">
+      <div className="mobile-create-toolbar mt-2 flex h-9 shrink-0 items-center justify-between gap-3 text-muted-foreground">
+        <div className="flex min-w-0 items-center gap-2.5">
           {MOBILE_CREATE_TOOL_ICONS.map(([name, label, Icon]) => (
             <button
               key={name}
               type="button"
-              className="mobile-create-tool-icon inline-grid size-8 place-items-center rounded-md border-0 bg-transparent text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-0 focus-visible:ring-[3px] focus-visible:ring-ring/50 active:bg-accent/80 active:text-foreground"
+              className="mobile-create-tool-icon inline-grid size-7 place-items-center rounded-md border-0 bg-transparent text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-0 focus-visible:ring-[3px] focus-visible:ring-ring/50 active:bg-accent/80 active:text-foreground"
               aria-label={label}
               title={label}
               onPointerDown={(event) => event.preventDefault()}

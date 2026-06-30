@@ -52,13 +52,32 @@ test("opens mobile action input overlay from the floating plus button", async ({
   await expect(page.getByRole("navigation", { name: "Основная навигация" })).toBeHidden();
 
   const editor = await page.locator(".actions-mobile-editor").boundingBox();
-  expect(editor?.height ?? 0).toBeGreaterThan(150);
-  expect(editor?.height ?? 999).toBeLessThanOrEqual(220);
+  expect(editor?.height ?? 0).toBeGreaterThan(120);
+  expect(editor?.height ?? 999).toBeLessThanOrEqual(190);
 
   await expect.poll(() => page.evaluate(() => (window as Window & { BrightOsAndroidBack?: () => boolean }).BrightOsAndroidBack?.())).toBe(true);
   await expect(page.locator(".actions-mobile-overlay")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Действия", exact: true })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Основная навигация" })).toBeVisible();
+});
+
+test("keeps mobile create description visible under a long title", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile", "mobile-only action overlay");
+
+  await page.goto("/");
+  await page.locator(".actions-fab").click();
+  const title = page.getByRole("textbox", { name: "Добавить действие" });
+  const description = page.getByRole("textbox", { name: "Описание действия" });
+  await title.fill(Array.from({ length: 40 }, () => "Длинный заголовок занимает много строк").join(" "));
+  await description.fill("Описание остается на месте ");
+
+  await expect.poll(() => title.evaluate((node) => node.scrollHeight > node.clientHeight)).toBe(true);
+  const descriptionBox = await description.boundingBox();
+  const toolbarBox = await page.locator(".mobile-create-toolbar").boundingBox();
+  expect(descriptionBox?.height ?? 0).toBeGreaterThanOrEqual(36);
+  expect((descriptionBox?.y ?? 0) + (descriptionBox?.height ?? 0)).toBeLessThanOrEqual(toolbarBox?.y ?? 0);
+  await expect(description).toBeVisible();
+  await expect(description).toHaveValue("Описание остается на месте ");
 });
 
 test("keeps the mobile Actions FAB vertically stable when a dock swipe starts", async ({ page }, testInfo) => {

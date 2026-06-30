@@ -31,10 +31,10 @@ describe("BrightOsApp actions", () => {
     await waitFor(() => expect(title).toHaveFocus());
     expect(title).toHaveAttribute("placeholder", "Что бы вы хотели сделать?");
     expect(title).toHaveAttribute("enterkeyhint", "enter");
-    expect(title).toHaveClass("text-lg/7", "font-medium", "text-foreground");
+    expect(title).toHaveClass("max-h-[calc(100dvh_-_env(safe-area-inset-top)_-_164px)]", "text-lg/7", "font-semibold", "text-foreground");
 
     const description = screen.getByRole("textbox", { name: "Описание действия" }) as HTMLTextAreaElement;
-    expect(description).toHaveClass("text-base/6", "text-muted-foreground");
+    expect(description).toHaveClass("min-h-10", "text-sm/5", "text-muted-foreground/75");
     expect(description).toHaveAttribute("placeholder", "");
     fireEvent.focus(description);
     expect(description).toHaveAttribute("placeholder", "Описание");
@@ -48,6 +48,14 @@ describe("BrightOsApp actions", () => {
 
     fireEvent.change(title, { target: { value: " Большой план " } });
     fireEvent.change(description, { target: { value: "Описание\nстрока 2" } });
+    fireEvent.click(document.querySelector(".actions-mobile-overlay") as HTMLElement);
+    await waitFor(() => expect(document.querySelector(".actions-mobile-overlay")).not.toBeInTheDocument());
+
+    fireEvent.click(document.querySelector(".actions-fab") as HTMLElement);
+    const restoredTitle = screen.getByRole("textbox", { name: "Добавить действие" }) as HTMLTextAreaElement;
+    const restoredDescription = screen.getByRole("textbox", { name: "Описание действия" }) as HTMLTextAreaElement;
+    expect(restoredTitle).toHaveValue(" Большой план ");
+    expect(restoredDescription).toHaveValue("Описание\nстрока 2");
     fireEvent.click(screen.getByRole("button", { name: "Добавить действие" }));
 
     await waitFor(async () => {

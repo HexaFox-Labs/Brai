@@ -9,7 +9,7 @@ import type { ActivityItem, ActivitiesState, ActivityStatus } from "@/shared/typ
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/shared/ui/input-group";
 import { ScrollArea } from "@/shared/ui/scroll-area";
 import { cx } from "../../appUtils";
-import { MobileCreateComposer } from "../MobileCreateComposer";
+import { MobileCreateComposer, type MobileCreateDraft } from "../MobileCreateComposer";
 import { ActionRow, type DetailTitleFocus } from "./ActionRow";
 import { SortableActionList } from "./ActionList";
 import { ActionsInfoPanel } from "./ActionsInfoPanel";
@@ -41,6 +41,7 @@ export function ActionsSection({
   onMobileOverlayChange: (open: boolean) => void;
 }) {
   const [draft, setDraft] = useState("");
+  const [mobileCreateDraft, setMobileCreateDraft] = useState<MobileCreateDraft>({ title: "", descriptionMd: "" });
   const [mobileCreateOpen, setMobileCreateOpen] = useState(false);
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
   const [mobileEditActionId, setMobileEditActionId] = useState<string | null>(null);
@@ -136,8 +137,9 @@ export function ActionsSection({
   }
 
   async function submitMobile(title: string, descriptionMd: string) {
-    closeMobileCreate();
     await onCreate(title, descriptionMd);
+    setMobileCreateDraft({ title: "", descriptionMd: "" });
+    closeMobileCreate();
   }
 
   useEffect(() => {
@@ -379,10 +381,12 @@ export function ActionsSection({
           onClick={closeMobileCreate}
         >
           <MobileCreateComposer
+            draft={mobileCreateDraft}
             titleLabel="Добавить действие"
             descriptionLabel="Описание действия"
             submitLabel="Добавить действие"
             onCancel={closeMobileCreate}
+            onDraftChange={setMobileCreateDraft}
             onSubmit={submitMobile}
           />
         </div>
