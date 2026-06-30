@@ -16,7 +16,7 @@ import type { ActivityItem } from "@/shared/types/activities";
 import { Button } from "@/shared/ui/button";
 import { hasMarkdownSyntax, MarkdownContent } from "@/shared/ui/markdown-content";
 import { ScrollArea } from "@/shared/ui/scroll-area";
-import { cx, fitTextareaHeight } from "../../appUtils";
+import { cx, fitTextareaHeight, focusEditableEnd, plainEditableText, setPlainEditableText } from "../../appUtils";
 import { useMobileSheetDrag } from "../../hooks/useMobileSheetDrag";
 import { useMobileSheetTop } from "../../hooks/useMobileSheetTop";
 import {
@@ -55,7 +55,7 @@ export function ActivityDetailEditor({
   const [markdownPreview, setMarkdownPreview] = useState(loadActivityMarkdownPreviewMode);
   const [activeTab, setActiveTab] = useState<DetailPanelTab>("info");
   const titleRef = useRef<HTMLTextAreaElement | null>(null);
-  const descriptionRef = useRef<HTMLTextAreaElement | null>(null);
+  const descriptionRef = useRef<HTMLDivElement | null>(null);
   const autosave = useActivityDraftAutosave(action, onAutosaveDetails);
   const suppressPopRef = useRef(false);
   const {
@@ -81,8 +81,9 @@ export function ActivityDetailEditor({
   }, [action.id, focusTitleRequest, mode]);
 
   useEffect(() => {
-    if (!markdownPreview) fitTextareaHeight(descriptionRef.current);
-  }, [activeTab, description, markdownPreview, mode]);
+    if (markdownPreview || document.activeElement === descriptionRef.current) return;
+    setPlainEditableText(descriptionRef.current, description);
+  }, [action.id, activeTab, description, markdownPreview]);
 
   useLayoutEffect(() => {
     fitTextareaHeight(titleRef.current);
@@ -171,9 +172,7 @@ export function ActivityDetailEditor({
     event.preventDefault();
     schedule(cleanTitle(event.currentTarget.value), description);
     if (activeTab === "info" && !markdownPreview && descriptionRef.current) {
-      descriptionRef.current.focus();
-      const end = descriptionRef.current.value.length;
-      descriptionRef.current.setSelectionRange(end, end);
+      focusEditableEnd(descriptionRef.current);
     } else {
       event.currentTarget.blur();
     }
@@ -220,15 +219,19 @@ export function ActivityDetailEditor({
       ) : (
         <div className="relative min-w-0">
           {previewToggle}
-          <textarea
+          <div
             ref={descriptionRef}
-            className="actions-detail-description block min-h-full w-full min-w-0 resize-none overflow-hidden border-0 bg-transparent p-0 pr-12 text-sm font-normal leading-[1.48] tracking-normal text-foreground placeholder:text-muted-foreground/55 focus:outline-0 max-[860px]:text-base"
-            value={description}
-            placeholder="Введите описание"
+            className="actions-detail-description actions-detail-description-editor relative block min-h-full w-full min-w-0 overflow-hidden whitespace-pre-wrap border-0 bg-transparent p-0 text-sm font-normal leading-[1.48] tracking-normal text-foreground [overflow-wrap:anywhere] before:float-right before:h-10 before:w-12 before:content-[''] empty:after:text-muted-foreground/55 empty:after:content-[attr(data-placeholder)] focus:outline-0 max-[860px]:text-base"
+            contentEditable="plaintext-only"
+            data-placeholder="Введите описание"
             aria-label="Описание действия"
-            onChange={(event) => {
-              setDescription(event.target.value);
-              schedule(title, event.target.value);
+            aria-multiline="true"
+            role="textbox"
+            suppressContentEditableWarning
+            onInput={(event) => {
+              const nextDescription = plainEditableText(event.currentTarget);
+              setDescription(nextDescription);
+              schedule(title, nextDescription);
             }}
           />
         </div>
@@ -281,7 +284,10 @@ export function ActivityDetailEditor({
       />
       {showTitleCounter ? (
         <div
-          className="actions-detail-title-counter absolute bottom-0 right-0 text-xs font-normal leading-4 tracking-normal text-muted-foreground/60"
+          className={cx(
+            "actions-detail-title-counter absolute bottom-0 right-0 text-xs font-normal leading-4 tracking-normal",
+            titleRemaining === 0 ? "text-destructive" : "text-muted-foreground/60",
+          )}
           aria-label="Осталось символов в заголовке"
         >
           {titleRemaining}
@@ -290,7 +296,7 @@ export function ActivityDetailEditor({
     </div>
   );
   const infoChromeInset = mode === "mobile" ? "pl-[18px] pr-5" : "pl-7 pr-5";
-  const infoScrollInset = mode === "mobile" ? "pl-[18px]" : "pl-7";
+  const infoScrollInset = mode === "mobile" ? "pl-[18px] pr-5" : "pl-7 pr-7";
   const dragHeader = (
     <header
       className={cx(

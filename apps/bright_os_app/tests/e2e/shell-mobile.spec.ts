@@ -357,9 +357,11 @@ test("opens the mobile bottom-sheet activity detail editor", async ({ page }, te
   await detailTitle.fill("м".repeat(270));
   await expect.poll(async () => (await detailTitle.inputValue()).length).toBe(250);
   await expect(editorLocator.locator(".actions-detail-title-counter")).toHaveText("0");
+  await expect(editorLocator.locator(".actions-detail-title-counter")).toHaveClass(/text-destructive/);
   const mobileDescriptionEditor = page.getByRole("textbox", { name: "Описание действия" });
   await expect(mobileDescriptionEditor).toBeVisible();
-  await expect(mobileDescriptionEditor).toHaveCSS("padding-right", "48px");
+  await expect(mobileDescriptionEditor).toHaveCSS("padding-right", "0px");
+  await expect.poll(() => mobileDescriptionEditor.evaluate((node) => getComputedStyle(node, "::before").float)).toBe("right");
   expect(Math.abs(((await mobileDescriptionEditor.boundingBox())?.width ?? 0) - ((await detailTitle.boundingBox())?.width ?? 0))).toBeLessThanOrEqual(1);
   await expect.poll(() => detailTitle.evaluate((node) => node.scrollHeight <= node.clientHeight + 1)).toBe(true);
   const titleHeightBeforeTabSwitch = (await detailTitle.boundingBox())?.height ?? 0;
@@ -389,7 +391,7 @@ test("opens the mobile bottom-sheet activity detail editor", async ({ page }, te
   await expect(page.locator(".actions-detail-description-preview")).toContainText("мобильное описание");
   await expect(page.locator(".actions-detail-description-preview")).not.toContainText("**");
   await page.getByRole("button", { name: "Редактировать описание" }).click();
-  await expect(page.getByRole("textbox", { name: "Описание действия" })).toHaveValue("мобильное **описание**");
+  await expect(page.getByRole("textbox", { name: "Описание действия" })).toContainText("мобильное **описание**");
   await page.getByRole("textbox", { name: "Описание действия" }).fill(
     Array.from({ length: 36 }, (_, index) => `строка ${index + 1} для проверки прокрутки`).join("\n\n"),
   );

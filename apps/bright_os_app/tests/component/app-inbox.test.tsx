@@ -88,6 +88,7 @@ describe("BrightOsApp inbox", () => {
     fireEvent.change(detailTitle, { target: { value: `${limitedTitle}лишнее` } });
     await waitFor(() => expect(detailTitle).toHaveValue(limitedTitle));
     expect(detailPanel.querySelector(".actions-detail-title-counter")).toHaveTextContent("0");
+    expect(detailPanel.querySelector(".actions-detail-title-counter")).toHaveClass("text-destructive");
     const detailScroll = detailPanel.querySelector(".actions-detail-description-scroll");
     expect(detailScroll).toBeInTheDocument();
     expect(detailScroll?.parentElement).toBe(detailPanel);
@@ -98,10 +99,9 @@ describe("BrightOsApp inbox", () => {
     fireEvent.keyDown(splitSlider, { key: "Home" });
     expect(splitSlider).toHaveAttribute("aria-valuenow", "30");
     const descriptionEditor = screen.getByRole("textbox", { name: "Описание входящего" });
-    expect(descriptionEditor).toHaveClass("pr-12");
-    fireEvent.change(descriptionEditor, {
-      target: { value: "# Контекст\n\n## Источник\n\n**важно**" },
-    });
+    expect(descriptionEditor).toHaveClass("before:float-right", "before:w-12");
+    descriptionEditor.textContent = "# Контекст\n\n## Источник\n\n**важно**";
+    fireEvent.input(descriptionEditor);
     expect(detailPanel.querySelector(".actions-detail-header .actions-detail-preview-toggle")).not.toBeInTheDocument();
     expect(detailPanel.querySelector(".actions-detail-description-scroll .actions-detail-preview-toggle")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Читать описание" })).toHaveClass("absolute");

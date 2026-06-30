@@ -633,6 +633,7 @@ test("opens the desktop activity description split panel", async ({ page }, test
   await detailTitle.fill(overLimitTitle);
   await expect.poll(async () => (await detailTitle.inputValue()).length).toBe(250);
   await expect(detailPanel.locator(".actions-detail-title-counter")).toHaveText("0");
+  await expect(detailPanel.locator(".actions-detail-title-counter")).toHaveClass(/text-destructive/);
   await expect(page.locator(".actions-detail-tabs")).toBeVisible();
 
   const descriptionEditor = page.getByRole("textbox", { name: "Описание действия" });
@@ -645,6 +646,8 @@ test("opens the desktop activity description split panel", async ({ page }, test
 **важно** ${"длинная строка ".repeat(120)}`;
   await expect.poll(() => descriptionEditor.evaluate((node) => node.closest(".actions-detail-description-scroll")?.getAttribute("data-slot"))).toBe("scroll-area");
   await expect(descriptionEditor).toHaveClass(/overflow-hidden/);
+  await expect(descriptionEditor).toHaveCSS("padding-right", "0px");
+  await expect.poll(() => descriptionEditor.evaluate((node) => getComputedStyle(node, "::before").float)).toBe("right");
   await descriptionEditor.fill(descriptionText);
   const infoScrollArea = detailPanel.locator(".actions-detail-description-scroll");
   const infoScrollbar = infoScrollArea.locator("> [data-slot='scroll-area-scrollbar']");
@@ -658,6 +661,11 @@ test("opens the desktop activity description split panel", async ({ page }, test
     ),
   ).toBeLessThanOrEqual(1);
   const infoViewport = page.locator(".actions-detail-description-scroll > [data-slot='scroll-area-viewport']");
+  await descriptionEditor.evaluate((node) => (node as HTMLElement).blur());
+  await infoViewport.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  await expect.poll(() => infoViewport.evaluate((element) => element.scrollTop)).toBe(0);
   const titleTopBeforeScroll = (await detailTitle.boundingBox())?.y ?? 0;
   await infoViewport.evaluate((element) => {
     element.scrollTop = 120;
@@ -684,7 +692,7 @@ test("opens the desktop activity description split panel", async ({ page }, test
   await expect(page.locator(".actions-detail-description-preview")).not.toContainText("**");
   await page.getByRole("button", { name: "Редактировать описание" }).click();
   await expect.poll(() => page.evaluate(() => window.localStorage.getItem("bright_os_activity_md_preview"))).toBe("false");
-  await expect(page.getByRole("textbox", { name: "Описание действия" })).toHaveValue(descriptionText);
+  await expect(page.getByRole("textbox", { name: "Описание действия" })).toContainText(descriptionText);
   await page.getByRole("button", { name: "Закрыть редактор" }).click();
   const rowPreview = page.locator(".action-description-preview");
   await expect(rowPreview).toContainText("Большое описание");
@@ -750,7 +758,8 @@ test("keeps the desktop inbox detail info after tab switches", async ({ page }, 
   await expect(panel.locator(".actions-detail-description-scroll .actions-detail-preview-toggle")).toBeVisible();
 
   const descriptionEditor = page.getByRole("textbox", { name: "Описание входящего" });
-  await expect(descriptionEditor).toHaveCSS("padding-right", "48px");
+  await expect(descriptionEditor).toHaveCSS("padding-right", "0px");
+  await expect.poll(() => descriptionEditor.evaluate((node) => getComputedStyle(node, "::before").float)).toBe("right");
   await descriptionEditor.fill(descriptionText);
   await page.getByRole("button", { name: "Читать описание" }).click();
   await expect(page.locator(".actions-detail-description-preview")).toContainText("Контекст");

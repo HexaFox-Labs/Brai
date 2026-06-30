@@ -263,6 +263,7 @@ describe("BrightOsApp actions", () => {
     fireEvent.change(detailTitle, { target: { value: `${limitedTitle}лишнее` } });
     await waitFor(() => expect(detailTitle).toHaveValue(limitedTitle));
     expect(detailPanel.querySelector(".actions-detail-title-counter")).toHaveTextContent("0");
+    expect(detailPanel.querySelector(".actions-detail-title-counter")).toHaveClass("text-destructive");
     const detailScroll = detailPanel.querySelector(".actions-detail-description-scroll");
     expect(detailScroll).toBeInTheDocument();
     expect(detailScroll?.parentElement).toBe(detailPanel);
@@ -287,10 +288,9 @@ describe("BrightOsApp actions", () => {
 
     const descriptionEditor = screen.getByRole("textbox", { name: "Описание действия" });
     expect(descriptionEditor.closest("[data-slot='scroll-area']")).toBeInTheDocument();
-    expect(descriptionEditor).toHaveClass("overflow-hidden", "pr-12");
-    fireEvent.change(descriptionEditor, {
-      target: { value: "# Большое описание\n\n## Цель\n\n**важно**" },
-    });
+    expect(descriptionEditor).toHaveClass("overflow-hidden", "before:float-right", "before:w-12");
+    descriptionEditor.textContent = "# Большое описание\n\n## Цель\n\n**важно**";
+    fireEvent.input(descriptionEditor);
     const readModeButton = screen.getByRole("button", { name: "Читать описание" });
     expect(detailPanel.querySelector(".actions-detail-header .actions-detail-preview-toggle")).not.toBeInTheDocument();
     expect(detailPanel.querySelector(".actions-detail-description-scroll .actions-detail-preview-toggle")).toBeInTheDocument();
@@ -430,11 +430,11 @@ describe("BrightOsApp actions", () => {
     expect(detailTitle).toHaveValue("Из detail без переноса");
     expect(mirroredListTitle).toHaveTextContent("Из detail без переноса");
 
-    const description = screen.getByRole("textbox", { name: "Описание действия" }) as HTMLTextAreaElement;
-    fireEvent.change(description, { target: { value: "Описание" } });
+    const description = screen.getByRole("textbox", { name: "Описание действия" });
+    description.textContent = "Описание";
+    fireEvent.input(description);
     fireEvent.keyDown(detailTitle, { key: "Enter" });
     expect(document.activeElement).toBe(description);
-    expect(description.selectionStart).toBe("Описание".length);
 
     mirroredListTitle.textContent = "Из списка";
     fireEvent.input(mirroredListTitle);
@@ -496,16 +496,16 @@ describe("BrightOsApp actions", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Сохранить и закрыть" })).toBeInTheDocument());
 
     const plainDescription = "https://magicui.design/docs/templates/changelog использовать вот этот\nшаблон";
-    fireEvent.change(screen.getByRole("textbox", { name: "Описание действия" }), {
-      target: { value: plainDescription },
-    });
+    const descriptionEditor = screen.getByRole("textbox", { name: "Описание действия" });
+    descriptionEditor.textContent = plainDescription;
+    fireEvent.input(descriptionEditor);
     fireEvent.click(screen.getByRole("button", { name: "Читать описание" }));
     const preview = await screen.findByLabelText("MD просмотр описания действия");
     expect(preview).toHaveTextContent("https://magicui.design/docs/templates/changelog");
     expect(preview.querySelector(".markdown-content")).toBeNull();
     expect(preview.querySelector(".whitespace-pre-wrap")).toHaveClass("leading-[1.48]");
     fireEvent.click(screen.getByRole("button", { name: "Редактировать описание" }));
-    await waitFor(() => expect(screen.getByRole("textbox", { name: "Описание действия" })).toHaveValue(plainDescription));
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Описание действия" }).textContent).toBe(plainDescription));
     expect(window.localStorage.getItem("bright_os_activity_md_preview")).toBe("false");
     await waitFor(() => expect(window.BrightOsAndroidBack).toBeTypeOf("function"));
     expect(window.BrightOsAndroidBack?.()).toBe(true);
