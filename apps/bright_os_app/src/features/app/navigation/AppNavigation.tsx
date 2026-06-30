@@ -18,6 +18,9 @@ import type { PrimarySectionId, SectionId } from "../appModel";
 import { isPrimarySection, navHref, navItems, sectionTitle } from "../appModel";
 import { engineSectionView } from "../sections/engine/engineModel";
 
+const RAIL_FOOTER_ICON_ROW_CLASS = "flex h-8 w-full items-center rounded-md p-2 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2!";
+const RAIL_FOOTER_ICON_SLOT_CLASS = "grid size-4 shrink-0 place-items-center";
+
 export function DesktopRail({
   expanded,
   section,
@@ -74,7 +77,7 @@ export function DesktopRail({
         />
       </SidebarContent>
       <SidebarFooter>
-        <SidebarMenu>
+        <SidebarMenu className="gap-4">
           <EnvironmentBadgeMenuItem />
           <ConnectionStatusMenuItem status={syncStatus} pendingCount={pendingCount} />
           <EngineMenuItem
@@ -297,9 +300,11 @@ function EnvironmentBadgeMenuItem() {
   if (isProductionEnvironment() || !ENVIRONMENT_BADGE_LABEL) return null;
 
   return (
-    <SidebarMenuItem className="mb-3">
-      <span className="flex h-8 w-full items-center rounded-md pl-2 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:pl-0!">
-        <EnvironmentBadge label={ENVIRONMENT_BADGE_LABEL} className="h-6 min-w-6 px-1" />
+    <SidebarMenuItem>
+      <span className={RAIL_FOOTER_ICON_ROW_CLASS} title={`Превью ${ENVIRONMENT_BADGE_LABEL}`} aria-label={`Превью ${ENVIRONMENT_BADGE_LABEL}`}>
+        <span className="relative size-4 shrink-0">
+          <EnvironmentBadge label={ENVIRONMENT_BADGE_LABEL} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" />
+        </span>
       </span>
     </SidebarMenuItem>
   );
@@ -312,15 +317,16 @@ function ConnectionStatusMenuItem({ status, pendingCount }: { status: SyncStatus
     <SidebarMenuItem>
       <span
         className={cx(
-          "flex h-8 w-full items-center gap-2 rounded-md p-2 text-sm group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2!",
-          "[&>svg]:size-4 [&>svg]:shrink-0",
+          RAIL_FOOTER_ICON_ROW_CLASS,
           syncStatusIconToneClasses[tone],
         )}
         title={label}
         aria-label={label}
         role="status"
       >
-        <Icon className={cx(spinning && "animate-spin")} aria-hidden="true" />
+        <span className={RAIL_FOOTER_ICON_SLOT_CLASS}>
+          <Icon className={cx("size-4", spinning && "animate-spin")} aria-hidden="true" />
+        </span>
       </span>
     </SidebarMenuItem>
   );
