@@ -23,6 +23,37 @@ describe("BrightOsApp actions", () => {
     expect(screen.getByRole("checkbox", { name: "Фокус" })).toBeChecked();
   });
 
+  it("creates a mobile action with a description from the composer", async () => {
+    render(<BrightOsApp />);
+
+    fireEvent.click(document.querySelector(".actions-fab") as HTMLElement);
+    const title = screen.getByRole("textbox", { name: "Добавить действие" }) as HTMLTextAreaElement;
+    await waitFor(() => expect(title).toHaveFocus());
+    expect(title).toHaveAttribute("placeholder", "Что бы вы хотели сделать?");
+    expect(title).toHaveAttribute("enterkeyhint", "enter");
+
+    const description = screen.getByRole("textbox", { name: "Описание действия" }) as HTMLTextAreaElement;
+    expect(description).toHaveAttribute("placeholder", "");
+    fireEvent.focus(description);
+    expect(description).toHaveAttribute("placeholder", "Описание");
+    expect(document.querySelectorAll(".mobile-create-tool-icon svg")).toHaveLength(6);
+
+    fireEvent.change(title, { target: { value: " Большой план " } });
+    fireEvent.change(description, { target: { value: "Описание\nстрока 2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Добавить действие" }));
+
+    await waitFor(async () => {
+      expect(await pendingActivityEvents()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "create",
+            payload: { title: "Большой план", description_md: "Описание\nстрока 2" },
+          }),
+        ]),
+      );
+    });
+  });
+
   it("does not complete an action when its title is clicked", async () => {
     render(<BrightOsApp />);
     const input = screen.getByRole("textbox", { name: "Добавить" });

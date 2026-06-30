@@ -23,6 +23,7 @@ import {
   DetailPanelTabBar,
   type DetailPanelTab,
 } from "../DetailPanelTabs";
+import { MobileCreateComposer } from "../MobileCreateComposer";
 import { ActionsInfoPanel } from "../actions/ActionsInfoPanel";
 import { ACTION_DELETE_REVEAL_WIDTH, ACTION_ROW_SERVICE_SELECTOR, ACTIONS_SPLIT_DEFAULT_PERCENT, ACTIONS_SPLIT_MIN_PERCENT, clampActionsSplitPercent, loadActivityMarkdownPreviewMode, saveActivityMarkdownPreviewMode } from "../actions/constants";
 
@@ -41,7 +42,7 @@ export function InboxSection({
   state: InboxState;
   localSnapshotReady: boolean;
   autoFocusAddInput: boolean;
-  onCreate: (title: string) => Promise<void>;
+  onCreate: (title: string, descriptionMd?: string) => Promise<void>;
   onUpdateTitle: (item: InboxItem, title: string) => Promise<void>;
   onAutosaveDetails: (item: InboxItem, title: string, descriptionMd: string) => Promise<void>;
   onDelete: (item: InboxItem) => Promise<void>;
@@ -51,7 +52,6 @@ export function InboxSection({
   const [mobileCreateOpen, setMobileCreateOpen] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [mobileEditItemId, setMobileEditItemId] = useState<string | null>(null);
-  const [mobileDraft, setMobileDraft] = useState("");
   const [openDeleteItemId, setOpenDeleteItemId] = useState<string | null>(null);
   const [splitPercent, setSplitPercent] = useState(ACTIONS_SPLIT_DEFAULT_PERCENT);
   const [titleDrafts, setTitleDrafts] = useState<Record<string, string>>({});
@@ -59,7 +59,6 @@ export function InboxSection({
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const splitDragStyleRef = useRef<{ cursor: string; userSelect: string } | null>(null);
   const desktopInputRef = useRef<HTMLInputElement | null>(null);
-  const mobileInputRef = useRef<HTMLInputElement | null>(null);
   const suppressMobileCreatePopRef = useRef(false);
   const selectedItem = selectedItemId ? state.inbox.find((item) => item.id === selectedItemId) : null;
   const mobileEditItem = mobileEditItemId ? state.inbox.find((item) => item.id === mobileEditItemId) : null;
@@ -83,14 +82,6 @@ export function InboxSection({
     };
   }, [mobileOverlayOpen, onMobileOverlayChange]);
 
-  useEffect(() => {
-    if (!mobileCreateOpen) return;
-    const input = mobileInputRef.current;
-    if (!input) return;
-    input.focus();
-    input.setSelectionRange(input.value.length, input.value.length);
-  }, [mobileCreateOpen]);
-
   async function submitDesktop(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const title = cleanTitle(draft);
@@ -110,7 +101,6 @@ export function InboxSection({
 
   function openMobileCreate() {
     setOpenDeleteItemId(null);
-    setMobileDraft("");
     setMobileCreateOpen(true);
   }
 
@@ -148,17 +138,9 @@ export function InboxSection({
     if (focusDetailTitle === "end") setDetailTitleFocusRequest((current) => current + 1);
   }
 
-  async function submitMobile(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const title = cleanTitle(mobileDraft);
-    if (!title) return;
+  async function submitMobile(title: string, descriptionMd: string) {
     closeMobileCreate();
-    setMobileDraft("");
-    await onCreate(title);
-  }
-
-  function onMobileKeyDown(event: KeyboardEvent<HTMLInputElement>) {
-    if (event.key === "Escape") closeMobileCreate();
+    await onCreate(title, descriptionMd);
   }
 
   useEffect(() => {
@@ -361,35 +343,13 @@ export function InboxSection({
           data-nav-swipe-exclusion
           onClick={closeMobileCreate}
         >
-          <form
-            className="actions-mobile-editor grid min-h-[82px] w-full items-center rounded-t-2xl bg-card px-4 pb-3.5 pt-2.5 shadow-xl"
-            onClick={(event) => event.stopPropagation()}
+          <MobileCreateComposer
+            titleLabel="Добавить входящее"
+            descriptionLabel="Описание входящего"
+            submitLabel="Добавить входящее"
+            onCancel={closeMobileCreate}
             onSubmit={submitMobile}
-          >
-            <InputGroup className="actions-add-form">
-              <InputGroupInput
-                ref={mobileInputRef}
-                value={mobileDraft}
-                placeholder="Добавить входящее"
-                aria-label="Добавить входящее"
-                onChange={(event) => setMobileDraft(event.target.value)}
-                onKeyDown={onMobileKeyDown}
-              />
-              <InputGroupAddon align="inline-end">
-                <Button
-                  type="submit"
-                  variant="ghost"
-                  size="icon-sm"
-                  className="actions-add-submit text-muted-foreground hover:text-foreground"
-                  aria-label="Добавить входящее"
-                  title="Добавить входящее"
-                  disabled={!cleanTitle(mobileDraft)}
-                >
-                  <Plus aria-hidden="true" />
-                </Button>
-              </InputGroupAddon>
-            </InputGroup>
-          </form>
+          />
         </div>
       ) : null}
 

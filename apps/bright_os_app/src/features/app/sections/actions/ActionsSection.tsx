@@ -6,10 +6,10 @@ import { ChevronDown, Plus } from "lucide-react";
 import { installAndroidBackHandler } from "@/shared/platform/platform";
 import { cleanTitle } from "@/shared/activities/text";
 import type { ActivityItem, ActivitiesState, ActivityStatus } from "@/shared/types/activities";
-import { Button } from "@/shared/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/shared/ui/input-group";
 import { ScrollArea } from "@/shared/ui/scroll-area";
 import { cx } from "../../appUtils";
+import { MobileCreateComposer } from "../MobileCreateComposer";
 import { ActionRow, type DetailTitleFocus } from "./ActionRow";
 import { SortableActionList } from "./ActionList";
 import { ActionsInfoPanel } from "./ActionsInfoPanel";
@@ -32,7 +32,7 @@ export function ActionsSection({
   state: ActivitiesState;
   localSnapshotReady: boolean;
   autoFocusAddInput: boolean;
-  onCreate: (title: string) => Promise<void>;
+  onCreate: (title: string, descriptionMd?: string) => Promise<void>;
   onUpdateTitle: (action: ActivityItem, title: string) => Promise<void>;
   onAutosaveDetails: (action: ActivityItem, title: string, descriptionMd: string) => Promise<void>;
   onSetStatus: (action: ActivityItem, status: ActivityStatus) => Promise<void>;
@@ -44,7 +44,6 @@ export function ActionsSection({
   const [mobileCreateOpen, setMobileCreateOpen] = useState(false);
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
   const [mobileEditActionId, setMobileEditActionId] = useState<string | null>(null);
-  const [mobileDraft, setMobileDraft] = useState("");
   const [doneOpen, setDoneOpen] = useState(true);
   const [openDeleteActionId, setOpenDeleteActionId] = useState<string | null>(null);
   const [splitPercent, setSplitPercent] = useState(ACTIONS_SPLIT_DEFAULT_PERCENT);
@@ -54,7 +53,6 @@ export function ActionsSection({
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const splitDragStyleRef = useRef<{ cursor: string; userSelect: string } | null>(null);
   const desktopInputRef = useRef<HTMLInputElement | null>(null);
-  const mobileInputRef = useRef<HTMLInputElement | null>(null);
   const newActions = state.actions.filter((action) => action.status === "New");
   const doneActions = state.actions.filter((action) => action.status === "Done");
   const selectedAction = selectedActionId ? state.actions.find((action) => action.id === selectedActionId) : null;
@@ -81,15 +79,6 @@ export function ActionsSection({
     };
   }, [mobileOverlayOpen, onMobileOverlayChange]);
 
-  useEffect(() => {
-    if (!mobileCreateOpen) return;
-    const input = mobileInputRef.current;
-    if (!input) return;
-    input.focus();
-    const end = input.value.length;
-    input.setSelectionRange(end, end);
-  }, [mobileCreateOpen]);
-
   function closeOpenDeleteFromOutside(event: MouseEvent<HTMLElement>) {
     if (!visibleOpenDeleteActionId) return;
     const target = event.target instanceof Element ? event.target : null;
@@ -109,7 +98,6 @@ export function ActionsSection({
 
   function openMobileCreate() {
     setOpenDeleteActionId(null);
-    setMobileDraft("");
     setMobileCreateOpen(true);
   }
 
@@ -147,19 +135,9 @@ export function ActionsSection({
     if (focusDetailTitle === "end") setDetailTitleFocusRequest((current) => current + 1);
   }
 
-  async function submitMobile(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const title = cleanTitle(mobileDraft);
-    if (!title) return;
+  async function submitMobile(title: string, descriptionMd: string) {
     closeMobileCreate();
-    setMobileDraft("");
-    await onCreate(title);
-  }
-
-  function onMobileKeyDown(event: KeyboardEvent<HTMLInputElement>) {
-    if (event.key === "Escape") {
-      closeMobileCreate();
-    }
+    await onCreate(title, descriptionMd);
   }
 
   useEffect(() => {
@@ -400,35 +378,13 @@ export function ActionsSection({
           data-nav-swipe-exclusion
           onClick={closeMobileCreate}
         >
-          <form
-            className="actions-mobile-editor grid min-h-[82px] w-full items-center rounded-t-2xl bg-card px-4 pb-3.5 pt-2.5 shadow-xl"
-            onClick={(event) => event.stopPropagation()}
+          <MobileCreateComposer
+            titleLabel="Добавить действие"
+            descriptionLabel="Описание действия"
+            submitLabel="Добавить действие"
+            onCancel={closeMobileCreate}
             onSubmit={submitMobile}
-          >
-            <InputGroup className="actions-add-form">
-              <InputGroupInput
-                ref={mobileInputRef}
-                value={mobileDraft}
-                placeholder="Добавить действие"
-                aria-label="Добавить действие"
-                onChange={(event) => setMobileDraft(event.target.value)}
-                onKeyDown={onMobileKeyDown}
-              />
-              <InputGroupAddon align="inline-end">
-                <Button
-                  type="submit"
-                  variant="ghost"
-                  size="icon-sm"
-                  className="actions-add-submit text-muted-foreground hover:text-foreground"
-                  aria-label="Добавить действие"
-                  title="Добавить действие"
-                  disabled={!cleanTitle(mobileDraft)}
-                >
-                  <Plus aria-hidden="true" />
-                </Button>
-              </InputGroupAddon>
-            </InputGroup>
-          </form>
+          />
         </div>
       ) : null}
 

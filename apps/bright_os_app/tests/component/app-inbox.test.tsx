@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { BrightOsApp } from "@/features/app/BrightOsApp";
 import { pendingInboxEvents, saveInboxState } from "@/shared/storage/inboxStore";
@@ -6,6 +6,36 @@ import { setupBrightOsAppTest } from "./app-test-support";
 
 describe("BrightOsApp inbox", () => {
   setupBrightOsAppTest();
+
+  it("creates a mobile inbox item with a description from the composer", async () => {
+    render(<BrightOsApp />);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Входящие" }).at(-1) as HTMLElement);
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Входящие" })).toBeInTheDocument());
+    fireEvent.click(document.querySelector(".actions-fab") as HTMLElement);
+    const overlay = within(document.querySelector(".actions-mobile-overlay") as HTMLElement);
+
+    const title = overlay.getByRole("textbox", { name: "Добавить входящее" }) as HTMLTextAreaElement;
+    await waitFor(() => expect(title).toHaveFocus());
+    expect(title).toHaveAttribute("enterkeyhint", "enter");
+
+    const description = overlay.getByRole("textbox", { name: "Описание входящего" });
+    fireEvent.focus(description);
+    fireEvent.change(title, { target: { value: " Новое письмо " } });
+    fireEvent.change(description, { target: { value: "Контекст письма" } });
+    fireEvent.click(overlay.getByRole("button", { name: "Добавить входящее" }));
+
+    await waitFor(async () => {
+      expect(await pendingInboxEvents()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "create",
+            payload: { title: "Новое письмо", description_md: "Контекст письма" },
+          }),
+        ]),
+      );
+    });
+  });
 
   it("opens Входящие from the main dock and creates an incoming item without action statuses", async () => {
     vi.stubGlobal(

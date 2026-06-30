@@ -52,7 +52,8 @@ test("opens mobile action input overlay from the floating plus button", async ({
   await expect(page.getByRole("navigation", { name: "Основная навигация" })).toBeHidden();
 
   const editor = await page.locator(".actions-mobile-editor").boundingBox();
-  expect(editor?.height ?? 999).toBeLessThanOrEqual(96);
+  expect(editor?.height ?? 0).toBeGreaterThan(150);
+  expect(editor?.height ?? 999).toBeLessThanOrEqual(220);
 
   await expect.poll(() => page.evaluate(() => (window as Window & { BrightOsAndroidBack?: () => boolean }).BrightOsAndroidBack?.())).toBe(true);
   await expect(page.locator(".actions-mobile-overlay")).toHaveCount(0);
