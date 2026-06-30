@@ -4,7 +4,7 @@ import type { CSSProperties, HTMLAttributes, KeyboardEvent, MouseEvent, PointerE
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Square, Timer, Trash2, Undo2 } from "lucide-react";
 import { useSwipeable } from "react-swipeable";
-import { cleanTitle, singleLineTitle, visibleDescriptionPreview } from "@/shared/activities/text";
+import { cleanTitle, limitTitle, visibleDescriptionPreview } from "@/shared/activities/text";
 import type { ActivityItem, ActivityStatus } from "@/shared/types/activities";
 import { formatHourMinute } from "@/shared/time/format";
 import { Checkbox } from "@/shared/ui/checkbox";
@@ -180,7 +180,7 @@ export function ActionRow({
     <div
       ref={setActionRowRef}
       className={cx(
-        "action-row group relative min-h-[54px] max-h-[220px] overflow-hidden border-b border-border transition-[max-height,opacity,border-color,box-shadow] duration-150 [&:has(+_.action-row.selected)]:border-b-transparent max-[860px]:[touch-action:pan-y]",
+        "action-row group relative grid min-h-[54px] max-h-[220px] grid-cols-[minmax(0,1fr)_44px] items-stretch overflow-hidden border-b border-border transition-[max-height,opacity,border-color,box-shadow] duration-150 [&:has(+_.action-row.selected)]:border-b-transparent max-[860px]:grid-cols-[minmax(0,1fr)_46px] max-[860px]:select-none max-[860px]:[touch-action:pan-y]",
         done && "done",
         action.pending && "pending opacity-80",
         deleteOpen && "delete-open",
@@ -363,7 +363,7 @@ function ActionTitleEditor({
 
   function onInput() {
     titleRef.current?.animate?.([{ opacity: 0.72 }, { opacity: 1 }], { duration: 140, easing: "ease-out" });
-    const nextTitle = singleLineTitle(titleRef.current?.textContent ?? "");
+    const nextTitle = limitTitle(titleRef.current?.textContent ?? "");
     if (titleRef.current && titleRef.current.textContent !== nextTitle) titleRef.current.textContent = nextTitle;
     onTitleDraftChange(action.id, nextTitle);
   }
