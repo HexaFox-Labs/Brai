@@ -327,11 +327,16 @@ test("opens the mobile bottom-sheet activity detail editor", async ({ page }, te
   expect(editor?.height ?? 999).toBeLessThanOrEqual((viewport?.height ?? 0) + 1);
   expect((editor?.y ?? 0) + (editor?.height ?? 0)).toBeGreaterThanOrEqual((viewport?.height ?? 0) - 1);
   await expect(editorLocator).toHaveCSS("border-top-width", "1px");
+  const grabberBox = await editorLocator.locator(".actions-detail-grabber").boundingBox();
   const tabsBox = await editorLocator.locator(".actions-detail-tabs").boundingBox();
   const detailTitle = page.getByRole("textbox", { name: "Название действия", exact: true });
   const titleBox = await detailTitle.boundingBox();
   await expect(detailTitle).toHaveValue(longTitle);
+  await expect(editorLocator.locator(".actions-detail-tabs")).toHaveCSS("border-bottom-width", "1px");
+  expect((tabsBox?.y ?? 0) - ((grabberBox?.y ?? 0) + (grabberBox?.height ?? 0))).toBeLessThanOrEqual(16);
   expect(tabsBox?.y ?? 0).toBeLessThan(titleBox?.y ?? 0);
+  expect((titleBox?.y ?? 0) - ((tabsBox?.y ?? 0) + (tabsBox?.height ?? 0))).toBeGreaterThanOrEqual(5);
+  expect((titleBox?.y ?? 0) - ((tabsBox?.y ?? 0) + (tabsBox?.height ?? 0))).toBeLessThanOrEqual(10);
   expect(titleBox?.height ?? 0).toBeGreaterThan(44);
   await expect(editorLocator.locator(".actions-detail-header .actions-detail-preview-toggle")).toHaveCount(0);
   await expect(editorLocator.locator(".actions-detail-description-scroll .actions-detail-preview-toggle")).toBeVisible();

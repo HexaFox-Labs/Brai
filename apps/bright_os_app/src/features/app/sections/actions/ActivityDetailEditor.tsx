@@ -80,6 +80,14 @@ export function ActivityDetailEditor({
   }, [title]);
 
   useEffect(() => {
+    const node = titleRef.current;
+    if (!node || typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(() => fitTextareaHeight(node));
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
     function flushOnHide() {
       autosave.flush();
     }
@@ -254,7 +262,7 @@ export function ActivityDetailEditor({
       ref={titleRef}
       className={cx(
         "actions-detail-title block w-full min-w-0 resize-none overflow-hidden border-0 bg-transparent p-0 font-semibold leading-[1.18] tracking-normal text-foreground [overflow-wrap:anywhere] focus:outline-0",
-        mode === "mobile" ? "min-h-0 text-xl" : "min-h-11 text-2xl",
+        mode === "mobile" ? "mt-1.5 min-h-0 text-xl" : "mt-3 min-h-11 text-2xl",
       )}
       value={title}
       rows={1}
@@ -267,14 +275,14 @@ export function ActivityDetailEditor({
   const dragHeader = (
     <header
       className={cx(
-        "actions-detail-header flex min-h-9 items-center gap-3",
-        mode === "desktop" && "justify-end",
-        mode === "mobile" && "relative h-4 min-h-4 justify-center pt-0",
+        "actions-detail-header flex items-center gap-3",
+        mode === "desktop" && "min-h-9 justify-end",
+        mode === "mobile" && "relative h-3 min-h-3 justify-center pt-0",
       )}
     >
       {mode === "mobile" ? (
         <div
-          className="actions-detail-drag-zone absolute left-1/2 top-0 flex h-4 w-32 -translate-x-1/2 touch-none cursor-grab items-start justify-center pt-1 active:cursor-grabbing"
+          className="actions-detail-drag-zone absolute left-1/2 top-0 flex h-3 w-32 -translate-x-1/2 touch-none cursor-grab items-start justify-center pt-0.5 active:cursor-grabbing"
         >
           <span
             className="actions-detail-grabber h-1 w-11 rounded-full bg-muted-foreground/30"
@@ -288,7 +296,7 @@ export function ActivityDetailEditor({
   const editorBody = (
     <>
       {dragHeader}
-      <DetailPanelTabBar activeTab={activeTab} className="mt-0 border-b-0" onChange={setActiveTab} />
+      <DetailPanelTabBar activeTab={activeTab} className="mt-0" onChange={setActiveTab} />
       {detailTitle}
       <div className="h-px bg-border" aria-hidden="true" />
       {detailContent}
@@ -301,7 +309,7 @@ export function ActivityDetailEditor({
         <div ref={backdropRef} className="absolute inset-0 bg-foreground/20 dark:bg-background/80" style={backdropStyle} aria-hidden="true" />
         <aside
           ref={sheetRef}
-          className="actions-detail-panel mobile absolute inset-x-0 bottom-0 top-[env(safe-area-inset-top)] z-[1] grid min-h-0 min-w-0 grid-rows-[auto_auto_auto_auto_minmax(0,1fr)] gap-1 overflow-hidden rounded-t-2xl border-t border-border bg-card px-[18px] pb-[env(safe-area-inset-bottom)] pt-1 shadow-xl animate-[mobile-detail-sheet-in_180ms_ease-out] will-change-transform"
+          className="actions-detail-panel mobile absolute inset-x-0 bottom-0 top-[env(safe-area-inset-top)] z-[1] grid min-h-0 min-w-0 grid-rows-[auto_auto_auto_auto_minmax(0,1fr)] gap-0 overflow-hidden rounded-t-2xl border-t border-border bg-card px-[18px] pb-[env(safe-area-inset-bottom)] pt-1 shadow-xl animate-[mobile-detail-sheet-in_180ms_ease-out] will-change-transform"
           style={{ ...mobileSheetStyle, top: mobileSheetTop } as CSSProperties}
           aria-label="Редактирование действия"
           onKeyDown={onKeyDown}
@@ -315,7 +323,7 @@ export function ActivityDetailEditor({
 
   return (
     <aside
-      className="actions-detail-panel desktop grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_auto_auto_minmax(0,1fr)] gap-2 overflow-hidden pl-7 pr-7 max-[860px]:hidden"
+      className="actions-detail-panel desktop grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_auto_auto_minmax(0,1fr)] gap-0 overflow-y-auto overflow-x-hidden pl-7 pr-7 max-[860px]:hidden"
       aria-label="Редактирование действия"
       data-nav-swipe-exclusion
       onKeyDown={onKeyDown}

@@ -56,7 +56,7 @@ export function ActionsSection({
   const [detailTitleFocusRequest, setDetailTitleFocusRequest] = useState(0);
   const suppressMobileCreatePopRef = useRef(false);
   const workspaceRef = useRef<HTMLDivElement | null>(null);
-  const splitDragStyleRef = useRef<{ cursor: string; userSelect: string } | null>(null);
+  const splitDragStyleRef = useRef<{ userSelect: string } | null>(null);
   const desktopInputRef = useRef<HTMLInputElement | null>(null);
   const newActions = state.actions.filter((action) => action.status === "New");
   const doneActions = state.actions.filter((action) => action.status === "Done");
@@ -183,10 +183,8 @@ export function ActionsSection({
     if (!workspace) return;
     event.preventDefault();
     splitDragStyleRef.current = {
-      cursor: document.documentElement.style.cursor,
       userSelect: document.body.style.userSelect,
     };
-    document.documentElement.style.cursor = "ew-resize";
     document.body.style.userSelect = "none";
     event.currentTarget.setPointerCapture(event.pointerId);
   }
@@ -206,7 +204,6 @@ export function ActionsSection({
     }
     const previous = splitDragStyleRef.current;
     if (!previous) return;
-    document.documentElement.style.cursor = previous.cursor;
     document.body.style.userSelect = previous.userSelect;
     splitDragStyleRef.current = null;
   }

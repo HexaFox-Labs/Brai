@@ -63,7 +63,7 @@ export function DetailPanelTabBar({
           key={tab.id}
           type="button"
           className={cn(
-            "h-8 shrink-0 border-b-2 border-transparent px-2.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-0 focus-visible:ring-2 focus-visible:ring-ring",
+            "-mb-px h-8 shrink-0 border-b-2 border-transparent px-2.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-0 focus-visible:ring-2 focus-visible:ring-ring",
             activeTab === tab.id && "border-primary text-foreground",
           )}
           role="tab"

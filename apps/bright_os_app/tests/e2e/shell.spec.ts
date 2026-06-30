@@ -570,7 +570,7 @@ test("reorders mobile actions by long-pressing a row", async ({ page }, testInfo
 test("opens the desktop activity description split panel", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "desktop-only detail panel");
 
-  const title = "Пересобрать механизм страницы Действий";
+  const title = "Пересобрать механизм страницы Действий с длинным заголовком который должен быть виден полностью";
   await page.goto("/");
   await expect
     .poll(() =>
@@ -588,6 +588,8 @@ test("opens the desktop activity description split panel", async ({ page }, test
   const detailTitle = page.getByRole("textbox", { name: "Название действия", exact: true });
   await expect(detailTitle).toHaveCSS("white-space", "pre-wrap");
   await expect(detailTitle).toHaveCSS("overflow-wrap", "anywhere");
+  await expect.poll(() => detailTitle.evaluate((node) => node.scrollHeight <= node.clientHeight + 1)).toBe(true);
+  await expect(page.locator(".actions-detail-tabs")).toHaveCSS("border-bottom-width", "1px");
   const workspace = await page.locator(".actions-workspace").boundingBox();
   const listPane = await page.locator(".actions-list-pane").boundingBox();
   const panel = await page.locator(".actions-detail-panel.desktop").boundingBox();
@@ -603,6 +605,7 @@ test("opens the desktop activity description split panel", async ({ page }, test
   const resizer = await page.locator(".actions-split-resizer").boundingBox();
   expect(resizer).not.toBeNull();
   await expect(page.locator(".actions-split-resizer")).toHaveCSS("cursor", "ew-resize");
+  await expect(page.locator(".desktop-rail")).not.toHaveCSS("cursor", "ew-resize");
   const resizerCursors = await page.locator(".actions-split-resizer").evaluate((node) => {
     const rect = node.getBoundingClientRect();
     return [2, rect.width / 2, rect.width - 2].map((offset) => {
@@ -615,6 +618,8 @@ test("opens the desktop activity description split panel", async ({ page }, test
   await page.mouse.down();
   await page.mouse.move((workspace?.x ?? 0) + (workspace?.width ?? 0) * 0.3, (resizer?.y ?? 0) + (resizer?.height ?? 0) / 2);
   await page.mouse.up();
+  await expect.poll(() => page.evaluate(() => document.documentElement.style.cursor)).not.toBe("ew-resize");
+  await expect.poll(() => detailTitle.evaluate((node) => node.scrollHeight <= node.clientHeight + 1)).toBe(true);
   await expect.poll(async () => ((await page.locator(".actions-list-pane").boundingBox())?.width ?? 0) / ((await page.locator(".actions-workspace").boundingBox())?.width ?? 1)).toBeGreaterThan(0.29);
   await expect.poll(async () => ((await page.locator(".actions-list-pane").boundingBox())?.width ?? 0) / ((await page.locator(".actions-workspace").boundingBox())?.width ?? 1)).toBeLessThan(0.31);
   await page.getByRole("button", { name: "Закрыть редактор" }).click();
