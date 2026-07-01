@@ -19,7 +19,7 @@
 - Future work starts from `origin/main` on `codex/*` branches.
 - Task branches do not add `build_versions` rows by themselves.
 - Accepted working-branch merges into `main` add one `build` row and increment only the `build` counter.
-- Build ledger `short_changes` and `detailed_changes` are human-readable release notes; `reason` explains the problem or need behind the change; branch/commit/deploy audit metadata belongs in `build_version_refs` or `deployment_records`.
+- Build ledger `short_changes`, `detailed_changes`, and `reason` are written in Russian; `short_changes` and `detailed_changes` are human-readable release notes; `reason` explains the problem or need behind the change; branch/commit/deploy audit metadata belongs in `build_version_refs` or `deployment_records`.
 - Production deploys do not create `release` or `canon` rows automatically.
 - `release` rows are created only by explicit command and link unlinked `build` rows plus the current `apk` row through `included_in_version_id`.
 - `canon` rows are created only by explicit command and link unlinked `release` rows through `included_in_version_id`.

@@ -8,6 +8,7 @@ Bright OS version rows use four `version_type_id` values: `apk`, `build`, `relea
 - `release` rows are created only by explicit command; a release links all unlinked `build` rows and the current `apk` row through `included_in_version_id`.
 - `canon` rows are created only by explicit command; a canon links all unlinked `release` rows through `included_in_version_id`.
 - APK rows are created only by explicit APK ledger recording for an intentional public APK release; routine production/native rebuilds must not increment `apk`.
+- Visible `build_versions.short_changes`, `build_versions.detailed_changes`, and `build_versions.reason` text is written in Russian.
 - Branch names, commits, domains, and deploy metadata belong in `build_version_refs` or `deployment_records`, not visible release-note text.
 
 Build and publish a release APK only when native Android code, Capacitor config, permissions, signing, manifest values, application id, SDK versions, icons, splash assets, native plugins, or native compatibility boundaries change.
