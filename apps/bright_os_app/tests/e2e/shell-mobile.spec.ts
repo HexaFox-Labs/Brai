@@ -1,14 +1,16 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { createMobileAction, dispatchElementTouch, dispatchTouch, dragTouch, horizontalCenterOffset, openProfileMenuItem, swipeActionRowLeft, swipeTouch } from "./shell-helpers";
 
-test("opens the empty mobile burger drawer and the populated left rail drawer", async ({ page }, testInfo) => {
+test("opens the same mobile left menu from the header and bottom-left button", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "mobile", "mobile-only drawer");
 
   await page.goto("/");
   await page.locator(".section-page-current .mobile-menu-button").click();
   await expect(page.locator(".mobile-menu-backdrop")).toBeVisible();
-  await expect(page.locator(".mobile-profile-drawer")).not.toContainText("Workspace");
-  await expect(page.locator(".mobile-profile-drawer").getByRole("button", { name: /Engine/ })).toHaveCount(0);
+  await expect(page.locator(".mobile-profile-drawer")).toContainText("Workspace");
+  await expect(page.locator(".mobile-profile-drawer")).not.toContainText("Platform");
+  await expect(page.locator(".mobile-profile-drawer")).not.toContainText("Time");
+  await expect(page.locator(".mobile-profile-drawer").getByRole("button", { name: /Engine/ })).toBeVisible();
   await page.locator(".mobile-menu-backdrop").click({ position: { x: 360, y: 120 } });
   await expect(page.locator(".mobile-menu-backdrop")).toHaveCount(0);
 
@@ -48,6 +50,11 @@ test("opens Settings from the mobile action rail", async ({ page }, testInfo) =>
 
   await expect(page.locator(".mobile-menu-backdrop")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Настройки" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Открыть левое меню" }).click();
+  await expect(page.locator(".mobile-profile-drawer")).toContainText("Workspace");
+  await expect(page.getByRole("button", { name: "Архив" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Engine/ })).toBeVisible();
 });
 
 test("opens mobile action input overlay from the floating plus button", async ({ page }, testInfo) => {

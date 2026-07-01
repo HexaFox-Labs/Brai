@@ -862,9 +862,15 @@ describe("BrightOsApp shell", () => {
     fireEvent.click(screen.getByRole("button", { name: "Открыть меню" }));
     expect(document.querySelector(".mobile-menu-backdrop")).toBeInTheDocument();
     expect(document.querySelector(".mobile-menu-backdrop > div")).toHaveClass("bg-foreground/15", "dark:bg-background/80");
-    expect(document.querySelector(".mobile-profile-drawer")).not.toHaveTextContent("Workspace");
-    expect(document.querySelector(".mobile-profile-drawer")).not.toHaveTextContent("Настройки");
-    expect(document.querySelector(".mobile-profile-drawer")).not.toHaveTextContent("Архив");
+    expect(document.querySelector(".mobile-profile-drawer")).toHaveTextContent("Workspace");
+    expect(document.querySelector(".mobile-profile-drawer")).toHaveTextContent("Меню страницы");
+    expect(document.querySelector(".mobile-profile-drawer")).toHaveTextContent("Действия");
+    expect(document.querySelector(".mobile-profile-drawer")).not.toHaveTextContent("Platform");
+    expect(document.querySelector(".mobile-profile-drawer")).not.toHaveTextContent("Time");
+    expect(document.querySelector(".mobile-profile-drawer")).not.toHaveTextContent("Фокус");
+    expect(within(document.querySelector(".mobile-profile-drawer") as HTMLElement).getByRole("button", { name: "Настройки" })).toBeInTheDocument();
+    expect(within(document.querySelector(".mobile-profile-drawer") as HTMLElement).getByRole("button", { name: "Архив" })).toBeInTheDocument();
+    expect(within(document.querySelector(".mobile-profile-drawer") as HTMLElement).getByRole("button", { name: "Выйти" })).toBeInTheDocument();
 
     fireEvent.click(document.querySelector(".mobile-menu-backdrop") as HTMLElement);
     await waitFor(() => expect(document.querySelector(".mobile-menu-backdrop")).not.toBeInTheDocument());
@@ -895,6 +901,14 @@ describe("BrightOsApp shell", () => {
     expect(document.querySelector(".mobile-profile-drawer")).toHaveTextContent("Действия");
     expect(within(document.querySelector(".mobile-profile-drawer") as HTMLElement).getByRole("button", { name: "Настройки" })).toBeInTheDocument();
     expect(within(document.querySelector(".mobile-profile-drawer") as HTMLElement).getByRole("button", { name: /Engine/ })).toBeInTheDocument();
+
+    fireEvent.click(within(document.querySelector(".mobile-profile-drawer") as HTMLElement).getByRole("button", { name: "Настройки" }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Настройки" })).toBeInTheDocument());
+    await waitFor(() => expect(document.querySelector(".mobile-menu-backdrop")).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Открыть левое меню" }));
+    expect(document.querySelector(".mobile-menu-backdrop")).toBeInTheDocument();
+    expect(document.querySelector(".mobile-profile-drawer")).toHaveTextContent("Workspace");
+    expect(within(document.querySelector(".mobile-profile-drawer") as HTMLElement).getByRole("button", { name: "Архив" })).toBeInTheDocument();
   });
 });
 

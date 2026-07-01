@@ -47,10 +47,11 @@ The Next.js client SHALL treat narrow Android phone viewports as a primary suppo
 - **AND** desktop-sized web viewports use the left rail for the same primary items
 - **AND** `Действия` is the first primary navigation item
 
-#### Scenario: Mobile Actions profile drawer is opened
+#### Scenario: Mobile left menu is opened from the header
 - **WHEN** the client is shown on an Android-sized viewport
 - **AND** the user opens the menu from the Actions page header
-- **THEN** an empty left drawer opens over the content with a backdrop
+- **THEN** the shared left rail drawer opens over the content with a backdrop
+- **AND** the drawer shows the same menu items as the bottom-left left rail menu
 - **AND** tapping outside the drawer closes it
 - **AND** horizontal tab swipes are disabled while the drawer is open
 
@@ -58,7 +59,8 @@ The Next.js client SHALL treat narrow Android phone viewports as a primary suppo
 - **WHEN** the client is shown on an Android-sized viewport
 - **AND** the user taps the bottom-left three-dot menu button
 - **THEN** a left rail drawer opens over the content with a backdrop
-- **AND** the drawer shows the same menu items that were available in the previous mobile profile drawer
+- **AND** the drawer shows the same menu items on every page, including `Workspace`, `Настройки`, `Архив`, `Выйти`, and `Engine`
+- **AND** access to settings and the other drawer actions is available outside the primary bottom tabs
 - **AND** tapping outside the drawer closes it
 - **AND** horizontal tab swipes are disabled while the drawer is open
 

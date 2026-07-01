@@ -110,7 +110,6 @@ export function MobileRailMenuButton({ hidden, onClick }: { hidden: boolean; onC
 }
 
 export function MobileProfileDrawer({
-  mode,
   section,
   appVersionState,
   otaRefreshing,
@@ -123,7 +122,6 @@ export function MobileProfileDrawer({
   onArchive,
   onLogout,
 }: {
-  mode: "rail" | "empty";
   section: SectionId;
   appVersionState: AppVersionState | null;
   otaRefreshing: boolean;
@@ -202,27 +200,23 @@ export function MobileProfileDrawer({
         {...sheetDragHandlers}
         onClick={(event) => event.stopPropagation()}
       >
-        {mode === "rail" ? (
-          <>
-            <ProfileMenu />
-            <div className="flex min-h-0 flex-1 flex-col">
-              <PageMenu
-                forceActionMenu
-                expanded
-                section={section}
-                appVersionState={appVersionState}
-                otaRefreshing={otaRefreshing}
-                otaState={otaState}
-                versionError={versionError}
-                versionRefreshing={versionRefreshing}
-                onSettings={() => closeThen(onSettings)}
-                onEngine={() => closeThen(onEngine)}
-                onArchive={() => closeThen(onArchive)}
-                onLogout={() => closeThenAsync(onLogout)}
-              />
-            </div>
-          </>
-        ) : null}
+        <ProfileMenu />
+        <div className="flex min-h-0 flex-1 flex-col">
+          <PageMenu
+            forceActionMenu
+            expanded
+            section={section}
+            appVersionState={appVersionState}
+            otaRefreshing={otaRefreshing}
+            otaState={otaState}
+            versionError={versionError}
+            versionRefreshing={versionRefreshing}
+            onSettings={() => closeThen(onSettings)}
+            onEngine={() => closeThen(onEngine)}
+            onArchive={() => closeThen(onArchive)}
+            onLogout={() => closeThenAsync(onLogout)}
+          />
+        </div>
       </aside>
     </div>
   );
