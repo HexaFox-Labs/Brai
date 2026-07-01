@@ -9,6 +9,7 @@ import {
   CODEX_BRANCH_RE,
   analyzeHookInput,
   classifyDelivery,
+  deliveryHandoff,
   deliveryClassForFile,
   dependencySourceRoot,
   deriveTaskState,
@@ -573,7 +574,10 @@ test("task starter ignores squash-merged infra docs branches with delivery recei
             branch,
             commit: git(["rev-parse", "HEAD"], taskPath).stdout.trim(),
             deliveryClass: "infra-docs",
+            prNumber: 7,
+            prUrl: "https://github.example/pr/7",
             prState: "MERGED",
+            mergedAt: "2026-06-26T00:00:00Z",
             runId: 123,
             verifiedAt: "2026-06-26T00:00:00.000Z",
           })}\n`,
@@ -585,6 +589,64 @@ test("task starter ignores squash-merged infra docs branches with delivery recei
     assert.deepEqual(findOpenTaskForThread(parent, "thread-a", "codex/new-task"), {
       branch: "codex/open-task",
       path: open,
+    });
+  } finally {
+    process.chdir(previous);
+  }
+});
+
+test("task starter does not ignore infra docs delivery receipt for the wrong commit", () => {
+  const control = fs.mkdtempSync(path.join(os.tmpdir(), "bright-task-control-"));
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), "bright-task-wrong-receipt-"));
+  const taskPath = path.join(parent, "wrong-receipt-task");
+  const previous = process.cwd();
+  try {
+    git(["init"], control);
+    git(["config", "user.email", "test@example.invalid"], control);
+    git(["config", "user.name", "Bright Test"], control);
+    fs.writeFileSync(path.join(control, "base.txt"), "base\n");
+    git(["add", "base.txt"], control);
+    git(["commit", "-m", "base"], control);
+    git(["update-ref", "refs/remotes/origin/main", "HEAD"], control);
+
+    fs.mkdirSync(taskPath, { recursive: true });
+    git(["init"], taskPath);
+    git(["config", "user.email", "test@example.invalid"], taskPath);
+    git(["config", "user.name", "Bright Test"], taskPath);
+    fs.writeFileSync(path.join(taskPath, "change.txt"), "change\n");
+    git(["add", "change.txt"], taskPath);
+    git(["commit", "-m", "change"], taskPath);
+    fs.mkdirSync(path.join(taskPath, ".bright-task"));
+    fs.writeFileSync(
+      path.join(taskPath, ".bright-task", "task.json"),
+      `${JSON.stringify({
+        branch: "codex/wrong-receipt",
+        mode: "new",
+        base: "1111111111111111111111111111111111111111",
+        createdAt: "2026-06-26T00:00:00.000Z",
+        threadId: "thread-a",
+      })}\n`,
+    );
+    fs.writeFileSync(
+      path.join(taskPath, ".bright-task", "delivery-handoff.json"),
+      `${JSON.stringify({
+        receiptType: "bright-delivery-handoff-v1",
+        branch: "codex/wrong-receipt",
+        commit: "2222222222222222222222222222222222222222",
+        deliveryClass: "infra-docs",
+        prNumber: 7,
+        prUrl: "https://github.example/pr/7",
+        prState: "MERGED",
+        mergedAt: "2026-06-26T00:00:00Z",
+        runId: 123,
+        verifiedAt: "2026-06-26T00:00:00.000Z",
+      })}\n`,
+    );
+
+    process.chdir(control);
+    assert.deepEqual(findOpenTaskForThread(parent, "thread-a", "codex/new-task"), {
+      branch: "codex/wrong-receipt",
+      path: taskPath,
     });
   } finally {
     process.chdir(previous);
@@ -635,6 +697,10 @@ test("delivery receipts must match exact branch, head, and class", () => {
     branch: "codex/foo",
     commit: "1111111111111111111111111111111111111111",
     deliveryClass: "infra-docs",
+    prNumber: 7,
+    prUrl: "https://github.example/pr/7",
+    prState: "MERGED",
+    mergedAt: "2026-06-26T00:00:00Z",
     runId: 123,
     verifiedAt: "2026-06-26T00:00:00.000Z",
   };
@@ -643,6 +709,10 @@ test("delivery receipts must match exact branch, head, and class", () => {
   assert.match(validateDeliveryReceipt({ ...receipt, branch: "codex/bar" }, "codex/foo", receipt.commit).message, /codex\/bar/);
   assert.match(validateDeliveryReceipt({ ...receipt, commit: "2222" }, "codex/foo", receipt.commit).message, /2222/);
   assert.match(validateDeliveryReceipt({ ...receipt, deliveryClass: "runtime-preview" }, "codex/foo", receipt.commit).message, /runtime-preview/);
+  assert.match(validateDeliveryReceipt({ ...receipt, prNumber: "" }, "codex/foo", receipt.commit).message, /PR number/);
+  assert.match(validateDeliveryReceipt({ ...receipt, prUrl: "" }, "codex/foo", receipt.commit).message, /PR URL/);
+  assert.match(validateDeliveryReceipt({ ...receipt, prState: "OPEN" }, "codex/foo", receipt.commit).message, /not MERGED/);
+  assert.match(validateDeliveryReceipt({ ...receipt, mergedAt: "" }, "codex/foo", receipt.commit).message, /timestamp/);
 });
 
 test("acceptance markers block preview acceptance but not infra docs CI fixes", () => {
@@ -756,6 +826,27 @@ test("task state allows infra-docs work with exact delivery receipt", () => {
         branch: "codex/foo",
         commit: head,
         deliveryClass: "infra-docs",
+        prNumber: 7,
+        prUrl: "https://github.example/pr/7",
+        prState: "OPEN",
+        mergedAt: "2026-06-26T00:00:00Z",
+        runId: 123,
+        verifiedAt: "2026-06-26T00:00:00.000Z",
+      })}\n`,
+    );
+    assert.equal(deriveTaskState().ok, false);
+
+    fs.writeFileSync(
+      path.join(repo, ".bright-task", "delivery-handoff.json"),
+      `${JSON.stringify({
+        receiptType: "bright-delivery-handoff-v1",
+        branch: "codex/foo",
+        commit: head,
+        deliveryClass: "infra-docs",
+        prNumber: 7,
+        prUrl: "https://github.example/pr/7",
+        prState: "MERGED",
+        mergedAt: "2026-06-26T00:00:00Z",
         runId: 123,
         verifiedAt: "2026-06-26T00:00:00.000Z",
       })}\n`,
@@ -764,6 +855,62 @@ test("task state allows infra-docs work with exact delivery receipt", () => {
   } finally {
     process.chdir(previous);
   }
+});
+
+test("delivery handoff blocks open infra-docs PRs without writing a receipt", () => {
+  for (const mergeStateStatus of ["BEHIND", "BLOCKED", "DIRTY"]) {
+    const fixture = setupInfraDocsHandoffFixture({ prState: "OPEN", mergeStateStatus, autoMerge: true });
+    const result = runDeliveryHandoffFixture(fixture);
+    const output = result.stderr || result.stdout;
+
+    assert.notEqual(result.status, 0);
+    assert.match(output, /not complete until its PR is merged/, JSON.stringify({ status: result.status, stdout: result.stdout, stderr: result.stderr }));
+    assert.match(output, /PR state: OPEN/);
+    assert.match(output, new RegExp(`mergeStateStatus: ${mergeStateStatus}`));
+    assert.match(output, /autoMerge: enabled/);
+    assert.equal(fs.existsSync(path.join(fixture.repo, ".bright-task", "delivery-handoff.json")), false);
+  }
+});
+
+test("delivery handoff blocks merged infra-docs PRs without merged timestamp", () => {
+  const fixture = setupInfraDocsHandoffFixture({ prState: "MERGED" });
+  const result = runDeliveryHandoffFixture(fixture);
+  const output = result.stderr || result.stdout;
+
+  assert.notEqual(result.status, 0);
+  assert.match(output, /PR state: MERGED/);
+  assert.match(output, /mergedAt: \(missing\)/);
+  assert.equal(fs.existsSync(path.join(fixture.repo, ".bright-task", "delivery-handoff.json")), false);
+});
+
+test("delivery handoff does not write a receipt when a required delivery job fails", () => {
+  const fixture = setupInfraDocsHandoffFixture({
+    prState: "MERGED",
+    mergedAt: "2026-06-26T00:00:00Z",
+    jobConclusions: { checks: "failure" },
+  });
+  const result = runDeliveryHandoffFixture(fixture);
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Delivery job checks is failure/);
+  assert.equal(fs.existsSync(path.join(fixture.repo, ".bright-task", "delivery-handoff.json")), false);
+});
+
+test("delivery handoff writes infra-docs receipt only for merged PRs", () => {
+  const fixture = setupInfraDocsHandoffFixture({ prState: "MERGED", mergedAt: "2026-06-26T00:00:00Z" });
+  const result = runDeliveryHandoffFixture(fixture);
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /Delivery class: infra-docs/);
+  assert.match(result.stdout, /PR: #7 https:\/\/github\.example\/pr\/7/);
+  assert.match(result.stdout, /PR state: MERGED/);
+  assert.match(result.stdout, /Merged at: 2026-06-26T00:00:00Z/);
+  const receipt = JSON.parse(fs.readFileSync(path.join(fixture.repo, ".bright-task", "delivery-handoff.json"), "utf8"));
+  assert.equal(receipt.prNumber, 7);
+  assert.equal(receipt.prUrl, "https://github.example/pr/7");
+  assert.equal(receipt.prState, "MERGED");
+  assert.equal(receipt.mergedAt, "2026-06-26T00:00:00Z");
+  assert.equal(receipt.runId, 42);
 });
 
 test("task state allows exact delivery receipt after infra-docs branch was squash-merged", () => {
@@ -812,6 +959,10 @@ test("task state allows exact delivery receipt after infra-docs branch was squas
         branch: "codex/foo",
         commit: head,
         deliveryClass: "infra-docs",
+        prNumber: 7,
+        prUrl: "https://github.example/pr/7",
+        prState: "MERGED",
+        mergedAt: "2026-06-26T00:00:00Z",
         runId: 123,
         verifiedAt: "2026-06-26T00:00:00.000Z",
       })}\n`,
@@ -956,6 +1107,119 @@ test("accepted preview branch lookup skips infra docs delivery PRs", () => {
     },
   ]), ["codex/runtime"]);
 });
+
+function setupInfraDocsHandoffFixture({ prState, mergeStateStatus = "CLEAN", autoMerge = false, mergedAt = null, jobConclusions = {} }) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "bright-task-handoff-"));
+  const remote = path.join(root, "origin.git");
+  const repo = path.join(root, "repo");
+  const bin = path.join(root, "bin");
+
+  git(["init", "--bare", remote], root);
+  fs.mkdirSync(repo);
+  git(["init"], repo);
+  git(["config", "user.email", "test@example.invalid"], repo);
+  git(["config", "user.name", "Bright Test"], repo);
+  fs.writeFileSync(path.join(repo, ".gitignore"), ".bright-task/\n");
+  fs.writeFileSync(path.join(repo, "base.txt"), "base\n");
+  const acceptScript = path.join(repo, "deploy/scripts/accept-preview.sh");
+  fs.mkdirSync(path.dirname(acceptScript), { recursive: true });
+  fs.writeFileSync(acceptScript, "#!/usr/bin/env bash\nexit 0\n");
+  git(["add", ".gitignore", "base.txt", "deploy/scripts/accept-preview.sh"], repo);
+  git(["commit", "-m", "base"], repo);
+  const base = git(["rev-parse", "HEAD"], repo).stdout.trim();
+  git(["remote", "add", "origin", remote], repo);
+  git(["push", "origin", "HEAD:main"], repo);
+  git(["checkout", "-b", "codex/foo"], repo);
+  fs.mkdirSync(path.join(repo, "docs"), { recursive: true });
+  fs.writeFileSync(path.join(repo, "docs", "change.md"), "change\n");
+  git(["add", "docs/change.md"], repo);
+  git(["commit", "-m", "docs change"], repo);
+  const head = git(["rev-parse", "HEAD"], repo).stdout.trim();
+  git(["push", "origin", "HEAD:codex/foo"], repo);
+
+  fs.mkdirSync(path.join(repo, ".bright-task"));
+  fs.writeFileSync(
+    path.join(repo, ".bright-task", "task.json"),
+    `${JSON.stringify({
+      branch: "codex/foo",
+      mode: "new",
+      base,
+      createdAt: "2026-06-26T00:00:00.000Z",
+      ...(process.env.CODEX_THREAD_ID ? { threadId: process.env.CODEX_THREAD_ID } : {}),
+    })}\n`,
+  );
+
+  const pr = {
+    number: 7,
+    url: "https://github.example/pr/7",
+    state: prState,
+    headRefOid: head,
+    labels: [{ name: "bright-delivery:infra-docs" }],
+    mergedAt,
+    mergeStateStatus,
+    autoMergeRequest: autoMerge ? { enabledAt: "2026-06-26T00:00:00Z" } : null,
+  };
+  const run = {
+    databaseId: 42,
+    headSha: head,
+    status: "completed",
+    conclusion: "success",
+    url: "https://github.example/actions/runs/42",
+  };
+  const jobs = {
+    jobs: ["public-guard", "checks", "temporal-worker-check", "auto-merge-infra-docs"].map((name) => ({ name, conclusion: jobConclusions[name] ?? "success" })),
+  };
+
+  fs.mkdirSync(bin);
+  const gh = path.join(bin, "gh");
+  fs.writeFileSync(
+    gh,
+    `#!/usr/bin/env bash
+if [ "$1" = "pr" ] && [ "$2" = "list" ]; then
+  printf '%s' '${JSON.stringify([pr])}'
+elif [ "$1" = "run" ] && [ "$2" = "list" ]; then
+  printf '%s' '${JSON.stringify([run])}'
+elif [ "$1" = "run" ] && [ "$2" = "view" ]; then
+  printf '%s' '${JSON.stringify(jobs)}'
+else
+  echo "unexpected gh $*" >&2
+  exit 1
+fi
+`,
+  );
+  fs.chmodSync(gh, 0o755);
+
+  return { repo, bin };
+}
+
+function runDeliveryHandoffFixture({ repo, bin }) {
+  const previousCwd = process.cwd();
+  const previousPath = process.env.PATH;
+  const previousWait = process.env.BRIGHT_OS_INFRA_DOCS_HANDOFF_WAIT_MS;
+  const previousPoll = process.env.BRIGHT_OS_INFRA_DOCS_HANDOFF_POLL_MS;
+  const previousLog = console.log;
+  const logs = [];
+  try {
+    process.chdir(repo);
+    process.env.PATH = `${bin}${path.delimiter}${process.env.PATH}`;
+    process.env.BRIGHT_OS_INFRA_DOCS_HANDOFF_WAIT_MS = "1";
+    process.env.BRIGHT_OS_INFRA_DOCS_HANDOFF_POLL_MS = "1";
+    console.log = (...args) => logs.push(args.join(" "));
+    deliveryHandoff("codex/foo");
+    return { status: 0, stdout: logs.join("\n"), stderr: "" };
+  } catch (error) {
+    return { status: 1, stdout: logs.join("\n"), stderr: error instanceof Error ? error.message : String(error) };
+  } finally {
+    console.log = previousLog;
+    process.chdir(previousCwd);
+    if (previousPath == null) delete process.env.PATH;
+    else process.env.PATH = previousPath;
+    if (previousWait == null) delete process.env.BRIGHT_OS_INFRA_DOCS_HANDOFF_WAIT_MS;
+    else process.env.BRIGHT_OS_INFRA_DOCS_HANDOFF_WAIT_MS = previousWait;
+    if (previousPoll == null) delete process.env.BRIGHT_OS_INFRA_DOCS_HANDOFF_POLL_MS;
+    else process.env.BRIGHT_OS_INFRA_DOCS_HANDOFF_POLL_MS = previousPoll;
+  }
+}
 
 function git(args, cwd) {
   const { GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE, ...env } = process.env;

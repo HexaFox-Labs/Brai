@@ -39,12 +39,12 @@ If a question arrives during implementation and the user did not say stop, pause
 Before final handoff, classify the branch with the guard:
 
 - runtime/product work, including runtime bug fixes, requires preview handoff;
-- docs/infra guard-fix work uses the `infra-docs` no-preview PR/auto-merge path into `main`;
+- docs/infra guard-fix work uses the `infra-docs` no-preview PR path into `main`;
 - blocked or unknown paths must be reported instead of handed off as complete.
 
 Preview-class work is incomplete until the exact branch head is pushed, CI/deploy has verified the slot, and `scripts/bright-preview-handoff.sh` succeeds. The final implementation response must start with that command's verified `<slot emoji> Preview` header, then URL, branch, and commit.
 
-Infra-docs work is complete only after `node scripts/bright-task.mjs handoff` verifies the no-preview workflow and reports branch, commit, `deliveryClass=infra-docs`, handoff, auto-merge, and PR state.
+Infra-docs work is complete only after `node scripts/bright-task.mjs handoff` verifies the no-preview workflow and reports branch, commit, `deliveryClass=infra-docs`, `autoMerge=enabled` when applicable, and `prState=MERGED` with merged PR metadata. `autoMerge=enabled` alone is an intermediate state, not final handoff evidence.
 
 ## Acceptance
 

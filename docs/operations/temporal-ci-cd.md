@@ -64,7 +64,9 @@ handoff, or auto-merge events set `status=waiting_for_fix` and populate `blocker
 The agent-side `bright-task handoff` may pre-create the infra/docs PR with the agent's GitHub
 identity so CI can reuse it even when the repository keeps the default `GITHUB_TOKEN` unable to
 create pull requests. GitHub Actions still owns the `auto_merge_*` Temporal signals and must not
-push directly to `main`.
+push directly to `main`. `auto_merge_enabled` is an intermediate state: local `bright-task handoff`
+does not write a success receipt until the PR state is `MERGED` and the receipt includes PR number,
+URL, and `mergedAt`.
 
 For `infra-docs`, `pr_merged` marks the `accepted_for_target` (`Accepted for target`) task as passed and completes the preview
 lifecycle without requiring an accepted-preview metadata promotion or preview slot release.

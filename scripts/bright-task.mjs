@@ -19,8 +19,8 @@ const ZERO_SHA = "0000000000000000000000000000000000000000";
 const PREVIEW_SLOT_EMOJI = { A: "🅰️", B: "🅱️", C: "🅲", D: "🅳", E: "🅴" };
 const DELIVERY_RECEIPT_VERSION = "bright-delivery-handoff-v1";
 const ACCEPTANCE_RECEIPT_VERSION = "bright-acceptance-v1";
-const INFRA_DOCS_HANDOFF_WAIT_MS = Number(process.env.BRIGHT_OS_INFRA_DOCS_HANDOFF_WAIT_MS ?? 180000);
-const INFRA_DOCS_HANDOFF_POLL_MS = Number(process.env.BRIGHT_OS_INFRA_DOCS_HANDOFF_POLL_MS ?? 10000);
+const DEFAULT_INFRA_DOCS_HANDOFF_WAIT_MS = 180000;
+const DEFAULT_INFRA_DOCS_HANDOFF_POLL_MS = 10000;
 const DELIVERY_CLASS = {
   BLOCKED: "blocked",
   INFRA_DOCS: "infra-docs",
@@ -39,6 +39,7 @@ export {
   PROTECTED_PATH_RE,
   analyzeHookInput,
   classifyDelivery,
+  deliveryHandoff,
   deliveryClassForFile,
   dependencySourceRoot,
   deriveTaskState,
@@ -339,18 +340,20 @@ function deliveryHandoff(branchArg) {
   let pr = findInfraDocsPr(branch, head);
   if (pr?.state !== "MERGED") {
     ensureInfraDocsPr(branch);
-    pr = findInfraDocsPr(branch, head) ?? pr;
   }
   const run = waitForSuccessfulDeliveryRun(branch, head, ["public-guard", "checks", "temporal-worker-check", "auto-merge-infra-docs"]);
+  pr = findInfraDocsPr(branch, head) ?? pr;
+  if (pr?.state !== "MERGED" || !pr?.number || !pr?.url || !pr?.mergedAt) throw new Error(infraDocsPrPendingMessage(pr, branch, head, run));
   const receipt = {
     receiptType: DELIVERY_RECEIPT_VERSION,
     branch,
     commit: head,
     deliveryClass: classification.deliveryClass,
     classification,
-    prNumber: pr?.number,
-    prUrl: pr?.url,
-    prState: pr?.state,
+    prNumber: pr.number,
+    prUrl: pr.url,
+    prState: pr.state,
+    mergedAt: pr.mergedAt,
     runId: run.databaseId,
     runUrl: run.url ?? `https://github.com/sergobright/Bright-OS/actions/runs/${run.databaseId}`,
     verifiedAt: new Date().toISOString(),
@@ -361,7 +364,32 @@ function deliveryHandoff(branchArg) {
   console.log("Infra/docs delivery");
   console.log(`Branch: ${branch}`);
   console.log(`Commit: ${head}`);
+  console.log(`Delivery class: ${receipt.deliveryClass}`);
+  console.log(`PR: #${receipt.prNumber} ${receipt.prUrl}`);
+  console.log(`PR state: ${receipt.prState}`);
+  console.log(`Merged at: ${receipt.mergedAt}`);
   console.log(`GitHub Actions run: ${receipt.runUrl}`);
+}
+
+function infraDocsPrPendingMessage(pr, branch, head, run) {
+  const prUrl = pr?.url ?? "(missing)";
+  const state = pr?.state ?? "(missing)";
+  const mergeStateStatus = pr?.mergeStateStatus ?? "(missing)";
+  const autoMerge = pr?.autoMergeRequest ? "enabled" : "disabled";
+  const mergedAt = pr?.mergedAt ?? "(missing)";
+  const runUrl = run?.url ?? (run?.databaseId ? `https://github.com/sergobright/Bright-OS/actions/runs/${run.databaseId}` : "(missing)");
+  return [
+    "Infra/docs delivery is not complete until its PR is merged into main.",
+    `Branch: ${branch}`,
+    `Commit: ${head}`,
+    `PR: ${prUrl}`,
+    `PR state: ${state}`,
+    `mergeStateStatus: ${mergeStateStatus}`,
+    `autoMerge: ${autoMerge}`,
+    `mergedAt: ${mergedAt}`,
+    `GitHub Actions run: ${runUrl}`,
+    "Rerun node scripts/bright-task.mjs handoff after the PR state is MERGED.",
+  ].join("\n");
 }
 
 function classifyCli(args) {
@@ -513,6 +541,10 @@ function validateDeliveryReceipt(receipt, branch, head, deliveryClass = DELIVERY
   if (receipt.branch !== branch) return { ok: false, message: `Delivery receipt is for ${receipt.branch || "(missing)"}, not ${branch}.` };
   if (receipt.commit !== head) return { ok: false, message: `Delivery receipt is for ${receipt.commit || "(missing)"}, not ${head}.` };
   if (receipt.deliveryClass !== deliveryClass) return { ok: false, message: `Delivery receipt class is ${receipt.deliveryClass || "(missing)"}, not ${deliveryClass}.` };
+  if (!receipt.prNumber) return { ok: false, message: "Delivery receipt has no merged PR number." };
+  if (!receipt.prUrl || !String(receipt.prUrl).startsWith("https://")) return { ok: false, message: "Delivery receipt has no merged PR URL." };
+  if (receipt.prState !== "MERGED") return { ok: false, message: `Delivery receipt PR state is ${receipt.prState || "(missing)"}, not MERGED.` };
+  if (!receipt.mergedAt) return { ok: false, message: "Delivery receipt has no merged PR timestamp." };
   if (!receipt.runId) return { ok: false, message: "Delivery receipt has no GitHub Actions run id." };
   if (!receipt.verifiedAt) return { ok: false, message: "Delivery receipt has no verification timestamp." };
   return { ok: true };
@@ -733,14 +765,8 @@ function taskPathAccepted(taskPath) {
     return true;
   }
   const receipt = readJson(path.join(taskPath, ".bright-task", "delivery-handoff.json"));
-  if (
-    receipt?.receiptType === DELIVERY_RECEIPT_VERSION &&
-    receipt?.branch === marker?.branch &&
-    receipt?.prState === "MERGED"
-  ) {
-    return true;
-  }
   const head = gitMaybeIn(taskPath, "rev-parse", "HEAD");
+  if (head && validateDeliveryReceipt(receipt, marker?.branch, head).ok) return true;
   return head ? isAncestor(head, acceptedBaseRef()) : true;
 }
 
@@ -1270,16 +1296,17 @@ function runRequired(args, message) {
 }
 
 function ensureInfraDocsPr(branch) {
-  const result = spawnSync("deploy/scripts/accept-preview.sh", [branch], {
-    cwd: git("rev-parse", "--show-toplevel"),
+  const root = git("rev-parse", "--show-toplevel");
+  const result = spawnSync("bash", [path.join(root, "deploy/scripts/accept-preview.sh"), branch], {
+    cwd: root,
     stdio: "inherit",
     env: { ...process.env, BRIGHT_OS_ACCEPT_BASE: acceptedBaseBranch(), BRIGHT_OS_ACCEPT_INFRA_DOCS_ONLY: "true" },
   });
-  if (result.status !== 0) throw new Error(`Failed to create or enable infra/docs PR for ${branch}.`);
+  if (result.status !== 0 || result.error) throw new Error(`Failed to create or enable infra/docs PR for ${branch}: ${result.error?.message ?? `exit ${result.status}`}.`);
 }
 
 function findInfraDocsPr(branch, head) {
-  const prs = runJson(["gh", "pr", "list", "--base", acceptedBaseBranch(), "--head", branch, "--state", "all", "--json", "number,url,state,headRefOid,labels,mergedAt"]);
+  const prs = runJson(["gh", "pr", "list", "--base", acceptedBaseBranch(), "--head", branch, "--state", "all", "--json", "number,url,state,headRefOid,labels,mergedAt,mergeStateStatus,autoMergeRequest"]);
   return prs.find((pr) =>
     pr.headRefOid === head &&
     Array.isArray(pr.labels) &&
@@ -1311,7 +1338,9 @@ function runJsonMaybe(args) {
 }
 
 function waitForSuccessfulDeliveryRun(branch, sha, requiredJobs) {
-  const deadline = Date.now() + INFRA_DOCS_HANDOFF_WAIT_MS;
+  const waitMs = Number(process.env.BRIGHT_OS_INFRA_DOCS_HANDOFF_WAIT_MS ?? DEFAULT_INFRA_DOCS_HANDOFF_WAIT_MS);
+  const pollMs = Number(process.env.BRIGHT_OS_INFRA_DOCS_HANDOFF_POLL_MS ?? DEFAULT_INFRA_DOCS_HANDOFF_POLL_MS);
+  const deadline = Date.now() + waitMs;
   let lastError;
   do {
     try {
@@ -1319,7 +1348,7 @@ function waitForSuccessfulDeliveryRun(branch, sha, requiredJobs) {
     } catch (error) {
       lastError = error;
       if (Date.now() >= deadline) break;
-      spawnSync("sleep", [String(Math.max(1, Math.ceil(INFRA_DOCS_HANDOFF_POLL_MS / 1000)))], { stdio: "ignore" });
+      spawnSync("sleep", [String(Math.max(1, Math.ceil(pollMs / 1000)))], { stdio: "ignore" });
     }
   } while (Date.now() < deadline);
   throw lastError;
