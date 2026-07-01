@@ -367,7 +367,7 @@ function previewHandoff(branchArg) {
   console.log(`Branch: ${branch}`);
   console.log(`Commit: ${head}`);
   console.log(`Preview ${slot}: ${url}`);
-  console.log(`GitHub Actions run: ${run.url ?? `https://github.com/sergobright/Bright-OS/actions/runs/${run.databaseId}`}`);
+  console.log(`GitHub Actions run: ${run.url ?? `https://github.com/sergobright/Brai/actions/runs/${run.databaseId}`}`);
 }
 
 function deliveryHandoff(branchArg) {
@@ -416,7 +416,7 @@ function deliveryHandoff(branchArg) {
     prState: pr.state,
     mergedAt: pr.mergedAt,
     runId: run.databaseId,
-    runUrl: run.url ?? `https://github.com/sergobright/Bright-OS/actions/runs/${run.databaseId}`,
+    runUrl: run.url ?? `https://github.com/sergobright/Brai/actions/runs/${run.databaseId}`,
     verifiedAt: new Date().toISOString(),
     verifiedBy: "bright-task-delivery-v1",
   };
@@ -438,7 +438,7 @@ function infraDocsPrPendingMessage(pr, branch, head, run) {
   const mergeStateStatus = pr?.mergeStateStatus ?? "(missing)";
   const autoMerge = pr?.autoMergeRequest ? "enabled" : "disabled";
   const mergedAt = pr?.mergedAt ?? "(missing)";
-  const runUrl = run?.url ?? (run?.databaseId ? `https://github.com/sergobright/Bright-OS/actions/runs/${run.databaseId}` : "(missing)");
+  const runUrl = run?.url ?? (run?.databaseId ? `https://github.com/sergobright/Brai/actions/runs/${run.databaseId}` : "(missing)");
   return [
     "Infra/docs delivery is not complete until its PR is merged into main.",
     `Branch: ${branch}`,
