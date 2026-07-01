@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -205,6 +206,57 @@ test('ascii commit titles are not promoted as public release notes', () => {
     });
   } finally {
     store.close();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('accepted preview promotion creates missing target database directory', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bright-promote-missing-target-dir-'));
+  const sourceDb = path.join(tmp, 'missing', 'source.sqlite');
+  const targetDb = path.join(tmp, 'target', 'nested', 'target.sqlite');
+
+  try {
+    const repoRoot = path.resolve(import.meta.dirname, '../../..');
+    execFileSync(process.execPath, [
+      path.join(repoRoot, 'deploy/scripts/promote-deployment.mjs'),
+      '--source-db',
+      sourceDb,
+      '--target-db',
+      targetDb,
+      '--source-branch',
+      'codex/missing-target-dir',
+      '--source-commit',
+      'abc-target-dir',
+      '--source-short-changes',
+      'Создана директория production-базы.',
+      '--source-details',
+      'Promotion создаёт родительскую директорию целевой SQLite-базы перед открытием.',
+      '--target-environment',
+      'prod',
+      '--target-branch',
+      'main',
+      '--target-commit',
+      'merge-target-dir',
+      '--target-domain',
+      'app.brightos.world',
+      '--reason',
+      'Нужно не ронять promotion, когда каталог целевой базы ещё не создан.'
+    ], { cwd: repoRoot });
+
+    const promoted = new BrightOsStore(targetDb);
+    try {
+      const version = promoted.db
+        .prepare("SELECT version_type_id, version, short_changes FROM build_versions WHERE version_type_id = 'build' ORDER BY version DESC LIMIT 1")
+        .get();
+      assert.deepEqual(version, {
+        version_type_id: 'build',
+        version: 2,
+        short_changes: 'Создана директория production-базы.'
+      });
+    } finally {
+      promoted.close();
+    }
+  } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });

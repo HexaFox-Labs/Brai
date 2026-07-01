@@ -1,4 +1,6 @@
 import process from "node:process";
+import fs from "node:fs";
+import path from "node:path";
 import { BrightOsStore } from "../../services/bright_os_api/src/store.js";
 
 const args = parseArgs(process.argv.slice(2));
@@ -9,7 +11,9 @@ const targetCommit = required(args, "target-commit");
 const deployedAtUtc = args["deployed-at"] || new Date().toISOString();
 const ledgerOnly = args["ledger-only"] === "true";
 const recordProductionRelease = args["record-production-release"] === "true";
-const target = new BrightOsStore(required(args, "target-db"));
+const targetDb = required(args, "target-db");
+fs.mkdirSync(path.dirname(targetDb), { recursive: true });
+const target = new BrightOsStore(targetDb);
 let source = null;
 
 try {
