@@ -43,7 +43,7 @@ const contentPattern = [
   "ya29\\.[0-9A-Za-z_-]+",
   "debug" + "\\.keystore",
   "android" + "debugkey",
-  "BRIGHT_OS_ANDROID_" + "STORE_PASSWORD.*" + "android",
+  "BRAI_ANDROID_" + "STORE_PASSWORD.*" + "android",
   "Ser" + "gey",
   "Сер" + "гей",
   "/home/" + "mark",

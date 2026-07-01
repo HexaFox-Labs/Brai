@@ -2,19 +2,19 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT="${BRIGHT_OS_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
+ROOT="${BRAI_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
 NODE_BIN="${NODE_BIN:-node}"
-TARGET_BRANCH="${BRIGHT_OS_TARGET_BRANCH:-main}"
-TARGET_ENVIRONMENT="${BRIGHT_OS_TARGET_ENVIRONMENT:-prod}"
-TARGET_COMMIT="${BRIGHT_OS_TARGET_COMMIT:-${GITHUB_SHA:-}}"
-MODE="${BRIGHT_OS_ACCEPTED_PREVIEWS_MODE:-all}"
+TARGET_BRANCH="${BRAI_TARGET_BRANCH:-main}"
+TARGET_ENVIRONMENT="${BRAI_TARGET_ENVIRONMENT:-prod}"
+TARGET_COMMIT="${BRAI_TARGET_COMMIT:-${GITHUB_SHA:-}}"
+MODE="${BRAI_ACCEPTED_PREVIEWS_MODE:-all}"
 
-: "${TARGET_COMMIT:?BRIGHT_OS_TARGET_COMMIT or GITHUB_SHA is required}"
+: "${TARGET_COMMIT:?BRAI_TARGET_COMMIT or GITHUB_SHA is required}"
 
 case "$MODE" in
   all | promote | release) ;;
   *)
-    echo "Unsupported BRIGHT_OS_ACCEPTED_PREVIEWS_MODE: $MODE" >&2
+    echo "Unsupported BRAI_ACCEPTED_PREVIEWS_MODE: $MODE" >&2
     exit 1
     ;;
 esac
@@ -23,14 +23,14 @@ signal_temporal_preview() {
   local branch="$1"
   local event="$2"
   if [[ ! -x "$SCRIPT_DIR/ci-temporal-signal.sh" ]]; then
-    if [[ "${BRIGHT_TEMPORAL_REQUIRED:-false}" == "true" ]]; then
+    if [[ "${BRAI_TEMPORAL_REQUIRED:-false}" == "true" ]]; then
       echo "deploy/scripts/ci-temporal-signal.sh is required but not executable." >&2
       return 1
     fi
     return 0
   fi
 
-  if [[ "${BRIGHT_TEMPORAL_REQUIRED:-false}" == "true" ]]; then
+  if [[ "${BRAI_TEMPORAL_REQUIRED:-false}" == "true" ]]; then
     "$SCRIPT_DIR/ci-temporal-signal.sh" preview \
       --branch "$branch" \
       --sha "$TARGET_COMMIT" \
@@ -47,11 +47,11 @@ signal_temporal_preview() {
 
 REQUIRED_BRANCH_LIST="$(
   cd "$ROOT"
-  BRIGHT_OS_TARGET_BRANCH="$TARGET_BRANCH" "$NODE_BIN" "$SCRIPT_DIR/accepted-preview-branches.mjs" "$TARGET_COMMIT"
+  BRAI_TARGET_BRANCH="$TARGET_BRANCH" "$NODE_BIN" "$SCRIPT_DIR/accepted-preview-branches.mjs" "$TARGET_COMMIT"
 )"
 CLEANUP_BRANCH_LIST="$(
   cd "$ROOT"
-  BRIGHT_OS_TARGET_BRANCH="$TARGET_BRANCH" "$NODE_BIN" "$SCRIPT_DIR/accepted-preview-branches.mjs" --recent-merged
+  BRAI_TARGET_BRANCH="$TARGET_BRANCH" "$NODE_BIN" "$SCRIPT_DIR/accepted-preview-branches.mjs" --recent-merged
 )"
 
 REQUIRED_BRANCHES=()
@@ -83,11 +83,11 @@ for index in "${!REQUIRED_BRANCHES[@]}"; do
     RECORD_PRODUCTION_RELEASE=false
     signal_temporal_preview "$branch" pr_merged
     signal_temporal_preview "$branch" accepted_preview_started
-    if BRIGHT_OS_SOURCE_BRANCH="$branch" \
-      BRIGHT_OS_TARGET_ENVIRONMENT="$TARGET_ENVIRONMENT" \
-      BRIGHT_OS_TARGET_BRANCH="$TARGET_BRANCH" \
-      BRIGHT_OS_TARGET_COMMIT="$TARGET_COMMIT" \
-      BRIGHT_OS_RECORD_PRODUCTION_RELEASE="$RECORD_PRODUCTION_RELEASE" \
+    if BRAI_SOURCE_BRANCH="$branch" \
+      BRAI_TARGET_ENVIRONMENT="$TARGET_ENVIRONMENT" \
+      BRAI_TARGET_BRANCH="$TARGET_BRANCH" \
+      BRAI_TARGET_COMMIT="$TARGET_COMMIT" \
+      BRAI_RECORD_PRODUCTION_RELEASE="$RECORD_PRODUCTION_RELEASE" \
         "$SCRIPT_DIR/ci-ssh-promote-deployment.sh"; then
       signal_temporal_preview "$branch" accepted_preview_promoted
     else
@@ -98,9 +98,9 @@ for index in "${!REQUIRED_BRANCHES[@]}"; do
 
   if [[ "$MODE" == "all" || "$MODE" == "release" ]]; then
     signal_temporal_preview "$branch" slot_release_started
-    if BRIGHT_OS_BRANCH="$branch" \
-      BRIGHT_OS_ACCEPTED_PREVIEW=true \
-      BRIGHT_OS_REQUIRE_PREVIEW_SLOT_RELEASE=true \
+    if BRAI_BRANCH="$branch" \
+      BRAI_ACCEPTED_PREVIEW=true \
+      BRAI_REQUIRE_PREVIEW_SLOT_RELEASE=true \
         "$SCRIPT_DIR/ci-ssh-release-slot.sh"; then
       signal_temporal_preview "$branch" slot_released
     else
@@ -122,7 +122,7 @@ for branch in "${CLEANUP_BRANCHES[@]}"; do
   fi
 
   signal_temporal_preview "$branch" slot_release_started
-  if BRIGHT_OS_BRANCH="$branch" BRIGHT_OS_ACCEPTED_PREVIEW=true "$SCRIPT_DIR/ci-ssh-release-slot.sh"; then
+  if BRAI_BRANCH="$branch" BRAI_ACCEPTED_PREVIEW=true "$SCRIPT_DIR/ci-ssh-release-slot.sh"; then
     signal_temporal_preview "$branch" slot_released
   else
     signal_temporal_preview "$branch" slot_release_failed

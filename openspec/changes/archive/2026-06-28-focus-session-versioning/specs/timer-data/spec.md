@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Focus sessions keep editable current versions
-Bright OS SHALL store editable start, end, and duration values for completed
+Brai SHALL store editable start, end, and duration values for completed
 Focus sessions in a versioned server-side table.
 
 #### Scenario: Existing sessions are migrated to current versions
@@ -16,7 +16,7 @@ Focus sessions in a versioned server-side table.
   `is_current = 1`
 
 ### Requirement: Completed Focus sessions can be edited offline-first
-Bright OS clients SHALL record completed Focus session edits as durable pending
+Brai clients SHALL record completed Focus session edits as durable pending
 timer events and sync them through the accepted timer event endpoint.
 
 #### Scenario: Client edits a completed session offline
@@ -66,7 +66,7 @@ timer events and sync them through the accepted timer event endpoint.
   calculations
 
 ### Requirement: Completed Focus sessions can be soft-deleted offline-first
-Bright OS clients SHALL record completed Focus session deletions as durable
+Brai clients SHALL record completed Focus session deletions as durable
 pending `delete_session` timer events and sync them through the accepted timer
 event endpoint.
 

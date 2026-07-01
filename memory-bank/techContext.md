@@ -18,7 +18,7 @@ npm run socraticode:preflight
 npm run openspec:validate
 npm run app:lint
 npm run app:test
-npm --prefix services/bright_os_api test
+npm --prefix services/brai_api test
 ```
 
 Public version baseline:

@@ -1,11 +1,11 @@
 ## ADDED Requirements
 
 ### Requirement: Scheduled runtime handlers use SQLite schedule state
-Bright OS SHALL store scheduled runtime handler due state in server SQLite and
+Brai SHALL store scheduled runtime handler due state in server SQLite and
 SHALL keep handler descriptions in the existing `handlers` registry.
 
 #### Scenario: Scheduled handler schema is initialized
-- **WHEN** the Bright OS API store migrates
+- **WHEN** the Brai API store migrates
 - **THEN** `handler_schedules` exists
 - **AND** `table_descriptions` describes `handler_schedules`
 - **AND** `maintenance.tasks_md_deduper` is registered in `handlers`
@@ -20,17 +20,17 @@ SHALL keep handler descriptions in the existing `handlers` registry.
   or failure
 
 ### Requirement: Systemd wakes the scheduler runner
-Bright OS SHALL use a systemd timer to wake the scheduled runtime handler
+Brai SHALL use a systemd timer to wake the scheduled runtime handler
 runner every five minutes.
 
 #### Scenario: Scheduler timer elapses
-- **WHEN** `brightos-scheduler.timer` elapses
-- **THEN** it starts `brightos-scheduler.service`
-- **AND** the service runs `services/bright_os_api/src/scheduler-runner.js`
+- **WHEN** `brai-scheduler.timer` elapses
+- **THEN** it starts `brai-scheduler.service`
+- **AND** the service runs `services/brai_api/src/scheduler-runner.js`
 - **AND** application ports remain unexposed
 
 ### Requirement: TASKS.md dedupe changes go through Git PR flow
-Bright OS SHALL deduplicate root `TASKS.md` through a `codex/*` branch and PR,
+Brai SHALL deduplicate root `TASKS.md` through a `codex/*` branch and PR,
 not by directly mutating the production main checkout.
 
 #### Scenario: TASKS.md has duplicate entries

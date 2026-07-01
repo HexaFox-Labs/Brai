@@ -1,0 +1,12 @@
+{
+  "name": "Brai",
+  "client": "next-capacitor",
+  "version": "0.0.10.1",
+  "versionParts": {
+    "major": 0,
+    "release": 0,
+    "build": 10,
+    "apk": 1
+  },
+  "androidVersionCode": 1
+}

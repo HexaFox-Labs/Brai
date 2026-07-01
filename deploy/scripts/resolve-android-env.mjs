@@ -3,7 +3,7 @@ import path from "node:path";
 import process from "node:process";
 
 const flavor = process.argv[2];
-const root = process.env.BRIGHT_OS_ROOT ?? path.resolve(import.meta.dirname, "../..");
+const root = process.env.BRAI_ROOT ?? path.resolve(import.meta.dirname, "../..");
 const { environments } = JSON.parse(fs.readFileSync(path.join(root, "deploy/environments.json"), "utf8"));
 const entry = Object.entries(environments).find(([, env]) => env.androidFlavor === flavor);
 if (!entry) throw new Error(`unknown Android flavor: ${flavor}`);

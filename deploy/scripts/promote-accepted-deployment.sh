@@ -2,18 +2,18 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT="${BRIGHT_OS_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
+ROOT="${BRAI_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
 NODE_BIN="${NODE_BIN:-node}"
-ENVS_ROOT="${BRIGHT_OS_ENVS_ROOT:-/srv/projects/bright-os-envs}"
-SOURCE_BRANCH="${BRIGHT_OS_SOURCE_BRANCH:?BRIGHT_OS_SOURCE_BRANCH is required}"
-TARGET_ENVIRONMENT="${BRIGHT_OS_TARGET_ENVIRONMENT:?BRIGHT_OS_TARGET_ENVIRONMENT is required}"
-TARGET_BRANCH="${BRIGHT_OS_TARGET_BRANCH:?BRIGHT_OS_TARGET_BRANCH is required}"
-TARGET_COMMIT="${BRIGHT_OS_TARGET_COMMIT:?BRIGHT_OS_TARGET_COMMIT is required}"
+ENVS_ROOT="${BRAI_ENVS_ROOT:-/srv/projects/brai-envs}"
+SOURCE_BRANCH="${BRAI_SOURCE_BRANCH:?BRAI_SOURCE_BRANCH is required}"
+TARGET_ENVIRONMENT="${BRAI_TARGET_ENVIRONMENT:?BRAI_TARGET_ENVIRONMENT is required}"
+TARGET_BRANCH="${BRAI_TARGET_BRANCH:?BRAI_TARGET_BRANCH is required}"
+TARGET_COMMIT="${BRAI_TARGET_COMMIT:?BRAI_TARGET_COMMIT is required}"
 
 if [[ "$TARGET_ENVIRONMENT" == "prod" && "$SOURCE_BRANCH" == codex/* ]]; then
   if ! SLOT="$("$NODE_BIN" -e '
 const fs = require("node:fs");
-const path = process.env.BRIGHT_OS_PREVIEW_REGISTRY || `${process.env.BRIGHT_OS_ENVS_ROOT || "/srv/projects/bright-os-envs"}/preview-slots.json`;
+const path = process.env.BRAI_PREVIEW_REGISTRY || `${process.env.BRAI_ENVS_ROOT || "/srv/projects/brai-envs"}/preview-slots.json`;
 const branch = process.argv[1];
 const registry = JSON.parse(fs.readFileSync(path, "utf8"));
 for (const slot of ["A", "B", "C", "D", "E"]) if (registry[slot]?.branch === branch) { console.log(slot); process.exit(0); }
@@ -22,12 +22,12 @@ process.exit(1);
     echo "No preview slot found for accepted production branch $SOURCE_BRANCH." >&2
     exit 1
   fi
-  SOURCE_DB="$ENVS_ROOT/preview-${SLOT,,}/data/bright_os.sqlite"
-  TARGET_DB="${BRIGHT_OS_DB:-$ROOT/data/bright_os.sqlite}"
+  SOURCE_DB="$ENVS_ROOT/preview-${SLOT,,}/data/brai.sqlite"
+  TARGET_DB="${BRAI_DB:-$ROOT/data/brai.sqlite}"
   TARGET_DOMAIN="app.brightos.world"
   SOURCE_COMMIT="$("$NODE_BIN" -e '
 const fs = require("node:fs");
-const path = process.env.BRIGHT_OS_PREVIEW_REGISTRY || `${process.env.BRIGHT_OS_ENVS_ROOT || "/srv/projects/bright-os-envs"}/preview-slots.json`;
+const path = process.env.BRAI_PREVIEW_REGISTRY || `${process.env.BRAI_ENVS_ROOT || "/srv/projects/brai-envs"}/preview-slots.json`;
 const slot = process.argv[1];
 const registry = JSON.parse(fs.readFileSync(path, "utf8"));
 console.log(registry[slot]?.commit || "");
@@ -37,9 +37,9 @@ else
   exit 1
 fi
 
-SOURCE_SHORT_CHANGES="${BRIGHT_OS_SOURCE_SHORT_CHANGES:-}"
-SOURCE_DETAILS="${BRIGHT_OS_SOURCE_DETAILED_CHANGES:-}"
-NOTES_ROOT="${BRIGHT_OS_GIT_NOTES_ROOT:-}"
+SOURCE_SHORT_CHANGES="${BRAI_SOURCE_SHORT_CHANGES:-}"
+SOURCE_DETAILS="${BRAI_SOURCE_DETAILED_CHANGES:-}"
+NOTES_ROOT="${BRAI_GIT_NOTES_ROOT:-}"
 if [[ ! -d "$NOTES_ROOT/.git" ]]; then
   NOTES_ROOT=""
 fi
@@ -110,7 +110,7 @@ fi
   --target-domain "$TARGET_DOMAIN" \
   --source-commit "$SOURCE_COMMIT" \
   --source-slot "${SLOT:-}" \
-  --source-short-changes "${SOURCE_SHORT_CHANGES:-Принята сборка Bright OS.}" \
+  --source-short-changes "${SOURCE_SHORT_CHANGES:-Принята сборка Brai.}" \
   --source-details "${SOURCE_DETAILS:-Сборка принята; технические branch/commit-данные сохранены отдельно.}" \
-  --reason "${BRIGHT_OS_PROMOTE_REASON:-Нужно перенести принятую preview-сборку в production.}" \
-  --record-production-release "${BRIGHT_OS_RECORD_PRODUCTION_RELEASE:-false}"
+  --reason "${BRAI_PROMOTE_REASON:-Нужно перенести принятую preview-сборку в production.}" \
+  --record-production-release "${BRAI_RECORD_PRODUCTION_RELEASE:-false}"

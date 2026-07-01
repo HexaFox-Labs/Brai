@@ -1,7 +1,7 @@
 import process from "node:process";
 import fs from "node:fs";
 import path from "node:path";
-import { BrightOsStore } from "../../services/bright_os_api/src/store.js";
+import { BraiStore } from "../../services/brai_api/src/store.js";
 
 const args = parseArgs(process.argv.slice(2));
 const sourceBranch = required(args, "source-branch");
@@ -13,7 +13,7 @@ const ledgerOnly = args["ledger-only"] === "true";
 const recordProductionRelease = args["record-production-release"] === "true";
 const targetDb = required(args, "target-db");
 fs.mkdirSync(path.dirname(targetDb), { recursive: true });
-const target = new BrightOsStore(targetDb);
+const target = new BraiStore(targetDb);
 let source = null;
 
 try {
@@ -70,7 +70,7 @@ try {
 function openSourceStore(values, targetEnvironment) {
   const sourceDb = required(values, "source-db");
   try {
-    return new BrightOsStore(sourceDb);
+    return new BraiStore(sourceDb);
   } catch (error) {
     if (canUseSourceFallback(values, targetEnvironment)) {
       console.error(`Warning: preview deployment metadata is unavailable; using branch and commit fallback. ${error.message}`);
@@ -89,7 +89,7 @@ function fallbackSourceRecord(values, sourceBranch, targetEnvironment) {
     commit_sha: values["source-commit"],
     web_ota_version: values["web-ota-version"] || null,
     apk_version: values["apk-version"] || null,
-    short_changes: values["source-short-changes"] || 'Принята сборка Bright OS.',
+    short_changes: values["source-short-changes"] || 'Принята сборка Brai.',
     reason: values["source-reason"] || values.reason || '',
     detailed_changes:
       values["source-details"] || 'Сборка принята; технические branch/commit-данные сохранены отдельно.',
@@ -102,7 +102,7 @@ function normalizeSourceRecord(record, fallbackRecord) {
   const detailedChanges = usefulChanges(record.detailed_changes) || usefulChanges(fallbackRecord?.detailed_changes) || shortChanges;
   return {
     ...record,
-    short_changes: shortChanges || 'Принята сборка Bright OS.',
+    short_changes: shortChanges || 'Принята сборка Brai.',
     detailed_changes: detailedChanges || shortChanges || 'Сборка принята; технические branch/commit-данные сохранены отдельно.',
   };
 }

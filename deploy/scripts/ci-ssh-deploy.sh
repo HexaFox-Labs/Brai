@@ -1,31 +1,31 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-: "${BRIGHT_DEPLOY_HOST:?BRIGHT_DEPLOY_HOST is required}"
-: "${BRIGHT_DEPLOY_USER:?BRIGHT_DEPLOY_USER is required}"
-: "${BRIGHT_DEPLOY_SSH_KEY:?BRIGHT_DEPLOY_SSH_KEY is required}"
-: "${BRIGHT_OS_BRANCH:?BRIGHT_OS_BRANCH is required}"
-: "${BRIGHT_OS_COMMIT:?BRIGHT_OS_COMMIT is required}"
+: "${BRAI_DEPLOY_HOST:?BRAI_DEPLOY_HOST is required}"
+: "${BRAI_DEPLOY_USER:?BRAI_DEPLOY_USER is required}"
+: "${BRAI_DEPLOY_SSH_KEY:?BRAI_DEPLOY_SSH_KEY is required}"
+: "${BRAI_BRANCH:?BRAI_BRANCH is required}"
+: "${BRAI_COMMIT:?BRAI_COMMIT is required}"
 
-DEPLOY_REPO="${BRIGHT_DEPLOY_REPO:-/srv/projects/bright-os}"
-SSH_PORT="${BRIGHT_DEPLOY_SSH_PORT:-22}"
-ENVS_ROOT="${BRIGHT_OS_ENVS_ROOT:-/srv/projects/bright-os-envs}"
-UPLOAD_ROOT="${BRIGHT_DEPLOY_UPLOAD_ROOT:-$ENVS_ROOT/ci-uploads}"
-SAFE_BRANCH="$(printf '%s' "$BRIGHT_OS_BRANCH" | tr -c 'A-Za-z0-9._-' '-')"
+DEPLOY_REPO="${BRAI_DEPLOY_REPO:-/srv/projects/brai}"
+SSH_PORT="${BRAI_DEPLOY_SSH_PORT:-22}"
+ENVS_ROOT="${BRAI_ENVS_ROOT:-/srv/projects/brai-envs}"
+UPLOAD_ROOT="${BRAI_DEPLOY_UPLOAD_ROOT:-$ENVS_ROOT/ci-uploads}"
+SAFE_BRANCH="$(printf '%s' "$BRAI_BRANCH" | tr -c 'A-Za-z0-9._-' '-')"
 REMOTE_UPLOAD="$UPLOAD_ROOT/$SAFE_BRANCH"
-if [[ -z "${BRIGHT_OS_NATIVE_APK_CHANGE:-}" ]]; then
-  BRIGHT_OS_NATIVE_APK_CHANGE="$(node deploy/scripts/detect-native-apk-change.mjs "$BRIGHT_OS_BRANCH" "${BRIGHT_OS_BASE_COMMIT:-}")"
+if [[ -z "${BRAI_NATIVE_APK_CHANGE:-}" ]]; then
+  BRAI_NATIVE_APK_CHANGE="$(node deploy/scripts/detect-native-apk-change.mjs "$BRAI_BRANCH" "${BRAI_BASE_COMMIT:-}")"
 fi
-KEY_FILE="$(mktemp "${TMPDIR:-/tmp}/bright-deploy-key.XXXXXX")"
+KEY_FILE="$(mktemp "${TMPDIR:-/tmp}/brai-deploy-key.XXXXXX")"
 cleanup() {
   rm -f "$KEY_FILE"
 }
 trap cleanup EXIT
 
-printf '%s\n' "$BRIGHT_DEPLOY_SSH_KEY" >"$KEY_FILE"
+printf '%s\n' "$BRAI_DEPLOY_SSH_KEY" >"$KEY_FILE"
 chmod 600 "$KEY_FILE"
 
-ssh -i "$KEY_FILE" -p "$SSH_PORT" -o StrictHostKeyChecking=accept-new "$BRIGHT_DEPLOY_USER@$BRIGHT_DEPLOY_HOST" \
+ssh -i "$KEY_FILE" -p "$SSH_PORT" -o StrictHostKeyChecking=accept-new "$BRAI_DEPLOY_USER@$BRAI_DEPLOY_HOST" \
   bash -s -- "$REMOTE_UPLOAD" "$UPLOAD_ROOT" <<'REMOTE'
 set -euo pipefail
 REMOTE_UPLOAD="$1"
@@ -53,20 +53,20 @@ tar \
   --exclude=deploy/web \
   --exclude=deploy/mobile-update \
   --exclude=deploy/releases \
-  -czf - . | ssh -i "$KEY_FILE" -p "$SSH_PORT" -o StrictHostKeyChecking=accept-new "$BRIGHT_DEPLOY_USER@$BRIGHT_DEPLOY_HOST" \
+  -czf - . | ssh -i "$KEY_FILE" -p "$SSH_PORT" -o StrictHostKeyChecking=accept-new "$BRAI_DEPLOY_USER@$BRAI_DEPLOY_HOST" \
     tar -xzf - -C "$REMOTE_UPLOAD"
 
 DEPLOY_OUTPUT=""
-if ! DEPLOY_OUTPUT="$(ssh -i "$KEY_FILE" -p "$SSH_PORT" -o StrictHostKeyChecking=accept-new "$BRIGHT_DEPLOY_USER@$BRIGHT_DEPLOY_HOST" \
-  bash -s -- "$DEPLOY_REPO" "$REMOTE_UPLOAD" "$BRIGHT_OS_BRANCH" "$BRIGHT_OS_COMMIT" "$BRIGHT_OS_NATIVE_APK_CHANGE" <<'REMOTE'
+if ! DEPLOY_OUTPUT="$(ssh -i "$KEY_FILE" -p "$SSH_PORT" -o StrictHostKeyChecking=accept-new "$BRAI_DEPLOY_USER@$BRAI_DEPLOY_HOST" \
+  bash -s -- "$DEPLOY_REPO" "$REMOTE_UPLOAD" "$BRAI_BRANCH" "$BRAI_COMMIT" "$BRAI_NATIVE_APK_CHANGE" <<'REMOTE'
 set -euo pipefail
 DEPLOY_REPO="$1"
 REMOTE_UPLOAD="$2"
-BRIGHT_OS_BRANCH="$3"
-BRIGHT_OS_COMMIT="$4"
-BRIGHT_OS_NATIVE_APK_CHANGE="$5"
-ENVS_ROOT="${BRIGHT_OS_ENVS_ROOT:-/srv/projects/bright-os-envs}"
-NODE_PREFIX="${BRIGHT_OS_NODE_PREFIX:-/srv/opt/node-v22.16.0/bin}"
+BRAI_BRANCH="$3"
+BRAI_COMMIT="$4"
+BRAI_NATIVE_APK_CHANGE="$5"
+ENVS_ROOT="${BRAI_ENVS_ROOT:-/srv/projects/brai-envs}"
+NODE_PREFIX="${BRAI_NODE_PREFIX:-/srv/opt/node-v22.16.0/bin}"
 if [[ -d "$NODE_PREFIX" ]]; then
   export PATH="$NODE_PREFIX:$PATH"
 fi
@@ -76,24 +76,24 @@ allocation_field() {
   node -e 'let raw = ""; process.stdin.on("data", c => raw += c); process.stdin.on("end", () => { const value = JSON.parse(raw)[process.argv[1]]; console.log(value == null ? "" : value); });' "$1"
 }
 mark_preview_failed() {
-  if [[ "$BRIGHT_OS_BRANCH" == codex/* && -n "${BRIGHT_OS_PREVIEW_SLOT:-}" ]]; then
-    deploy/scripts/preview-slots.sh failed "$BRIGHT_OS_BRANCH" "$BRIGHT_OS_COMMIT" >/dev/null || true
+  if [[ "$BRAI_BRANCH" == codex/* && -n "${BRAI_PREVIEW_SLOT:-}" ]]; then
+    deploy/scripts/preview-slots.sh failed "$BRAI_BRANCH" "$BRAI_COMMIT" >/dev/null || true
   fi
 }
 cleanup_preview_queue() {
-  if [[ "${BRIGHT_OS_PREVIEW_QUEUED:-}" == "true" ]]; then
-    deploy/scripts/preview-slots.sh dequeue "$BRIGHT_OS_BRANCH" >/dev/null || true
+  if [[ "${BRAI_PREVIEW_QUEUED:-}" == "true" ]]; then
+    deploy/scripts/preview-slots.sh dequeue "$BRAI_BRANCH" >/dev/null || true
   fi
 }
-if [[ "$BRIGHT_OS_BRANCH" == codex/* ]]; then
-  BRIGHT_OS_PREVIEW_QUEUED="false"
+if [[ "$BRAI_BRANCH" == codex/* ]]; then
+  BRAI_PREVIEW_QUEUED="false"
   trap cleanup_preview_queue EXIT
-  QUEUE_MAX_ATTEMPTS="${BRIGHT_OS_PREVIEW_QUEUE_MAX_ATTEMPTS:-720}"
-  QUEUE_POLL_SECONDS="${BRIGHT_OS_PREVIEW_QUEUE_POLL_SECONDS:-30}"
+  QUEUE_MAX_ATTEMPTS="${BRAI_PREVIEW_QUEUE_MAX_ATTEMPTS:-720}"
+  QUEUE_POLL_SECONDS="${BRAI_PREVIEW_QUEUE_POLL_SECONDS:-30}"
   for ((attempt = 1; attempt <= QUEUE_MAX_ATTEMPTS; attempt += 1)); do
-    ALLOCATION_JSON="$(deploy/scripts/preview-slots.sh allocate "$BRIGHT_OS_BRANCH" "$BRIGHT_OS_COMMIT")"
-    BRIGHT_OS_PREVIEW_QUEUED="$(printf '%s' "$ALLOCATION_JSON" | allocation_field queued)"
-    if [[ "$BRIGHT_OS_PREVIEW_QUEUED" != "true" ]]; then
+    ALLOCATION_JSON="$(deploy/scripts/preview-slots.sh allocate "$BRAI_BRANCH" "$BRAI_COMMIT")"
+    BRAI_PREVIEW_QUEUED="$(printf '%s' "$ALLOCATION_JSON" | allocation_field queued)"
+    if [[ "$BRAI_PREVIEW_QUEUED" != "true" ]]; then
       break
     fi
     QUEUE_POSITION="$(printf '%s' "$ALLOCATION_JSON" | allocation_field position)"
@@ -104,16 +104,16 @@ if [[ "$BRIGHT_OS_BRANCH" == codex/* ]]; then
     fi
     sleep "$QUEUE_POLL_SECONDS"
   done
-  BRIGHT_OS_PREVIEW_QUEUED="false"
+  BRAI_PREVIEW_QUEUED="false"
   trap - EXIT
-  BRIGHT_OS_PREVIEW_SLOT="$(printf '%s' "$ALLOCATION_JSON" | allocation_field slot)"
-  BRIGHT_OS_PREVIEW_ALLOCATED_NEW="$(printf '%s' "$ALLOCATION_JSON" | allocation_field allocatedNew)"
-  export BRIGHT_OS_PREVIEW_SLOT BRIGHT_OS_PREVIEW_ALLOCATED_NEW
-  printf 'BRIGHT_OS_PREVIEW_SLOT_OUTPUT=%s\n' "$BRIGHT_OS_PREVIEW_SLOT"
+  BRAI_PREVIEW_SLOT="$(printf '%s' "$ALLOCATION_JSON" | allocation_field slot)"
+  BRAI_PREVIEW_ALLOCATED_NEW="$(printf '%s' "$ALLOCATION_JSON" | allocation_field allocatedNew)"
+  export BRAI_PREVIEW_SLOT BRAI_PREVIEW_ALLOCATED_NEW
+  printf 'BRAI_PREVIEW_SLOT_OUTPUT=%s\n' "$BRAI_PREVIEW_SLOT"
   trap mark_preview_failed ERR
 fi
 
-mapfile -t DEPLOY_META < <(node deploy/scripts/resolve-deploy-env.mjs "$BRIGHT_OS_BRANCH")
+mapfile -t DEPLOY_META < <(node deploy/scripts/resolve-deploy-env.mjs "$BRAI_BRANCH")
 ENVIRONMENT="${DEPLOY_META[0]}"
 ENV_PATH="${DEPLOY_META[3]}"
 SOURCE_ROOT="$ENVS_ROOT/$ENV_PATH/source"
@@ -126,9 +126,9 @@ case "$SOURCE_ROOT" in
 esac
 
 if [[ "$ENVIRONMENT" == "prod" ]]; then
-  export BRIGHT_OS_WEB_TARGET="$DEPLOY_REPO/deploy/web"
-  export BRIGHT_OS_MOBILE_TARGET="$DEPLOY_REPO/deploy/mobile-update"
-  export BRIGHT_OS_DB="$DEPLOY_REPO/data/bright_os.sqlite"
+  export BRAI_WEB_TARGET="$DEPLOY_REPO/deploy/web"
+  export BRAI_MOBILE_TARGET="$DEPLOY_REPO/deploy/mobile-update"
+  export BRAI_DB="$DEPLOY_REPO/data/brai.sqlite"
 fi
 if [[ -d "$SOURCE_ROOT" ]]; then
   find "$SOURCE_ROOT" -user "$(id -u)" -exec chmod u+rwX,g+rwX {} + || true
@@ -140,23 +140,23 @@ mv "$REMOTE_UPLOAD" "$SOURCE_ROOT"
 cd "$SOURCE_ROOT"
 umask 0002
 npm ci
-npm --prefix apps/bright_os_app ci
-npm --prefix services/bright_os_api ci
-export BRIGHT_OS_BRANCH BRIGHT_OS_COMMIT
-export BRIGHT_OS_ROOT="$SOURCE_ROOT"
-export BRIGHT_OS_RELEASE_TARGET="$DEPLOY_REPO/deploy/releases"
-export BRIGHT_OS_PROD_DB="$DEPLOY_REPO/data/bright_os.sqlite"
-export BRIGHT_OS_PROD_WEB_VERSION_JSON="$DEPLOY_REPO/deploy/web/version.json"
-if [[ "$BRIGHT_OS_NATIVE_APK_CHANGE" == "true" ]]; then
+npm --prefix apps/brai_app ci
+npm --prefix services/brai_api ci
+export BRAI_BRANCH BRAI_COMMIT
+export BRAI_ROOT="$SOURCE_ROOT"
+export BRAI_RELEASE_TARGET="$DEPLOY_REPO/deploy/releases"
+export BRAI_PROD_DB="$DEPLOY_REPO/data/brai.sqlite"
+export BRAI_PROD_WEB_VERSION_JSON="$DEPLOY_REPO/deploy/web/version.json"
+if [[ "$BRAI_NATIVE_APK_CHANGE" == "true" ]]; then
   if [[ "$ENVIRONMENT" == preview-* ]]; then
-    FLAVOR="preview$BRIGHT_OS_PREVIEW_SLOT"
-    export BRIGHT_OS_ANDROID_VERSION_CODE="$(deploy/scripts/apk-version-code.sh next "$BRIGHT_OS_BRANCH $BRIGHT_OS_COMMIT $FLAVOR")"
+    FLAVOR="preview$BRAI_PREVIEW_SLOT"
+    export BRAI_ANDROID_VERSION_CODE="$(deploy/scripts/apk-version-code.sh next "$BRAI_BRANCH $BRAI_COMMIT $FLAVOR")"
     deploy/scripts/build-android-env-apk.sh "$FLAVOR"
   elif [[ "$ENVIRONMENT" == "prod" ]]; then
-    export BRIGHT_OS_ANDROID_VERSION_CODE="$(deploy/scripts/apk-version-code.sh next "production APK $BRIGHT_OS_COMMIT")"
+    export BRAI_ANDROID_VERSION_CODE="$(deploy/scripts/apk-version-code.sh next "production APK $BRAI_COMMIT")"
     deploy/scripts/build-android-env-apk.sh production
-    export BRIGHT_OS_APP_VERSION="$(node deploy/scripts/resolve-app-version.mjs --environment prod --root "$SOURCE_ROOT" --db "${BRIGHT_OS_DB:-}")"
-    export BRIGHT_OS_ANDROID_VERSION_CODE="$(deploy/scripts/apk-version-code.sh next "production non-production APK baseline $BRIGHT_OS_COMMIT")"
+    export BRAI_APP_VERSION="$(node deploy/scripts/resolve-app-version.mjs --environment prod --root "$SOURCE_ROOT" --db "${BRAI_DB:-}")"
+    export BRAI_ANDROID_VERSION_CODE="$(deploy/scripts/apk-version-code.sh next "production non-production APK baseline $BRAI_COMMIT")"
     deploy/scripts/build-nonproduction-apks.sh
   fi
 fi
@@ -164,14 +164,14 @@ deploy/scripts/deploy-branch.sh
 REMOTE
 )"; then
   printf '%s\n' "$DEPLOY_OUTPUT"
-  PREVIEW_SLOT="$(printf '%s\n' "$DEPLOY_OUTPUT" | sed -n 's/^BRIGHT_OS_PREVIEW_SLOT_OUTPUT=//p' | tail -n 1)"
+  PREVIEW_SLOT="$(printf '%s\n' "$DEPLOY_OUTPUT" | sed -n 's/^BRAI_PREVIEW_SLOT_OUTPUT=//p' | tail -n 1)"
   if [[ -n "${GITHUB_OUTPUT:-}" && -n "$PREVIEW_SLOT" ]]; then
     printf 'preview_slot=%s\n' "$PREVIEW_SLOT" >>"$GITHUB_OUTPUT"
   fi
   exit 1
 fi
 printf '%s\n' "$DEPLOY_OUTPUT"
-PREVIEW_SLOT="$(printf '%s\n' "$DEPLOY_OUTPUT" | sed -n 's/^BRIGHT_OS_PREVIEW_SLOT_OUTPUT=//p' | tail -n 1)"
+PREVIEW_SLOT="$(printf '%s\n' "$DEPLOY_OUTPUT" | sed -n 's/^BRAI_PREVIEW_SLOT_OUTPUT=//p' | tail -n 1)"
 if [[ -n "${GITHUB_OUTPUT:-}" && -n "$PREVIEW_SLOT" ]]; then
   printf 'preview_slot=%s\n' "$PREVIEW_SLOT" >>"$GITHUB_OUTPUT"
 fi

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BRANCH="${BRIGHT_OS_MAIN_BRANCH:-main}"
-EXPECTED_COMMIT="${1:-${BRIGHT_OS_COMMIT:-}}"
-REPO="/srv/projects/bright-os"
-REMOTE_URL="${BRIGHT_OS_MAIN_REMOTE_URL:-git@github.com:sergobright/Brai.git}"
-GIT_USER="${BRIGHT_OS_MAIN_GIT_USER:-mark}"
-RESCUE_ROOT="${BRIGHT_OS_MAIN_RESCUE_ROOT:-/srv/projects/bright-os-rescue}"
-LOCK_FILE="${BRIGHT_OS_MAIN_SYNC_LOCK:-/tmp/bright-os-main-checkout-sync.lock}"
+BRANCH="${BRAI_MAIN_BRANCH:-main}"
+EXPECTED_COMMIT="${1:-${BRAI_COMMIT:-}}"
+REPO="/srv/projects/brai"
+REMOTE_URL="${BRAI_MAIN_REMOTE_URL:-git@github.com:sergobright/Brai.git}"
+GIT_USER="${BRAI_MAIN_GIT_USER:-mark}"
+RESCUE_ROOT="${BRAI_MAIN_RESCUE_ROOT:-/srv/projects/brai-rescue}"
+LOCK_FILE="${BRAI_MAIN_SYNC_LOCK:-/tmp/brai-main-checkout-sync.lock}"
 
 if [ "$#" -gt 1 ]; then
   echo "Usage: $0 [expected-main-commit]" >&2
@@ -23,7 +23,7 @@ case "$EXPECTED_COMMIT" in
 esac
 
 if [ "$(id -u)" -ne 0 ]; then
-  echo "Bright OS main sync must run as root." >&2
+  echo "Brai main sync must run as root." >&2
   exit 1
 fi
 
@@ -44,7 +44,7 @@ git_cmd() {
 }
 
 restore_task_state_access() {
-  local task_state="$1/.bright-task"
+  local task_state="$1/.brai-task"
   if [ ! -d "$task_state" ] || [ -L "$task_state" ]; then
     return
   fi
@@ -114,12 +114,12 @@ git_cmd clean -fd \
   -e deploy/mobile-update/ \
   -e deploy/releases/ \
   -e node_modules/ \
-  -e apps/bright_os_app/node_modules/ \
-  -e services/bright_os_api/node_modules/ \
-  -e services/bright_os_temporal/node_modules/
+  -e apps/brai_app/node_modules/ \
+  -e services/brai_api/node_modules/ \
+  -e services/brai_temporal/node_modules/
 git_cmd config core.hooksPath .githooks
 
-if [ "${BRIGHT_OS_MAIN_SYNC_LOCK_CHECKOUT:-1}" = "1" ]; then
+if [ "${BRAI_MAIN_SYNC_LOCK_CHECKOUT:-1}" = "1" ]; then
   mkdir -p .codex-worktrees
   chown root:mark "$REPO"
   chmod 0751 "$REPO"
@@ -151,17 +151,17 @@ if [ "${BRIGHT_OS_MAIN_SYNC_LOCK_CHECKOUT:-1}" = "1" ]; then
     chmod u=rwx,g=rx,o=x deploy
   fi
 
-  if getent group bright-deploy >/dev/null 2>&1; then
+  if getent group brai-deploy >/dev/null 2>&1; then
     for runtime_path in data deploy/site deploy/web deploy/mobile-update deploy/releases; do
       if [ -d "$runtime_path" ]; then
-        chgrp -R bright-deploy "$runtime_path"
+        chgrp -R brai-deploy "$runtime_path"
         chmod -R u=rwX,g=rwX,o=rX "$runtime_path"
         find "$runtime_path" -type d -exec chmod g+s {} +
       fi
     done
   fi
 
-  if [ "${BRIGHT_OS_LOCK_STALE_WORKTREES:-1}" = "1" ]; then
+  if [ "${BRAI_LOCK_STALE_WORKTREES:-1}" = "1" ]; then
     while IFS= read -r line; do
       case "$line" in
         "worktree "*)

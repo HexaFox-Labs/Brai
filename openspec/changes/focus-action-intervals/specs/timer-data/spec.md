@@ -1,7 +1,7 @@
 ## REMOVED Requirements
 
 ### Requirement: Focus sessions keep editable current versions
-Bright OS SHALL store editable start, end, and duration values for completed
+Brai SHALL store editable start, end, and duration values for completed
 Focus sessions in a versioned server-side table.
 
 #### Scenario: Existing sessions are migrated to current versions
@@ -18,7 +18,7 @@ Focus sessions in a versioned server-side table.
 ## ADDED Requirements
 
 ### Requirement: Focus time is stored as intervals
-Bright OS SHALL store all Focus session time in `focus_session_intervals` and
+Brai SHALL store all Focus session time in `focus_session_intervals` and
 MUST NOT read or write `focus_session_versions` at runtime after the interval
 migration.
 
@@ -49,7 +49,7 @@ migration.
   timeline
 
 ### Requirement: Focus session fields are aggregated from intervals
-Bright OS SHALL expose session-level start, end, and duration fields as
+Brai SHALL expose session-level start, end, and duration fields as
 aggregates over non-deleted Focus session intervals.
 
 #### Scenario: Completed session is returned
@@ -70,7 +70,7 @@ aggregates over non-deleted Focus session intervals.
   active/latest completed session reads
 
 ### Requirement: Action focus events derive activity intervals
-Bright OS SHALL derive activity-linked Focus intervals from accepted timer
+Brai SHALL derive activity-linked Focus intervals from accepted timer
 events without requiring a separate sync endpoint.
 
 #### Scenario: Activity focus starts while idle
@@ -108,7 +108,7 @@ events without requiring a separate sync endpoint.
 - **AND** keeps the parent Focus session active
 
 ### Requirement: Action focus conflicts are split deterministically
-Bright OS SHALL resolve overlapping action-focus events automatically into a
+Brai SHALL resolve overlapping action-focus events automatically into a
 stable, non-overlapping interval timeline.
 
 #### Scenario: Later action event overlaps active interval
@@ -132,7 +132,7 @@ stable, non-overlapping interval timeline.
   remaining time is not lost
 
 ### Requirement: Timer APIs expose Focus interval state
-Bright OS SHALL expose active and completed interval data while preserving
+Brai SHALL expose active and completed interval data while preserving
 existing compatible session-level fields.
 
 #### Scenario: Timer state is requested during action focus
@@ -160,7 +160,7 @@ existing compatible session-level fields.
   multi-activity indicator
 
 ### Requirement: Focus intervals can be edited offline-first
-Bright OS clients SHALL record completed Focus interval edits as durable
+Brai clients SHALL record completed Focus interval edits as durable
 pending `edit_focus_interval` timer events and sync them through the accepted
 timer event endpoint.
 
@@ -210,7 +210,7 @@ timer event endpoint.
 ## MODIFIED Requirements
 
 ### Requirement: Completed Focus sessions can be soft-deleted offline-first
-Bright OS clients SHALL record completed Focus session deletions as durable
+Brai clients SHALL record completed Focus session deletions as durable
 pending `delete_session` timer events and sync them through the accepted timer
 event endpoint.
 

@@ -17,7 +17,7 @@ npm run app:build
 API:
 
 ```bash
-npm --prefix services/bright_os_api test
+npm --prefix services/brai_api test
 ```
 
 OpenSpec:

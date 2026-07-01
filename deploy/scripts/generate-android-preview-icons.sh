@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="${BRIGHT_OS_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
-APP_SRC="$ROOT/apps/bright_os_app/android/app/src"
-FONT="${BRIGHT_OS_ICON_FONT:-/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf}"
+ROOT="${BRAI_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+APP_SRC="$ROOT/apps/brai_app/android/app/src"
+FONT="${BRAI_ICON_FONT:-/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf}"
 
 render_full_bleed() {
   local output="$1"
@@ -32,7 +32,7 @@ render_scaled() {
   local scaled_size=$((size * scale_pct / 100))
   local tmp_logo
 
-  tmp_logo="$(mktemp -t bright-os-icon-logo.XXXXXX.png)"
+  tmp_logo="$(mktemp -t brai-icon-logo.XXXXXX.png)"
   render_full_bleed "$tmp_logo" "$size" "$label"
   ffmpeg -v error -y \
     -f lavfi -i "color=c=black:s=${size}x${size},format=rgba" \

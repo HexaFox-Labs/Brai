@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Non-production APK builds use exact OTA compatibility
-Bright OS SHALL keep Dev and Preview APK artifacts aligned with their OTA manifests through a monotonic technical Android `versionCode`.
+Brai SHALL keep Dev and Preview APK artifacts aligned with their OTA manifests through a monotonic technical Android `versionCode`.
 
 #### Scenario: Native preview APK is published
 - **WHEN** a `codex/*` branch changes the native Android boundary

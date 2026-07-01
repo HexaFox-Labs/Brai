@@ -1,28 +1,28 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SERVICE_DIR="services/bright_os_temporal"
-REQUIRED="${BRIGHT_TEMPORAL_REQUIRED:-false}"
+SERVICE_DIR="services/brai_temporal"
+REQUIRED="${BRAI_TEMPORAL_REQUIRED:-false}"
 KEY_FILE=""
 TUNNEL_PID=""
 
 finish() {
   local code="$1"
   if [[ "$code" -ne 0 && "$REQUIRED" != "true" ]]; then
-    echo "Temporal signal skipped/failed; continuing because BRIGHT_TEMPORAL_REQUIRED is not true." >&2
+    echo "Temporal signal skipped/failed; continuing because BRAI_TEMPORAL_REQUIRED is not true." >&2
     exit 0
   fi
   exit "$code"
 }
 
 run() {
-  need BRIGHT_DEPLOY_HOST || return 1
-  need BRIGHT_DEPLOY_USER || return 1
-  need BRIGHT_DEPLOY_SSH_KEY || return 1
+  need BRAI_DEPLOY_HOST || return 1
+  need BRAI_DEPLOY_USER || return 1
+  need BRAI_DEPLOY_SSH_KEY || return 1
 
-  local ssh_port="${BRIGHT_DEPLOY_SSH_PORT:-22}"
-  local local_port="${BRIGHT_TEMPORAL_LOCAL_PORT:-7233}"
-  local remote_port="${BRIGHT_TEMPORAL_REMOTE_PORT:-7233}"
+  local ssh_port="${BRAI_DEPLOY_SSH_PORT:-22}"
+  local local_port="${BRAI_TEMPORAL_LOCAL_PORT:-7233}"
+  local remote_port="${BRAI_TEMPORAL_REMOTE_PORT:-7233}"
   KEY_FILE="$(mktemp "${TMPDIR:-/tmp}/bright-temporal-key.XXXXXX")"
 
   cleanup() {
@@ -34,7 +34,7 @@ run() {
   }
   trap cleanup EXIT
 
-  printf '%s\n' "$BRIGHT_DEPLOY_SSH_KEY" >"$KEY_FILE"
+  printf '%s\n' "$BRAI_DEPLOY_SSH_KEY" >"$KEY_FILE"
   chmod 600 "$KEY_FILE"
 
   ssh \
@@ -44,7 +44,7 @@ run() {
     -L "127.0.0.1:${local_port}:127.0.0.1:${remote_port}" \
     -o ExitOnForwardFailure=yes \
     -o StrictHostKeyChecking=accept-new \
-    "$BRIGHT_DEPLOY_USER@$BRIGHT_DEPLOY_HOST" &
+    "$BRAI_DEPLOY_USER@$BRAI_DEPLOY_HOST" &
   TUNNEL_PID="$!"
 
   for _ in {1..25}; do

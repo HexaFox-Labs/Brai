@@ -2,11 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
-const root = process.env.BRIGHT_OS_ROOT ?? path.resolve(import.meta.dirname, "../..");
-const envsRoot = process.env.BRIGHT_OS_ENVS_ROOT ?? "/srv/projects/bright-os-envs";
-const statePath = process.env.BRIGHT_OS_APK_VERSION_CODE_STATE ?? path.join(envsRoot, "apk-version-code.json");
+const root = process.env.BRAI_ROOT ?? path.resolve(import.meta.dirname, "../..");
+const envsRoot = process.env.BRAI_ENVS_ROOT ?? "/srv/projects/brai-envs";
+const statePath = process.env.BRAI_APK_VERSION_CODE_STATE ?? path.join(envsRoot, "apk-version-code.json");
 const releaseTargets = [
-  process.env.BRIGHT_OS_RELEASE_TARGET ?? path.join(root, "deploy/releases"),
+  process.env.BRAI_RELEASE_TARGET ?? path.join(root, "deploy/releases"),
 ];
 const command = process.argv[2] ?? "next";
 const reason = process.argv.slice(3).join(" ").trim() || null;

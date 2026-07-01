@@ -5,9 +5,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/srv/opt/node-v22.16.0/bin/node /srv/opt/bright-os-codex-plugins/plugins/bright-os-guard/hooks/bright-os-guard.mjs pre-tool-use",
+            "command": "/srv/opt/node-v22.16.0/bin/node /srv/opt/brai-codex-plugins/plugins/brai-guard/hooks/brai-guard.mjs pre-tool-use",
             "timeout": 10,
-            "statusMessage": "Checking Bright OS branch guard"
+            "statusMessage": "Checking Brai branch guard"
           }
         ]
       }
@@ -17,9 +17,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/srv/opt/node-v22.16.0/bin/node /srv/opt/bright-os-codex-plugins/plugins/bright-os-guard/hooks/bright-os-guard.mjs stop",
+            "command": "/srv/opt/node-v22.16.0/bin/node /srv/opt/brai-codex-plugins/plugins/brai-guard/hooks/brai-guard.mjs stop",
             "timeout": 10,
-            "statusMessage": "Checking Bright OS handoff guard"
+            "statusMessage": "Checking Brai handoff guard"
           }
         ]
       }

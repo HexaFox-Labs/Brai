@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Task branches deploy through preview slots
-Bright OS SHALL require ordinary feature, fix, refactor, and infrastructure implementation work that changes repository files to start from the latest `origin/dev` on a valid `codex/*` task branch, push the exact branch head to `origin`, complete preview delivery for that head, and use verified preview slot evidence before user-facing handoff.
+Brai SHALL require ordinary feature, fix, refactor, and infrastructure implementation work that changes repository files to start from the latest `origin/dev` on a valid `codex/*` task branch, push the exact branch head to `origin`, complete preview delivery for that head, and use verified preview slot evidence before user-facing handoff.
 
 Ordinary `codex/*` task branch pushes and preview deploys MUST be treated as
 standing CI/CD automation approved by the project owner, not as optional
@@ -13,7 +13,7 @@ treated as completion evidence for work that changes repository files.
 #### Scenario: A project-file change begins
 - **WHEN** work changes repository files in a new Codex thread
 - **THEN** the agent starts from the latest accepted base using
-  `scripts/bright-task-start.sh <task-slug>`
+  `scripts/brai-task-start.sh <task-slug>`
 - **AND** the task branch marker identifies the created `codex/<task-slug>`
   branch and current thread before writes continue
 - **AND** a branch selected by the agent host or UI is ignored as permission to
@@ -70,13 +70,13 @@ treated as completion evidence for work that changes repository files.
 ## ADDED Requirements
 
 ### Requirement: Agent delivery guards fail closed
-Bright OS SHALL block project-file writes, publication, and final handoff when agent delivery guard state cannot prove that the current task is on a valid same-thread task branch and has the required preview verification.
+Brai SHALL block project-file writes, publication, and final handoff when agent delivery guard state cannot prove that the current task is on a valid same-thread task branch and has the required preview verification.
 
 #### Scenario: Project-file write starts before valid task branch
 - **WHEN** an agent attempts to change a repository file before a valid task
   branch and task marker exist
 - **THEN** the write is blocked
-- **AND** the blocker names `scripts/bright-task-start.sh <task-slug>` as the
+- **AND** the blocker names `scripts/brai-task-start.sh <task-slug>` as the
   required next step
 
 #### Scenario: Namespaced patch tool is used
@@ -121,7 +121,7 @@ Bright OS SHALL block project-file writes, publication, and final handoff when a
   follow-up marker as the allowed path
 
 #### Scenario: Task marker is missing or invalid
-- **WHEN** the `.bright-task` marker is missing, forged, stale, belongs to
+- **WHEN** the `.brai-task` marker is missing, forged, stale, belongs to
   another branch, or belongs to another thread
 - **THEN** project-file writes, commits, pushes, and handoff are blocked
 
@@ -147,7 +147,7 @@ Bright OS SHALL block project-file writes, publication, and final handoff when a
   describing the work as complete
 
 ### Requirement: Preview acceptance requires verified preview
-Bright OS SHALL refuse preview acceptance for a task branch unless the exact branch head has verified preview state.
+Brai SHALL refuse preview acceptance for a task branch unless the exact branch head has verified preview state.
 
 #### Scenario: Acceptance starts without verified preview
 - **WHEN** the project owner accepts a `codex/*` branch

@@ -4,8 +4,8 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 const nativePrefixes = [
-  "apps/bright_os_app/android/",
-  "apps/bright_os_app/capacitor.config",
+  "apps/brai_app/android/",
+  "apps/brai_app/capacitor.config",
   "deploy/environments.json",
   "deploy/scripts/apk-version-code",
   "deploy/scripts/build-android-env-apk",
@@ -18,14 +18,14 @@ const nativePrefixes = [
   "deploy/scripts/resolve-app-version",
 ];
 const nativePackageFiles = new Set([
-  "apps/bright_os_app/package.json",
-  "apps/bright_os_app/package-lock.json",
+  "apps/brai_app/package.json",
+  "apps/brai_app/package-lock.json",
 ]);
 const nativePackagePattern = /^\s*[+-].*("@capacitor\/|@capacitor-community\/|@capawesome\/|capacitor-android|capacitor-cordova|cordova-)/m;
 
 if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
   const branch = process.argv[2] ?? "";
-  const explicitBase = process.argv[3] ?? process.env.BRIGHT_OS_BASE_COMMIT ?? "";
+  const explicitBase = process.argv[3] ?? process.env.BRAI_BASE_COMMIT ?? "";
   const range = diffRange(branch, explicitBase);
   if (!range) {
     console.log("false");
@@ -52,7 +52,7 @@ function diffRange(branchName, base) {
 }
 
 function acceptedBaseRef() {
-  return `origin/${process.env.BRIGHT_OS_ACCEPT_BASE || "main"}`;
+  return `origin/${process.env.BRAI_ACCEPT_BASE || "main"}`;
 }
 
 function refExists(ref) {

@@ -1,7 +1,7 @@
 # System Patterns
 
-- Next.js client source lives in `apps/bright_os_app/`.
-- Bright OS API source lives in `services/bright_os_api/`.
+- Next.js client source lives in `apps/brai_app/`.
+- Brai API source lives in `services/brai_api/`.
 - Accepted requirements live in `openspec/specs/`.
 - Development rules live in `docs/guidelines/`.
 - Deployment source automation lives in `deploy/`; generated deploy output does not.

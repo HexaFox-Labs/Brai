@@ -5,7 +5,7 @@
 This specification defines Inbox storage, sync, and first UI behavior for incoming material before normalization.
 ## Requirements
 ### Requirement: Inbox records incoming items
-Bright OS SHALL store incoming items in a server SQLite `inbox` table and
+Brai SHALL store incoming items in a server SQLite `inbox` table and
 register `inbox` as a main work entity in `items`.
 
 #### Scenario: Inbox schema is initialized
@@ -18,7 +18,7 @@ register `inbox` as a main work entity in `items`.
 - **AND** `table_descriptions` contains schema metadata for `inbox`
 
 ### Requirement: Inbox accepts offline-first client events
-Bright OS SHALL accept inbox mutations through an append-only server event log
+Brai SHALL accept inbox mutations through an append-only server event log
 so clients can create incoming items before a canonical server row exists.
 
 #### Scenario: Offline-created inbox events sync later
@@ -35,7 +35,7 @@ so clients can create incoming items before a canonical server row exists.
 - **AND** does not require a foreign-key reference from the event to `inbox`
 
 ### Requirement: Inbox page supports direct capture
-Bright OS SHALL expose an `Inbox` main navigation item between Actions and
+Brai SHALL expose an `Inbox` main navigation item between Actions and
 Focus and render a page titled `Входящие`.
 
 #### Scenario: User creates and edits an incoming item

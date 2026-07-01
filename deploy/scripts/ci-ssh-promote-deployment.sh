@@ -1,30 +1,30 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-: "${BRIGHT_DEPLOY_HOST:?BRIGHT_DEPLOY_HOST is required}"
-: "${BRIGHT_DEPLOY_USER:?BRIGHT_DEPLOY_USER is required}"
-: "${BRIGHT_DEPLOY_SSH_KEY:?BRIGHT_DEPLOY_SSH_KEY is required}"
-: "${BRIGHT_OS_SOURCE_BRANCH:?BRIGHT_OS_SOURCE_BRANCH is required}"
-: "${BRIGHT_OS_TARGET_ENVIRONMENT:?BRIGHT_OS_TARGET_ENVIRONMENT is required}"
-: "${BRIGHT_OS_TARGET_BRANCH:?BRIGHT_OS_TARGET_BRANCH is required}"
-: "${BRIGHT_OS_TARGET_COMMIT:?BRIGHT_OS_TARGET_COMMIT is required}"
+: "${BRAI_DEPLOY_HOST:?BRAI_DEPLOY_HOST is required}"
+: "${BRAI_DEPLOY_USER:?BRAI_DEPLOY_USER is required}"
+: "${BRAI_DEPLOY_SSH_KEY:?BRAI_DEPLOY_SSH_KEY is required}"
+: "${BRAI_SOURCE_BRANCH:?BRAI_SOURCE_BRANCH is required}"
+: "${BRAI_TARGET_ENVIRONMENT:?BRAI_TARGET_ENVIRONMENT is required}"
+: "${BRAI_TARGET_BRANCH:?BRAI_TARGET_BRANCH is required}"
+: "${BRAI_TARGET_COMMIT:?BRAI_TARGET_COMMIT is required}"
 
-DEPLOY_REPO="${BRIGHT_DEPLOY_REPO:-/srv/projects/bright-os}"
-SSH_PORT="${BRIGHT_DEPLOY_SSH_PORT:-22}"
-KEY_FILE="$(mktemp "${TMPDIR:-/tmp}/bright-deploy-key.XXXXXX")"
+DEPLOY_REPO="${BRAI_DEPLOY_REPO:-/srv/projects/brai}"
+SSH_PORT="${BRAI_DEPLOY_SSH_PORT:-22}"
+KEY_FILE="$(mktemp "${TMPDIR:-/tmp}/brai-deploy-key.XXXXXX")"
 cleanup() {
   rm -f "$KEY_FILE"
 }
 trap cleanup EXIT
 
-printf '%s\n' "$BRIGHT_DEPLOY_SSH_KEY" >"$KEY_FILE"
+printf '%s\n' "$BRAI_DEPLOY_SSH_KEY" >"$KEY_FILE"
 chmod 600 "$KEY_FILE"
 
-SOURCE_SHORT_CHANGES="${BRIGHT_OS_SOURCE_SHORT_CHANGES:-}"
-SOURCE_DETAILED_CHANGES="${BRIGHT_OS_SOURCE_DETAILED_CHANGES:-}"
-if [[ "$BRIGHT_OS_SOURCE_BRANCH" == codex/* && ( -z "$SOURCE_SHORT_CHANGES" || -z "$SOURCE_DETAILED_CHANGES" ) ]]; then
+SOURCE_SHORT_CHANGES="${BRAI_SOURCE_SHORT_CHANGES:-}"
+SOURCE_DETAILED_CHANGES="${BRAI_SOURCE_DETAILED_CHANGES:-}"
+if [[ "$BRAI_SOURCE_BRANCH" == codex/* && ( -z "$SOURCE_SHORT_CHANGES" || -z "$SOURCE_DETAILED_CHANGES" ) ]]; then
   NOTES_COMMIT=""
-  if git fetch --depth=20 origin "$BRIGHT_OS_SOURCE_BRANCH" >/dev/null 2>&1; then
+  if git fetch --depth=20 origin "$BRAI_SOURCE_BRANCH" >/dev/null 2>&1; then
     NOTES_COMMIT="$(git rev-parse FETCH_HEAD 2>/dev/null || true)"
   fi
   if [[ -n "$NOTES_COMMIT" ]]; then
@@ -62,28 +62,28 @@ fi
 SOURCE_SHORT_CHANGES_B64="$(printf '%s' "$SOURCE_SHORT_CHANGES" | base64 -w0)"
 SOURCE_DETAILED_CHANGES_B64="$(printf '%s' "$SOURCE_DETAILED_CHANGES" | base64 -w0)"
 
-ssh -i "$KEY_FILE" -p "$SSH_PORT" -o StrictHostKeyChecking=accept-new "$BRIGHT_DEPLOY_USER@$BRIGHT_DEPLOY_HOST" \
-  bash -s -- "$DEPLOY_REPO" "$BRIGHT_OS_SOURCE_BRANCH" "$BRIGHT_OS_TARGET_ENVIRONMENT" "$BRIGHT_OS_TARGET_BRANCH" "$BRIGHT_OS_TARGET_COMMIT" "${SOURCE_SHORT_CHANGES_B64:-.}" "${SOURCE_DETAILED_CHANGES_B64:-.}" "${BRIGHT_OS_RECORD_PRODUCTION_RELEASE:-false}" <<'REMOTE'
+ssh -i "$KEY_FILE" -p "$SSH_PORT" -o StrictHostKeyChecking=accept-new "$BRAI_DEPLOY_USER@$BRAI_DEPLOY_HOST" \
+  bash -s -- "$DEPLOY_REPO" "$BRAI_SOURCE_BRANCH" "$BRAI_TARGET_ENVIRONMENT" "$BRAI_TARGET_BRANCH" "$BRAI_TARGET_COMMIT" "${SOURCE_SHORT_CHANGES_B64:-.}" "${SOURCE_DETAILED_CHANGES_B64:-.}" "${BRAI_RECORD_PRODUCTION_RELEASE:-false}" <<'REMOTE'
 set -euo pipefail
 DEPLOY_REPO="$1"
-BRIGHT_OS_SOURCE_BRANCH="$2"
-BRIGHT_OS_TARGET_ENVIRONMENT="$3"
-BRIGHT_OS_TARGET_BRANCH="$4"
-BRIGHT_OS_TARGET_COMMIT="$5"
-BRIGHT_OS_SOURCE_SHORT_CHANGES="$([[ "$6" == "." ]] || printf '%s' "$6" | base64 -d)"
-BRIGHT_OS_SOURCE_DETAILED_CHANGES="$([[ "$7" == "." ]] || printf '%s' "$7" | base64 -d)"
-BRIGHT_OS_RECORD_PRODUCTION_RELEASE="$8"
-ENVS_ROOT="${BRIGHT_OS_ENVS_ROOT:-/srv/projects/bright-os-envs}"
-NODE_PREFIX="${BRIGHT_OS_NODE_PREFIX:-/srv/opt/node-v22.16.0/bin}"
+BRAI_SOURCE_BRANCH="$2"
+BRAI_TARGET_ENVIRONMENT="$3"
+BRAI_TARGET_BRANCH="$4"
+BRAI_TARGET_COMMIT="$5"
+BRAI_SOURCE_SHORT_CHANGES="$([[ "$6" == "." ]] || printf '%s' "$6" | base64 -d)"
+BRAI_SOURCE_DETAILED_CHANGES="$([[ "$7" == "." ]] || printf '%s' "$7" | base64 -d)"
+BRAI_RECORD_PRODUCTION_RELEASE="$8"
+ENVS_ROOT="${BRAI_ENVS_ROOT:-/srv/projects/brai-envs}"
+NODE_PREFIX="${BRAI_NODE_PREFIX:-/srv/opt/node-v22.16.0/bin}"
 if [[ -d "$NODE_PREFIX" ]]; then
   export PATH="$NODE_PREFIX:$PATH"
 fi
 
 RUN_ROOT="$DEPLOY_REPO"
-if [[ "$BRIGHT_OS_SOURCE_BRANCH" == codex/* && "$BRIGHT_OS_TARGET_ENVIRONMENT" == "prod" ]]; then
+if [[ "$BRAI_SOURCE_BRANCH" == codex/* && "$BRAI_TARGET_ENVIRONMENT" == "prod" ]]; then
   if ! SLOT="$(node -e '
 const fs = require("node:fs");
-const path = process.env.BRIGHT_OS_PREVIEW_REGISTRY || `${process.env.BRIGHT_OS_ENVS_ROOT || "/srv/projects/bright-os-envs"}/preview-slots.json`;
+const path = process.env.BRAI_PREVIEW_REGISTRY || `${process.env.BRAI_ENVS_ROOT || "/srv/projects/brai-envs"}/preview-slots.json`;
 const branch = process.argv[1];
 const registry = JSON.parse(fs.readFileSync(path, "utf8"));
 for (const slot of ["A", "B", "C", "D", "E"]) {
@@ -93,26 +93,26 @@ for (const slot of ["A", "B", "C", "D", "E"]) {
   }
 }
 process.exit(1);
-' "$BRIGHT_OS_SOURCE_BRANCH")"; then
-    echo "No preview slot found for accepted production branch $BRIGHT_OS_SOURCE_BRANCH." >&2
+' "$BRAI_SOURCE_BRANCH")"; then
+    echo "No preview slot found for accepted production branch $BRAI_SOURCE_BRANCH." >&2
     exit 1
   fi
   RUN_ROOT="$ENVS_ROOT/preview-$SLOT/source"
 fi
-if [[ "$BRIGHT_OS_TARGET_ENVIRONMENT" == "prod" ]]; then
-  export BRIGHT_OS_DB="$DEPLOY_REPO/data/bright_os.sqlite"
+if [[ "$BRAI_TARGET_ENVIRONMENT" == "prod" ]]; then
+  export BRAI_DB="$DEPLOY_REPO/data/brai.sqlite"
 fi
 
 cd "$RUN_ROOT"
 if [[ -d "$DEPLOY_REPO/.git" ]]; then
-  export BRIGHT_OS_GIT_NOTES_ROOT="$DEPLOY_REPO"
+  export BRAI_GIT_NOTES_ROOT="$DEPLOY_REPO"
 fi
-BRIGHT_OS_SOURCE_BRANCH="$BRIGHT_OS_SOURCE_BRANCH" \
-BRIGHT_OS_TARGET_ENVIRONMENT="$BRIGHT_OS_TARGET_ENVIRONMENT" \
-BRIGHT_OS_TARGET_BRANCH="$BRIGHT_OS_TARGET_BRANCH" \
-BRIGHT_OS_TARGET_COMMIT="$BRIGHT_OS_TARGET_COMMIT" \
-BRIGHT_OS_SOURCE_SHORT_CHANGES="$BRIGHT_OS_SOURCE_SHORT_CHANGES" \
-BRIGHT_OS_SOURCE_DETAILED_CHANGES="$BRIGHT_OS_SOURCE_DETAILED_CHANGES" \
-BRIGHT_OS_RECORD_PRODUCTION_RELEASE="$BRIGHT_OS_RECORD_PRODUCTION_RELEASE" \
+BRAI_SOURCE_BRANCH="$BRAI_SOURCE_BRANCH" \
+BRAI_TARGET_ENVIRONMENT="$BRAI_TARGET_ENVIRONMENT" \
+BRAI_TARGET_BRANCH="$BRAI_TARGET_BRANCH" \
+BRAI_TARGET_COMMIT="$BRAI_TARGET_COMMIT" \
+BRAI_SOURCE_SHORT_CHANGES="$BRAI_SOURCE_SHORT_CHANGES" \
+BRAI_SOURCE_DETAILED_CHANGES="$BRAI_SOURCE_DETAILED_CHANGES" \
+BRAI_RECORD_PRODUCTION_RELEASE="$BRAI_RECORD_PRODUCTION_RELEASE" \
   deploy/scripts/promote-accepted-deployment.sh
 REMOTE

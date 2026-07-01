@@ -2,7 +2,7 @@
 
 ## Summary
 
-Add `inbox` as a Bright OS work entity for incoming items, with a first UI and
+Add `inbox` as a Brai work entity for incoming items, with a first UI and
 offline-first sync path.
 
 ## Capabilities

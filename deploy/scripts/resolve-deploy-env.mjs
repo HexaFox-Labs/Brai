@@ -5,16 +5,16 @@ import process from "node:process";
 const branch = process.argv[2];
 if (!branch) throw new Error("branch is required");
 
-const root = process.env.BRIGHT_OS_ROOT ?? path.resolve(import.meta.dirname, "../..");
+const root = process.env.BRAI_ROOT ?? path.resolve(import.meta.dirname, "../..");
 const { environments } = JSON.parse(fs.readFileSync(path.join(root, "deploy/environments.json"), "utf8"));
 let key;
 
 if (branch === "main") key = "prod";
 else if (branch.startsWith("codex/")) {
-  const slot = process.env.BRIGHT_OS_PREVIEW_SLOT || resolvePreviewSlot(branch);
+  const slot = process.env.BRAI_PREVIEW_SLOT || resolvePreviewSlot(branch);
   key = `preview-${slot.toLowerCase()}`;
 } else {
-  throw new Error(`unsupported Bright OS deployment branch: ${branch}`);
+  throw new Error(`unsupported Brai deployment branch: ${branch}`);
 }
 
 const env = environments[key];
@@ -25,8 +25,8 @@ console.log(env.path);
 console.log(env.serviceName);
 
 function resolvePreviewSlot(branchName) {
-  const envsRoot = process.env.BRIGHT_OS_ENVS_ROOT ?? "/srv/projects/bright-os-envs";
-  const registryPath = process.env.BRIGHT_OS_PREVIEW_REGISTRY ?? path.join(envsRoot, "preview-slots.json");
+  const envsRoot = process.env.BRAI_ENVS_ROOT ?? "/srv/projects/brai-envs";
+  const registryPath = process.env.BRAI_PREVIEW_REGISTRY ?? path.join(envsRoot, "preview-slots.json");
   if (!fs.existsSync(registryPath)) return "A";
   const registry = JSON.parse(fs.readFileSync(registryPath, "utf8"));
   for (const slot of ["A", "B", "C", "D", "E"]) {

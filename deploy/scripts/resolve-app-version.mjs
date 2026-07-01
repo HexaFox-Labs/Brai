@@ -6,7 +6,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(import.meta.dirname, "../..");
-const requireFromApi = createRequire(path.join(repoRoot, "services/bright_os_api/package.json"));
+const requireFromApi = createRequire(path.join(repoRoot, "services/brai_api/package.json"));
 const Database = requireFromApi("better-sqlite3");
 if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
   const args = parseArgs(process.argv.slice(2));
@@ -24,13 +24,13 @@ if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
 }
 
 export function resolveAppVersion({
-  root = process.env.BRIGHT_OS_ROOT || path.resolve(import.meta.dirname, "../.."),
-  environment = process.env.NEXT_PUBLIC_BRIGHT_OS_ENVIRONMENT || "",
+  root = process.env.BRAI_ROOT || path.resolve(import.meta.dirname, "../.."),
+  environment = process.env.NEXT_PUBLIC_BRAI_ENVIRONMENT || "",
   db = "",
-  prodDb = process.env.BRIGHT_OS_PROD_DB || "",
+  prodDb = process.env.BRAI_PROD_DB || "",
   prodWebVersionJson = "",
   mobileTarget = "",
-  explicit = process.env.BRIGHT_OS_APP_VERSION || "",
+  explicit = process.env.BRAI_APP_VERSION || "",
   nextApk = false,
   targetBranch = "",
   targetCommit = "",
@@ -50,11 +50,11 @@ export function resolveAppVersion({
   ]);
   if (resolvedVersion) return validVersion(resolvedVersion);
 
-  return validVersion(readVersionJson(path.join(root, "apps/bright_os_app/public/version.json")));
+  return validVersion(readVersionJson(path.join(root, "apps/brai_app/public/version.json")));
 }
 
 function validVersion(version) {
-  if (!/^\d+\.\d+\.\d+\.\d+$/.test(version)) throw new Error(`Invalid Bright OS X.Y.Z.S version: ${version}`);
+  if (!/^\d+\.\d+\.\d+\.\d+$/.test(version)) throw new Error(`Invalid Brai X.Y.Z.S version: ${version}`);
   return version;
 }
 

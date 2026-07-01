@@ -1,24 +1,24 @@
-# Bright OS
+# Brai
 
-Bright OS is a local-first personal operating system for focused work. It brings daily actions, focus sessions, goals, history, and self-hosted sync into one web and Android app that keeps working when the network is unreliable.
+Brai is a local-first personal operating system for focused work. It brings daily actions, focus sessions, goals, history, and self-hosted sync into one web and Android app that keeps working when the network is unreliable.
 
-The project is built around a simple rule: the device should remain useful first, and the server should sync state when it can. Local data is stored in the client outbox, then reconciled through the Bright OS API backed by SQLite.
+The project is built around a simple rule: the device should remain useful first, and the server should sync state when it can. Local data is stored in the client outbox, then reconciled through the Brai API backed by SQLite.
 
 ## What Is Inside
 
 - Local-first work tracking with durable client-side queues.
-- A public Bright OS site served separately from the protected app.
+- A public Brai site served separately from the protected app.
 - Focus, goal, history, archive, and activity views in one app shell.
 - A Next.js web app that also ships inside a Capacitor Android wrapper.
 - Android web-layer OTA updates for shipping UI fixes without rebuilding the APK.
-- A self-hosted Bright OS API for sync, auth, health checks, and deployment metadata.
+- A self-hosted Brai API for sync, auth, health checks, and deployment metadata.
 - Public-safe project rules, accepted specs, and deployment automation.
 
 ## Repository Layout
 
-- `apps/bright_os_app/` - Next.js 16, React 19, Tailwind CSS, source-owned UI, and Capacitor Android.
-- `apps/bright_os_site/` - static public site source for `brightos.world`.
-- `services/bright_os_api/` - Node.js Bright OS API with SQLite storage and offline-first sync endpoints.
+- `apps/brai_app/` - Next.js 16, React 19, Tailwind CSS, source-owned UI, and Capacitor Android.
+- `apps/brai_site/` - static public site source for `brightos.world`.
+- `services/brai_api/` - Node.js Brai API with SQLite storage and offline-first sync endpoints.
 - `deploy/` - deployment scripts, Ansible playbooks, Caddy/systemd templates, and environment mapping.
 - `docs/` - development guidelines, checklists, and operations notes.
 - `openspec/specs/` - accepted product and workflow requirements.
@@ -33,7 +33,7 @@ Runtime databases, server-only env files, APKs, OTA bundles, signing material, l
 - Android Studio, JDK, and Gradle for APK builds.
 - Release signing variables only when building a production APK.
 
-Bright OS commands use the workspace Node runtime under `/srv/opt/node-v22.16.0` when it is available.
+Brai commands use the workspace Node runtime under `/srv/opt/node-v22.16.0` when it is available.
 
 ## Development
 
@@ -41,8 +41,8 @@ Install dependencies:
 
 ```bash
 npm ci
-npm --prefix apps/bright_os_app ci
-npm --prefix services/bright_os_api ci
+npm --prefix apps/brai_app ci
+npm --prefix services/brai_api ci
 ```
 
 Run the main checks:
@@ -50,7 +50,7 @@ Run the main checks:
 ```bash
 npm run app:lint
 npm run app:test
-npm --prefix services/bright_os_api test
+npm --prefix services/brai_api test
 npm run openspec:validate
 npm run public:guard
 ```
@@ -73,10 +73,10 @@ npm run android:build:release
 
 Release APK signing is configured through environment variables outside the repository:
 
-- `BRIGHT_OS_ANDROID_KEYSTORE_PATH`
-- `BRIGHT_OS_ANDROID_STORE_PASSWORD`
-- `BRIGHT_OS_ANDROID_KEY_ALIAS`
-- `BRIGHT_OS_ANDROID_KEY_PASSWORD`
+- `BRAI_ANDROID_KEYSTORE_PATH`
+- `BRAI_ANDROID_STORE_PASSWORD`
+- `BRAI_ANDROID_KEY_ALIAS`
+- `BRAI_ANDROID_KEY_PASSWORD`
 
 ## Deployment Flow
 
@@ -85,7 +85,7 @@ Release APK signing is configured through environment variables outside the repo
 - `codex/*` branches deploy to preview slots `A` through `E`.
 - `npm run app:dev` is only the local Next.js development server.
 
-GitHub Actions run public hygiene checks, app lint/tests, Bright OS API tests, and the matching deployment job for the branch class. Deployment credentials live in GitHub Secrets/Variables and on the server, never in source.
+GitHub Actions run public hygiene checks, app lint/tests, Brai API tests, and the matching deployment job for the branch class. Deployment credentials live in GitHub Secrets/Variables and on the server, never in source.
 
 ## Public Safety
 

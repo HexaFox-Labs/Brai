@@ -1,34 +1,34 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="${BRIGHT_OS_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
-NODE_PREFIX="${BRIGHT_OS_NODE_PREFIX:-/srv/opt/node-v22.16.0/bin}"
+ROOT="${BRAI_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+NODE_PREFIX="${BRAI_NODE_PREFIX:-/srv/opt/node-v22.16.0/bin}"
 if [[ -d "$NODE_PREFIX" ]]; then
   export PATH="$NODE_PREFIX:$PATH"
 fi
-SOURCE="${BRIGHT_OS_MOBILE_SOURCE:-$ROOT/apps/bright_os_app/out}"
-TARGET_ROOT="${BRIGHT_OS_MOBILE_TARGET:-$ROOT/deploy/mobile-update}"
+SOURCE="${BRAI_MOBILE_SOURCE:-$ROOT/apps/brai_app/out}"
+TARGET_ROOT="${BRAI_MOBILE_TARGET:-$ROOT/deploy/mobile-update}"
 NODE_BIN="${NODE_BIN:-node}"
 ZIP_BIN="${ZIP_BIN:-zip}"
-VERSION="${BRIGHT_OS_APP_VERSION:-$("$NODE_BIN" -e '
+VERSION="${BRAI_APP_VERSION:-$("$NODE_BIN" -e '
 const fs = require("node:fs");
 const path = require("node:path");
 const root = process.argv[1];
-const parsed = JSON.parse(fs.readFileSync(path.join(root, "apps/bright_os_app/public/version.json"), "utf8"));
+const parsed = JSON.parse(fs.readFileSync(path.join(root, "apps/brai_app/public/version.json"), "utf8"));
 const version = String(parsed.version || "");
-if (!/^\d+\.\d+\.\d+\.\d+$/.test(version)) throw new Error("Unable to resolve Bright OS X.Y.Z.S app version");
+if (!/^\d+\.\d+\.\d+\.\d+$/.test(version)) throw new Error("Unable to resolve Brai X.Y.Z.S app version");
 console.log(version);
 ' "$ROOT")}"
-BUNDLE_VERSION="${BRIGHT_OS_MOBILE_BUNDLE_VERSION:-$VERSION}"
-UPDATE_BASE_URL="${BRIGHT_OS_UPDATE_BASE_URL:-https://app.brightos.world/mobile-update}"
-MIN_APK_VERSION_CODE="${BRIGHT_OS_MIN_APK_VERSION_CODE:-1}"
-MAX_APK_VERSION_CODE="${BRIGHT_OS_MAX_APK_VERSION_CODE:-}"
-MANDATORY="${BRIGHT_OS_MOBILE_MANDATORY:-false}"
-RETAIN_PREVIOUS="${BRIGHT_OS_MOBILE_RETAIN_PREVIOUS:-3}"
-ENTRYPOINT="${BRIGHT_OS_MOBILE_ENTRYPOINT:-index.html}"
-PUBLISHED_AT="${BRIGHT_OS_PUBLISHED_AT:-$(date -u +"%Y-%m-%dT%H:%M:%SZ")}"
+BUNDLE_VERSION="${BRAI_MOBILE_BUNDLE_VERSION:-$VERSION}"
+UPDATE_BASE_URL="${BRAI_UPDATE_BASE_URL:-https://app.brightos.world/mobile-update}"
+MIN_APK_VERSION_CODE="${BRAI_MIN_APK_VERSION_CODE:-1}"
+MAX_APK_VERSION_CODE="${BRAI_MAX_APK_VERSION_CODE:-}"
+MANDATORY="${BRAI_MOBILE_MANDATORY:-false}"
+RETAIN_PREVIOUS="${BRAI_MOBILE_RETAIN_PREVIOUS:-3}"
+ENTRYPOINT="${BRAI_MOBILE_ENTRYPOINT:-index.html}"
+PUBLISHED_AT="${BRAI_PUBLISHED_AT:-$(date -u +"%Y-%m-%dT%H:%M:%SZ")}"
 
-node -e 'const major = Number(process.versions.node.split(".")[0]); if (major < 22) { console.error(`Bright OS requires Node.js >=22.0.0. Current: ${process.version}.`); process.exit(1); }'
+node -e 'const major = Number(process.versions.node.split(".")[0]); if (major < 22) { console.error(`Brai requires Node.js >=22.0.0. Current: ${process.version}.`); process.exit(1); }'
 
 if [[ ! -d "$SOURCE" ]]; then
   echo "Missing Next.js static export at $SOURCE" >&2
@@ -50,30 +50,30 @@ if [[ ! "$BUNDLE_VERSION" =~ ^[A-Za-z0-9._+-]+$ ]]; then
   exit 1
 fi
 
-ENVIRONMENT="${NEXT_PUBLIC_BRIGHT_OS_ENVIRONMENT:-${BRIGHT_OS_ENVIRONMENT:-prod}}"
+ENVIRONMENT="${NEXT_PUBLIC_BRAI_ENVIRONMENT:-${BRAI_ENVIRONMENT:-prod}}"
 if [[ "$ENVIRONMENT" == "prod" && ! "$BUNDLE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "Production bundle version must use Bright OS X.Y.Z.S format: $BUNDLE_VERSION" >&2
+  echo "Production bundle version must use Brai X.Y.Z.S format: $BUNDLE_VERSION" >&2
   exit 1
 fi
 
 if [[ "$ENVIRONMENT" != "prod" && ! "$BUNDLE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+([._+-][A-Za-z0-9._+-]+)?$ ]]; then
-  echo "Non-production bundle version must start with Bright OS X.Y.Z.S: $BUNDLE_VERSION" >&2
+  echo "Non-production bundle version must start with Brai X.Y.Z.S: $BUNDLE_VERSION" >&2
   exit 1
 fi
 
 if [[ "$MANDATORY" != "true" && "$MANDATORY" != "false" ]]; then
-  echo "BRIGHT_OS_MOBILE_MANDATORY must be true or false" >&2
+  echo "BRAI_MOBILE_MANDATORY must be true or false" >&2
   exit 1
 fi
 
 if [[ ! "$MIN_APK_VERSION_CODE" =~ ^[0-9]+$ || "$MIN_APK_VERSION_CODE" -le 0 ]]; then
-  echo "BRIGHT_OS_MIN_APK_VERSION_CODE must be a positive integer" >&2
+  echo "BRAI_MIN_APK_VERSION_CODE must be a positive integer" >&2
   exit 1
 fi
 
 if [[ -n "$MAX_APK_VERSION_CODE" ]]; then
   if [[ ! "$MAX_APK_VERSION_CODE" =~ ^[0-9]+$ || "$MAX_APK_VERSION_CODE" -le 0 ]]; then
-    echo "BRIGHT_OS_MAX_APK_VERSION_CODE must be a positive integer when set" >&2
+    echo "BRAI_MAX_APK_VERSION_CODE must be a positive integer when set" >&2
     exit 1
   fi
 fi
@@ -99,7 +99,7 @@ if (parsedUrl.protocol !== "https:") throw new Error("archive URL must use HTTPS
 if (parsedUrl.username || parsedUrl.password) throw new Error("archive URL must not include credentials");
 const metadata = {
   schemaVersion: 1,
-  type: "bright-os-mobile-web-bundle",
+  type: "brai-mobile-web-bundle",
   bundleVersion,
   publishedAt,
   entrypoint,

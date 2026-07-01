@@ -1,0 +1,313 @@
+- name: Configure Brai one-VPS environments
+  hosts: brai
+  become: true
+  tasks:
+    - name: Create deploy user
+      ansible.builtin.user:
+        name: "{{ brai_deploy_user }}"
+        shell: /bin/bash
+        create_home: true
+
+    - name: Create service group
+      ansible.builtin.group:
+        name: "{{ brai_service_group }}"
+        system: true
+
+    - name: Create service user
+      ansible.builtin.user:
+        name: "{{ brai_service_user }}"
+        group: "{{ brai_service_group }}"
+        shell: /usr/sbin/nologin
+        create_home: false
+        system: true
+
+    - name: Allow service user to write deploy-owned runtime files
+      ansible.builtin.user:
+        name: "{{ brai_service_user }}"
+        groups: "{{ brai_deploy_user }}"
+        append: true
+
+    - name: Allow local deploy writers to update environment files
+      ansible.builtin.user:
+        name: "{{ item }}"
+        groups: "{{ brai_deploy_user }}"
+        append: true
+      loop: "{{ brai_deploy_writers }}"
+
+    - name: Create environment root
+      ansible.builtin.file:
+        path: "{{ brai_env_root }}"
+        state: directory
+        owner: "{{ brai_deploy_user }}"
+        group: "{{ brai_deploy_user }}"
+        mode: "2775"
+
+    - name: Allow deploy user to run deployment scripts
+      ansible.builtin.file:
+        path: "{{ brai_repo }}/deploy/scripts"
+        state: directory
+        group: "{{ brai_deploy_user }}"
+        mode: "u=rwX,g=rX,o="
+        recurse: true
+
+    - name: Allow deploy user to read environment map
+      ansible.builtin.file:
+        path: "{{ brai_repo }}/deploy/environments.json"
+        state: file
+        group: "{{ brai_deploy_user }}"
+        mode: "u=rw,g=r,o="
+
+    - name: Allow deploy user to enter Node.js runtime directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        group: "{{ brai_deploy_user }}"
+        mode: "u=rwx,g=rx,o="
+      loop:
+        - "{{ brai_node_root }}"
+        - "{{ brai_node_root }}/bin"
+        - "{{ brai_node_root }}/lib"
+        - "{{ brai_node_root }}/lib/node_modules"
+
+    - name: Allow deploy user to execute Node.js binary
+      ansible.builtin.file:
+        path: "{{ brai_node_bin }}"
+        state: file
+        group: "{{ brai_deploy_user }}"
+        mode: "u=rwx,g=rx,o="
+
+    - name: Allow deploy user to read Node.js package manager files
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        group: "{{ brai_deploy_user }}"
+        mode: "u=rwX,g=rX,o="
+        recurse: true
+      loop:
+        - "{{ brai_node_root }}/lib/node_modules/corepack"
+        - "{{ brai_node_root }}/lib/node_modules/npm"
+
+    - name: Create environment parent directories
+      ansible.builtin.file:
+        path: "{{ brai_env_root }}/{{ item.value.path }}"
+        state: directory
+        owner: "{{ brai_deploy_user }}"
+        group: "{{ brai_deploy_user }}"
+        mode: "2775"
+      loop: "{{ brai_envs | dict2items | list }}"
+      loop_control:
+        label: "{{ item.key }}"
+
+    - name: Check production source checkout path
+      ansible.builtin.stat:
+        path: "{{ brai_env_root }}/{{ brai_envs.prod.path }}/source"
+      register: brai_prod_source
+
+    - name: Seed production source checkout path from the current live repository
+      ansible.builtin.file:
+        src: "{{ brai_repo }}"
+        dest: "{{ brai_env_root }}/{{ brai_envs.prod.path }}/source"
+        state: link
+      when: not brai_prod_source.stat.exists
+
+    - name: Create environment directories
+      ansible.builtin.file:
+        path: "{{ brai_env_root }}/{{ item.0.value.path }}/{{ item.1 }}"
+        state: directory
+        owner: "{{ brai_deploy_user }}"
+        group: "{{ brai_deploy_user }}"
+        mode: "2775"
+      loop: "{{ brai_envs | dict2items | rejectattr('key', 'equalto', 'prod') | list | product(['web', 'mobile-update', 'data', 'source']) | list }}"
+      loop_control:
+        label: "{{ item.0.key }}/{{ item.1 }}"
+
+    - name: Ensure non-production deploy artifact ownership
+      ansible.builtin.file:
+        path: "{{ brai_env_root }}/{{ item.0.value.path }}/{{ item.1 }}"
+        state: directory
+        owner: "{{ brai_deploy_user }}"
+        group: "{{ brai_deploy_user }}"
+        mode: "u=rwX,g=rwX,o=rX"
+        recurse: true
+      loop: "{{ brai_envs | dict2items | rejectattr('key', 'equalto', 'prod') | list | product(['web', 'mobile-update', 'data', 'source']) | list }}"
+      loop_control:
+        label: "{{ item.0.key }}/{{ item.1 }}"
+
+    - name: Ensure non-production data directories keep deploy setgid
+      ansible.builtin.file:
+        path: "{{ brai_env_root }}/{{ item.value.path }}/data"
+        state: directory
+        owner: "{{ brai_deploy_user }}"
+        group: "{{ brai_deploy_user }}"
+        mode: "2775"
+      loop: "{{ brai_envs | dict2items | rejectattr('key', 'equalto', 'prod') | list }}"
+      loop_control:
+        label: "{{ item.key }}/data"
+
+    - name: Ensure nested non-production data directories keep deploy setgid
+      ansible.builtin.command:
+        argv:
+          - find
+          - "{{ brai_env_root }}/{{ item.value.path }}/data"
+          - -type
+          - d
+          - -exec
+          - chmod
+          - "2775"
+          - "{}"
+          - "+"
+      loop: "{{ brai_envs | dict2items | rejectattr('key', 'equalto', 'prod') | list }}"
+      loop_control:
+        label: "{{ item.key }}/data"
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Create preview slot status directory
+      ansible.builtin.file:
+        path: "{{ brai_env_root }}/preview-status"
+        state: directory
+        owner: "{{ brai_deploy_user }}"
+        group: "{{ brai_deploy_user }}"
+        mode: "0775"
+
+    - name: Ensure public landing root exists
+      ansible.builtin.file:
+        path: "{{ brai_public_site_root }}"
+        state: directory
+        mode: "0755"
+
+    - name: Allow deploy user to publish production web and OTA assets
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        group: "{{ brai_deploy_user }}"
+        mode: "u=rwX,g=rwX,o=rX"
+        recurse: true
+      loop:
+        - "{{ brai_repo }}/deploy/web"
+        - "{{ brai_repo }}/deploy/mobile-update"
+        - "{{ brai_repo }}/deploy/releases"
+
+    - name: Allow deploy user to update production Brai database ledger
+      ansible.builtin.file:
+        path: "{{ brai_repo }}/data"
+        state: directory
+        group: "{{ brai_deploy_user }}"
+        mode: "2775"
+
+    - name: Allow deploy user to update production Brai database file
+      ansible.builtin.file:
+        path: "{{ brai_repo }}/data/brai.sqlite"
+        state: file
+        group: "{{ brai_deploy_user }}"
+        mode: "0664"
+
+    - name: Check production Brai database sidecar files
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ brai_repo }}/data/brai.sqlite-wal"
+        - "{{ brai_repo }}/data/brai.sqlite-shm"
+      register: brai_prod_db_sidecars
+
+    - name: Allow deploy user to update existing production Brai database sidecars
+      ansible.builtin.file:
+        path: "{{ item.stat.path }}"
+        state: file
+        group: "{{ brai_deploy_user }}"
+        mode: "0664"
+      loop: "{{ brai_prod_db_sidecars.results }}"
+      when: item.stat.exists
+
+    - name: Seed preview slot registry if missing
+      ansible.builtin.command:
+        cmd: "{{ brai_repo }}/deploy/scripts/preview-slots.sh init"
+        creates: "{{ brai_env_root }}/preview-slots.json"
+
+    - name: Ensure preview slot state ownership
+      ansible.builtin.file:
+        path: "{{ item }}"
+        owner: "{{ brai_deploy_user }}"
+        group: "{{ brai_deploy_user }}"
+        mode: "0664"
+      loop:
+        - "{{ brai_env_root }}/preview-slots.json"
+        - "{{ brai_env_root }}/preview-slots.lock"
+      when: not ansible_check_mode
+
+    - name: Ensure preview status ownership
+      ansible.builtin.file:
+        path: "{{ brai_env_root }}/preview-status"
+        owner: "{{ brai_deploy_user }}"
+        group: "{{ brai_deploy_user }}"
+        mode: "u=rwX,g=rwX,o=rX"
+        recurse: true
+      when: not ansible_check_mode
+
+    - name: Seed per-environment Brai API env files from current production env
+      ansible.builtin.copy:
+        src: "{{ brai_api_env_source }}"
+        dest: "{{ brai_env_root }}/{{ item.value.path }}/brai-api.env"
+        remote_src: true
+        force: false
+        owner: root
+        group: root
+        mode: "0640"
+      loop: "{{ brai_envs | dict2items | rejectattr('key', 'equalto', 'prod') | list }}"
+      loop_control:
+        label: "{{ item.key }}"
+      when: not ansible_check_mode
+
+    - name: Install Brai API systemd units
+      ansible.builtin.template:
+        src: templates/brai-api.service.j2
+        dest: "/etc/systemd/system/{{ item.value.service }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop: "{{ brai_envs | dict2items | list }}"
+      loop_control:
+        label: "{{ item.value.service }}"
+      notify: Reload systemd
+
+    - name: Install Brai main checkout sync script
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../scripts/sync-local-main-checkout.sh"
+        dest: /srv/opt/brai-main-sync.sh
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install Brai Caddy routes
+      ansible.builtin.blockinfile:
+        path: "{{ brai_caddyfile }}"
+        marker: "# {mark} BRIGHT OS DEV/PREVIEW ENVIRONMENTS"
+        block: "{{ lookup('template', 'templates/Caddyfile.j2') }}"
+        validate: "caddy validate --adapter caddyfile --config %s"
+      notify:
+        - Validate Caddy
+        - Reload Caddy
+
+    - name: Install deploy user sudoers boundary
+      ansible.builtin.template:
+        src: templates/brai-deploy-sudoers.j2
+        dest: /etc/sudoers.d/brai-deploy
+        owner: root
+        group: root
+        mode: "0440"
+        validate: "visudo -cf %s"
+
+  handlers:
+    - name: Reload systemd
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+
+    - name: Validate Caddy
+      ansible.builtin.command:
+        cmd: "caddy validate --config {{ brai_caddyfile }}"
+      changed_when: false
+
+    - name: Reload Caddy
+      ansible.builtin.systemd_service:
+        name: caddy
+        state: reloaded

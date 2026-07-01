@@ -1,8 +1,8 @@
 import process from "node:process";
-import { BrightOsStore } from "../../services/bright_os_api/src/store.js";
+import { BraiStore } from "../../services/brai_api/src/store.js";
 
 const args = parseArgs(process.argv.slice(2));
-const store = new BrightOsStore(required(args, "db"));
+const store = new BraiStore(required(args, "db"));
 
 try {
   store.recordDeployment({

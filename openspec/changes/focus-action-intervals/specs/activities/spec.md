@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Activities can be linked to Focus intervals
-Bright OS SHALL allow Focus intervals to reference Activities without requiring
+Brai SHALL allow Focus intervals to reference Activities without requiring
 timer event replay to fail when Activity sync state arrives later.
 
 #### Scenario: Activity interval is returned in history
@@ -16,7 +16,7 @@ timer event replay to fail when Activity sync state arrives later.
 - **AND** does not reject the timer event only because the Activity is missing
 
 ### Requirement: Deleted Activities remain available for Focus history titles
-Bright OS SHALL provide enough Activity lookup data for Focus history to display
+Brai SHALL provide enough Activity lookup data for Focus history to display
 current titles of active, archived, and deleted Activities when those records
 are available.
 
@@ -33,7 +33,7 @@ are available.
 - **AND** it does not display a snapshot title from the time of focus
 
 ### Requirement: Deleting an active Activity preserves the main Focus timer
-Bright OS SHALL close an active interval for a deleted Activity without stopping
+Brai SHALL close an active interval for a deleted Activity without stopping
 the parent Focus session when the session was not started by that Activity stop
 flow.
 

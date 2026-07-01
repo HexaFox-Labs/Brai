@@ -25,5 +25,5 @@
 - [x] 7.3 Add client projection and cache tests for new event types and reload survival.
 - [x] 7.4 Add component tests for Activity-row controls, mobile stop timeout, dock stable sizing, and Focus history interval rules.
 - [x] 7.5 Add visual/e2e coverage for desktop Activity rows, mobile swipe/stop flow, active Focus dock, and multi-interval history expansion.
-- [x] 8.1 Run `npm run app:test`, `npm run app:lint`, `npm run app:build`, `npm --prefix services/bright_os_api test`, `npm run openspec:validate`, and `scripts/bright-guard-sync-check.sh --check`.
+- [x] 8.1 Run `npm run app:test`, `npm run app:lint`, `npm run app:build`, `npm --prefix services/brai_api test`, `npm run openspec:validate`, and `scripts/brai-guard-sync-check.sh --check`.
 - [ ] 8.2 Classify delivery as `runtime/product` and finish implementation through `scripts/bright-preview-handoff.sh`.

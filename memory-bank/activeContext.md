@@ -2,7 +2,7 @@
 
 ## Current Focus
 
-Bright OS now uses the clean public repository baseline as its source of truth.
+Brai now uses the clean public repository baseline as its source of truth.
 
 `main` is production and the accepted base. `codex/*` branches are task branches with preview/deploy checks. Runtime data, release artifacts, signing material, server-only env files, local backups, and personal notes stay outside Git.
 

@@ -2,7 +2,7 @@
 
 ## 2026-06-24 - Public Repository Baseline
 
-Bright OS public development starts from a new clean history instead of exposing private bootstrap history.
+Brai public development starts from a new clean history instead of exposing private bootstrap history.
 
 Rationale:
 
@@ -18,7 +18,7 @@ The guard checks current tree and reachable history for runtime data, generated 
 
 ## 2026-06-27 - SocratiCode Default Semantic Search
 
-Bright OS agent workflow uses SocratiCode as the default path for semantic codebase exploration after `codebase_status` confirms the active project path is indexed.
+Brai agent workflow uses SocratiCode as the default path for semantic codebase exploration after `codebase_status` confirms the active project path is indexed.
 
 Rationale:
 

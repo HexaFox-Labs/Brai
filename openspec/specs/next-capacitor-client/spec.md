@@ -4,7 +4,7 @@
 TBD - created by archiving change migrate-to-next-capacitor-local-first. Update Purpose after archive.
 ## Requirements
 ### Requirement: Next.js is the primary client platform
-Bright OS SHALL use a Next.js, React, TypeScript, and Tailwind CSS client as the primary product UI for future web and Android app work.
+Brai SHALL use a Next.js, React, TypeScript, and Tailwind CSS client as the primary product UI for future web and Android app work.
 
 #### Scenario: Web UI is implemented
 - **WHEN** a product UI feature is added after the migration
@@ -14,11 +14,11 @@ Bright OS SHALL use a Next.js, React, TypeScript, and Tailwind CSS client as the
 
 #### Scenario: Active client source is inspected
 - **WHEN** a maintainer looks for the current product UI source
-- **THEN** the canonical source is under `apps/bright_os_app`
+- **THEN** the canonical source is under `apps/brai_app`
 - **AND** no retired client source tree is required for normal development, build, or deployment
 
 ### Requirement: Android app uses Capacitor over the same web bundle
-Bright OS SHALL package the same built Next.js app into the Android application through Capacitor.
+Brai SHALL package the same built Next.js app into the Android application through Capacitor.
 
 #### Scenario: Android APK is built
 - **WHEN** the Android APK is built
@@ -112,7 +112,7 @@ The Next.js/Capacitor client SHALL preserve the current timer module workflows.
 - **AND** accepted timer sync behavior is preserved
 
 ### Requirement: Capacitor Android loads the latest verified local web bundle
-Bright OS Capacitor Android SHALL load the latest verified local OTA bundle when one exists, while retaining the bundled APK fallback.
+Brai Capacitor Android SHALL load the latest verified local OTA bundle when one exists, while retaining the bundled APK fallback.
 
 #### Scenario: Verified OTA bundle exists
 - **WHEN** the Android app starts
@@ -125,7 +125,7 @@ Bright OS Capacitor Android SHALL load the latest verified local OTA bundle when
 - **THEN** Capacitor loads the web layer bundled inside the APK
 
 ### Requirement: Web layer reports startup readiness to Android
-The Bright OS web layer SHALL provide a readiness signal for Android OTA activation.
+The Brai web layer SHALL provide a readiness signal for Android OTA activation.
 
 #### Scenario: Web app boots successfully
 - **WHEN** the web app has initialized the app shell and required client state
@@ -138,7 +138,7 @@ The Bright OS web layer SHALL provide a readiness signal for Android OTA activat
 - **AND** the browser path does not require Android native APIs
 
 ### Requirement: Mobile OTA bundles remain static-export compatible
-Bright OS mobile OTA bundles SHALL be compatible with local WebView loading from a static export.
+Brai mobile OTA bundles SHALL be compatible with local WebView loading from a static export.
 
 #### Scenario: Mobile page is added
 - **WHEN** a new ordinary client page is added for Android OTA delivery
@@ -146,7 +146,7 @@ Bright OS mobile OTA bundles SHALL be compatible with local WebView loading from
 - **AND** does not depend on server-side rendering, Next.js runtime server functions, or public app service ports
 
 #### Scenario: API calls are made from Android
-- **WHEN** the Android web layer calls Bright OS APIs
+- **WHEN** the Android web layer calls Brai APIs
 - **THEN** it uses the existing Android-compatible API configuration
 - **AND** does not embed private Bearer tokens in the OTA bundle
 
@@ -339,7 +339,7 @@ The Next.js/Capacitor client SHALL expose archived Activities from Settings.
 - **AND** the restore control uses the row's reserved right-side action area
 
 ### Requirement: Shared section headers own contextual actions
-Bright OS section headers SHALL provide the standard location and spacing for section-specific contextual actions.
+Brai section headers SHALL provide the standard location and spacing for section-specific contextual actions.
 
 #### Scenario: Header contextual actions render
 - **WHEN** a section exposes contextual actions

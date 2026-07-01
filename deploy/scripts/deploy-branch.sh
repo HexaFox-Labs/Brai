@@ -2,24 +2,24 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT="${BRIGHT_OS_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
+ROOT="${BRAI_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
 NODE_BIN="${NODE_BIN:-node}"
-ENVS_ROOT="${BRIGHT_OS_ENVS_ROOT:-/srv/projects/bright-os-envs}"
-BRANCH="${BRIGHT_OS_BRANCH:-$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)}"
-COMMIT="${BRIGHT_OS_COMMIT:-$(git -C "$ROOT" rev-parse HEAD)}"
+ENVS_ROOT="${BRAI_ENVS_ROOT:-/srv/projects/brai-envs}"
+BRANCH="${BRAI_BRANCH:-$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)}"
+COMMIT="${BRAI_COMMIT:-$(git -C "$ROOT" rev-parse HEAD)}"
 RUN_ID="${GITHUB_RUN_NUMBER:-$(date -u +%Y%m%d%H%M%S)}"
 SLOT=""
 
 if [[ "$BRANCH" == codex/* ]]; then
-  if [[ -n "${BRIGHT_OS_PREVIEW_SLOT:-}" ]]; then
-    SLOT="$BRIGHT_OS_PREVIEW_SLOT"
-    ALLOCATED_NEW="${BRIGHT_OS_PREVIEW_ALLOCATED_NEW:-false}"
+  if [[ -n "${BRAI_PREVIEW_SLOT:-}" ]]; then
+    SLOT="$BRAI_PREVIEW_SLOT"
+    ALLOCATED_NEW="${BRAI_PREVIEW_ALLOCATED_NEW:-false}"
   else
     ALLOCATION_JSON="$("$SCRIPT_DIR/preview-slots.sh" allocate "$BRANCH" "$COMMIT")"
     SLOT="$(printf '%s' "$ALLOCATION_JSON" | "$NODE_BIN" -e 'let raw=""; process.stdin.on("data", c => raw += c); process.stdin.on("end", () => console.log(JSON.parse(raw).slot));')"
     ALLOCATED_NEW="$(printf '%s' "$ALLOCATION_JSON" | "$NODE_BIN" -e 'let raw=""; process.stdin.on("data", c => raw += c); process.stdin.on("end", () => console.log(JSON.parse(raw).allocatedNew ? "true" : "false"));')"
   fi
-  export BRIGHT_OS_PREVIEW_SLOT="$SLOT"
+  export BRAI_PREVIEW_SLOT="$SLOT"
   trap '"$SCRIPT_DIR/preview-slots.sh" failed "$BRANCH" "$COMMIT" >/dev/null || true' ERR
 else
   ALLOCATED_NEW="false"
@@ -42,9 +42,9 @@ if [[ "$GIT_SUBJECT" == Merge\ pull\ request* && -n "$GIT_BODY" ]]; then
   done <<<"$GIT_BODY"
   GIT_BODY=""
 fi
-DEPLOY_SHORT_CHANGES="${BRIGHT_OS_DEPLOY_SHORT_CHANGES:-${GIT_SUBJECT:-Branch deployment}}"
-if [[ -n "${BRIGHT_OS_DEPLOY_DETAILED_CHANGES:-}" ]]; then
-  DEPLOY_DETAILED_CHANGES="$BRIGHT_OS_DEPLOY_DETAILED_CHANGES"
+DEPLOY_SHORT_CHANGES="${BRAI_DEPLOY_SHORT_CHANGES:-${GIT_SUBJECT:-Branch deployment}}"
+if [[ -n "${BRAI_DEPLOY_DETAILED_CHANGES:-}" ]]; then
+  DEPLOY_DETAILED_CHANGES="$BRAI_DEPLOY_DETAILED_CHANGES"
 elif [[ -n "$GIT_BODY" ]]; then
   DEPLOY_DETAILED_CHANGES="$GIT_SUBJECT"$'\n\n'"$GIT_BODY"
 else
@@ -52,28 +52,28 @@ else
 fi
 
 if [[ "$ENVIRONMENT" == "prod" ]]; then
-  WEB_TARGET="${BRIGHT_OS_WEB_TARGET:-$ROOT/deploy/web}"
-  MOBILE_TARGET="${BRIGHT_OS_MOBILE_TARGET:-$ROOT/deploy/mobile-update}"
-  DB_PATH="${BRIGHT_OS_DB:-$ROOT/data/bright_os.sqlite}"
+  WEB_TARGET="${BRAI_WEB_TARGET:-$ROOT/deploy/web}"
+  MOBILE_TARGET="${BRAI_MOBILE_TARGET:-$ROOT/deploy/mobile-update}"
+  DB_PATH="${BRAI_DB:-$ROOT/data/brai.sqlite}"
 else
-  TARGET_ROOT="${BRIGHT_OS_ENV_ROOT:-$ENVS_ROOT/$ENV_PATH}"
+  TARGET_ROOT="${BRAI_ENV_ROOT:-$ENVS_ROOT/$ENV_PATH}"
   umask 0002
   WEB_TARGET="$TARGET_ROOT/web"
   MOBILE_TARGET="$TARGET_ROOT/mobile-update"
-  DB_PATH="$TARGET_ROOT/data/bright_os.sqlite"
+  DB_PATH="$TARGET_ROOT/data/brai.sqlite"
   mkdir -p "$WEB_TARGET" "$MOBILE_TARGET" "$(dirname "$DB_PATH")"
 fi
 
-if [[ "$ENVIRONMENT" == preview-* && "$ALLOCATED_NEW" == "true" && "${BRIGHT_OS_RESET_NEW_PREVIEW_DB:-true}" != "false" ]]; then
+if [[ "$ENVIRONMENT" == preview-* && "$ALLOCATED_NEW" == "true" && "${BRAI_RESET_NEW_PREVIEW_DB:-true}" != "false" ]]; then
   case "$TARGET_ROOT" in
     "$ENVS_ROOT"/preview-*)
       find "$TARGET_ROOT" -user "$(id -u)" -exec chmod u+rwX,g+rwX {} + || true
-      if ! rm -f "$TARGET_ROOT/data/bright_os.sqlite" "$TARGET_ROOT/data/bright_os.sqlite-shm" "$TARGET_ROOT/data/bright_os.sqlite-wal"; then
+      if ! rm -f "$TARGET_ROOT/data/brai.sqlite" "$TARGET_ROOT/data/brai.sqlite-shm" "$TARGET_ROOT/data/brai.sqlite-wal"; then
         cat >&2 <<RECOVERY
 Preview SQLite reset failed under $TARGET_ROOT/data.
-Expected: data directory bright-deploy:bright-deploy 2775, SQLite files group-writable 0664.
-Recovery: run the Bright OS Ansible playbook as an admin, or run:
-  chown -R bright-deploy:bright-deploy "$TARGET_ROOT/data"
+Expected: data directory brai-deploy:brai-deploy 2775, SQLite files group-writable 0664.
+Recovery: run the Brai Ansible playbook as an admin, or run:
+  chown -R brai-deploy:brai-deploy "$TARGET_ROOT/data"
   chmod -R u+rwX,g+rwX,o=rX "$TARGET_ROOT/data"
   find "$TARGET_ROOT/data" -type d -exec chmod 2775 {} +
 Then retry this same branch deploy so the preview slot is reused.
@@ -88,18 +88,18 @@ RECOVERY
   esac
 fi
 
-VERSION="${BRIGHT_OS_APP_VERSION:-$("$NODE_BIN" "$SCRIPT_DIR/resolve-app-version.mjs" \
+VERSION="${BRAI_APP_VERSION:-$("$NODE_BIN" "$SCRIPT_DIR/resolve-app-version.mjs" \
   --environment "$ENVIRONMENT" \
   --root "$ROOT" \
   --db "$DB_PATH" \
-  --prod-db "${BRIGHT_OS_PROD_DB:-}" \
-  --prod-web-version-json "${BRIGHT_OS_PROD_WEB_VERSION_JSON:-}" \
+  --prod-db "${BRAI_PROD_DB:-}" \
+  --prod-web-version-json "${BRAI_PROD_WEB_VERSION_JSON:-}" \
   --mobile-target "$MOBILE_TARGET")}"
 
 if [[ "$ENVIRONMENT" == "prod" ]]; then
-  BUNDLE_VERSION="${BRIGHT_OS_MOBILE_BUNDLE_VERSION:-$VERSION}"
+  BUNDLE_VERSION="${BRAI_MOBILE_BUNDLE_VERSION:-$VERSION}"
 else
-  BUNDLE_VERSION="${BRIGHT_OS_MOBILE_BUNDLE_VERSION:-$VERSION.$RUN_ID}"
+  BUNDLE_VERSION="${BRAI_MOBILE_BUNDLE_VERSION:-$VERSION.$RUN_ID}"
 fi
 
 ANDROID_API="https://$DOMAIN/api"
@@ -107,20 +107,20 @@ if [[ "$ENVIRONMENT" == "prod" ]]; then
   ANDROID_API="https://api.brightos.world"
 fi
 
-export BRIGHT_OS_ROOT="$ROOT"
-export BRIGHT_OS_WEB_TARGET="$WEB_TARGET"
-export BRIGHT_OS_MOBILE_TARGET="$MOBILE_TARGET"
-export BRIGHT_OS_UPDATE_BASE_URL="https://$DOMAIN/mobile-update"
-export BRIGHT_OS_APP_VERSION="$VERSION"
-export BRIGHT_OS_MOBILE_BUNDLE_VERSION="$BUNDLE_VERSION"
-export NEXT_PUBLIC_BRIGHT_OS_APP_VERSION="$VERSION"
-export NEXT_PUBLIC_BRIGHT_OS_ENVIRONMENT="$ENVIRONMENT"
-export NEXT_PUBLIC_BRIGHT_OS_PREVIEW_SLOT="$SLOT"
-export NEXT_PUBLIC_BRIGHT_OS_BRANCH="$BRANCH"
-export NEXT_PUBLIC_BRIGHT_OS_COMMIT="$COMMIT"
-export NEXT_PUBLIC_BRIGHT_OS_OTA_CHANNEL="$DOMAIN/mobile-update"
-export NEXT_PUBLIC_BRIGHT_OS_API="/api"
-export NEXT_PUBLIC_BRIGHT_OS_ANDROID_API="$ANDROID_API"
+export BRAI_ROOT="$ROOT"
+export BRAI_WEB_TARGET="$WEB_TARGET"
+export BRAI_MOBILE_TARGET="$MOBILE_TARGET"
+export BRAI_UPDATE_BASE_URL="https://$DOMAIN/mobile-update"
+export BRAI_APP_VERSION="$VERSION"
+export BRAI_MOBILE_BUNDLE_VERSION="$BUNDLE_VERSION"
+export NEXT_PUBLIC_BRAI_APP_VERSION="$VERSION"
+export NEXT_PUBLIC_BRAI_ENVIRONMENT="$ENVIRONMENT"
+export NEXT_PUBLIC_BRAI_PREVIEW_SLOT="$SLOT"
+export NEXT_PUBLIC_BRAI_BRANCH="$BRANCH"
+export NEXT_PUBLIC_BRAI_COMMIT="$COMMIT"
+export NEXT_PUBLIC_BRAI_OTA_CHANNEL="$DOMAIN/mobile-update"
+export NEXT_PUBLIC_BRAI_API="/api"
+export NEXT_PUBLIC_BRAI_ANDROID_API="$ANDROID_API"
 
 "$SCRIPT_DIR/publish-client-web-layer.sh"
 
@@ -129,7 +129,7 @@ if [[ "$ENVIRONMENT" != "prod" ]]; then
   find "$TARGET_ROOT" -type d -user "$(id -u)" -exec chmod g+s {} +
 fi
 
-if [[ "$ENVIRONMENT" != "prod" || "${BRIGHT_OS_RECORD_PROD_BRANCH_DEPLOYMENT:-false}" == "true" ]]; then
+if [[ "$ENVIRONMENT" != "prod" || "${BRAI_RECORD_PROD_BRANCH_DEPLOYMENT:-false}" == "true" ]]; then
   if ! "$NODE_BIN" "$SCRIPT_DIR/record-deployment.mjs" \
     --db "$DB_PATH" \
     --environment "$ENVIRONMENT" \
@@ -140,7 +140,7 @@ if [[ "$ENVIRONMENT" != "prod" || "${BRIGHT_OS_RECORD_PROD_BRANCH_DEPLOYMENT:-fa
     --web-ota-version "$BUNDLE_VERSION" \
     --short-changes "$DEPLOY_SHORT_CHANGES" \
     --detailed-changes "$DEPLOY_DETAILED_CHANGES" \
-    --reason "${BRIGHT_OS_DEPLOY_REASON:-Автоматическая доставка ветки}"; then
+    --reason "${BRAI_DEPLOY_REASON:-Автоматическая доставка ветки}"; then
     if [[ "$ENVIRONMENT" != preview-* ]]; then
       exit 1
     fi
@@ -157,8 +157,8 @@ if [[ "$ENVIRONMENT" == preview-* ]]; then
   "$SCRIPT_DIR/preview-slots.sh" ready "$BRANCH" "$COMMIT" >/dev/null
 fi
 
-if command -v systemctl >/dev/null 2>&1 && [[ "${BRIGHT_OS_RESTART_SERVICE:-true}" != "false" ]]; then
-  "${BRIGHT_OS_SUDO:-sudo}" systemctl restart "$SERVICE_NAME"
+if command -v systemctl >/dev/null 2>&1 && [[ "${BRAI_RESTART_SERVICE:-true}" != "false" ]]; then
+  "${BRAI_SUDO:-sudo}" systemctl restart "$SERVICE_NAME"
 fi
 
 echo "Deployed $BRANCH@$COMMIT to $ENVIRONMENT ($DOMAIN) with bundle $BUNDLE_VERSION."

@@ -2,14 +2,14 @@ import process from "node:process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const INFRA_DOCS_LABEL = "bright-delivery:infra-docs";
+export const INFRA_DOCS_LABEL = "brai-delivery:infra-docs";
 
 if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
   const recentMerged = process.argv[2] === "--recent-merged";
-  const commit = recentMerged ? null : process.argv[2] || process.env.BRIGHT_OS_TARGET_COMMIT || process.env.GITHUB_SHA;
-  const targetBranch = process.env.BRIGHT_OS_TARGET_BRANCH || "main";
-  const pulls = process.env.BRIGHT_OS_ACCEPTED_PREVIEW_PRS_JSON
-    ? JSON.parse(process.env.BRIGHT_OS_ACCEPTED_PREVIEW_PRS_JSON)
+  const commit = recentMerged ? null : process.argv[2] || process.env.BRAI_TARGET_COMMIT || process.env.GITHUB_SHA;
+  const targetBranch = process.env.BRAI_TARGET_BRANCH || "main";
+  const pulls = process.env.BRAI_ACCEPTED_PREVIEW_PRS_JSON
+    ? JSON.parse(process.env.BRAI_ACCEPTED_PREVIEW_PRS_JSON)
     : recentMerged
       ? await fetchRecentMergedPulls(targetBranch)
       : await fetchAssociatedPulls(commit);
@@ -39,7 +39,7 @@ function hasLabel(pull, labelName) {
 }
 
 async function fetchAssociatedPulls(commitSha) {
-  if (!commitSha) throw new Error("BRIGHT_OS_TARGET_COMMIT or GITHUB_SHA is required");
+  if (!commitSha) throw new Error("BRAI_TARGET_COMMIT or GITHUB_SHA is required");
   const repository = process.env.GITHUB_REPOSITORY;
   if (!repository) throw new Error("GITHUB_REPOSITORY is required");
   const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
@@ -50,7 +50,7 @@ async function fetchAssociatedPulls(commitSha) {
     headers: {
       Accept: "application/vnd.github+json",
       Authorization: `Bearer ${token}`,
-      "User-Agent": "bright-os-delivery",
+      "User-Agent": "brai-delivery",
       "X-GitHub-Api-Version": "2022-11-28",
     },
   });
@@ -72,7 +72,7 @@ async function fetchRecentMergedPulls(targetBranch) {
       headers: {
         Accept: "application/vnd.github+json",
         Authorization: `Bearer ${token}`,
-        "User-Agent": "bright-os-delivery",
+        "User-Agent": "brai-delivery",
         "X-GitHub-Api-Version": "2022-11-28",
       },
     },

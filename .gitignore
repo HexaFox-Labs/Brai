@@ -47,7 +47,7 @@ output/
 **/output/playwright/
 
 # Generated local state
-.bright-task/
+.brai-task/
 .codex-worktrees/
 **/.idea/
 **/.gradle/

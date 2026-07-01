@@ -4,7 +4,7 @@
 TBD - created by archiving change migrate-to-next-capacitor-local-first. Update Purpose after archive.
 ## Requirements
 ### Requirement: Client data uses a versioned local database
-Bright OS clients SHALL use a versioned local database for durable offline state, pending events, cached canonical server snapshots, and future local-first modules.
+Brai clients SHALL use a versioned local database for durable offline state, pending events, cached canonical server snapshots, and future local-first modules.
 
 #### Scenario: New client launches for the first time
 - **WHEN** the Next.js/Capacitor client opens without existing local data
@@ -22,7 +22,7 @@ Bright OS clients SHALL use a versioned local database for durable offline state
 - **AND** shows a blocked or retryable state instead of clearing storage
 
 ### Requirement: Dexie is the initial local database adapter
-Bright OS SHALL use IndexedDB through Dexie as the initial local database adapter for the Next.js/Capacitor client.
+Brai SHALL use IndexedDB through Dexie as the initial local database adapter for the Next.js/Capacitor client.
 
 #### Scenario: Web and Android store local sync state
 - **WHEN** the web app or Capacitor Android app records local sync state
@@ -30,7 +30,7 @@ Bright OS SHALL use IndexedDB through Dexie as the initial local database adapte
 - **AND** uses Capacitor Preferences only for small simple settings where a database is not needed
 
 ### Requirement: Mutations are durable before visible state changes
-Bright OS clients SHALL persist local mutation events before showing a mutation as locally applied.
+Brai clients SHALL persist local mutation events before showing a mutation as locally applied.
 
 #### Scenario: Activity is restored offline
 - **WHEN** the user restores an archived activity without API connectivity
@@ -38,7 +38,7 @@ Bright OS clients SHALL persist local mutation events before showing a mutation 
 - **AND** then displays the locally projected active Activities list and Archive list
 
 ### Requirement: Pending events survive client lifecycle changes
-Bright OS clients SHALL preserve pending local events across page reloads, app restarts, and Android app kill/reopen when local storage remains intact.
+Brai clients SHALL preserve pending local events across page reloads, app restarts, and Android app kill/reopen when local storage remains intact.
 
 #### Scenario: App restarts before reconnect
 - **WHEN** pending events exist and the app is closed before reconnect
@@ -51,7 +51,7 @@ Bright OS clients SHALL preserve pending local events across page reloads, app r
 - **AND** any leftover local draft is restored and converted into a pending Activity event on the next launch
 
 ### Requirement: Deprecated client import paths are absent after cutover
-Bright OS SHALL not keep deprecated previous-client import logic in the active Next.js/Capacitor boot path after cutover.
+Brai SHALL not keep deprecated previous-client import logic in the active Next.js/Capacitor boot path after cutover.
 
 #### Scenario: Current client boots
 - **WHEN** the Next.js/Capacitor client starts

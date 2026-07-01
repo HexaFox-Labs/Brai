@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Inbound API routes by target
-Bright OS SHALL expose a universal inbound API at `/v1/in/:target` where the
+Brai SHALL expose a universal inbound API at `/v1/in/:target` where the
 target path segment selects the connector handler.
 
 #### Scenario: Inbound target handshakes
@@ -14,7 +14,7 @@ target path segment selects the connector handler.
 - **AND** no inbox data is mutated
 
 ### Requirement: Inbound Inbox receives text and attachments
-Bright OS SHALL support `POST /v1/in/inbox` for the first inbound connector.
+Brai SHALL support `POST /v1/in/inbox` for the first inbound connector.
 
 #### Scenario: Inbox payload is received
 - **WHEN** an external app sends text with the inbound Bearer token

@@ -1,0 +1,186 @@
+apply plugin: 'com.android.application'
+
+def androidKeystorePath = System.getenv('BRAI_ANDROID_KEYSTORE_PATH')
+def androidStorePassword = System.getenv('BRAI_ANDROID_STORE_PASSWORD')
+def androidKeyAlias = System.getenv('BRAI_ANDROID_KEY_ALIAS')
+def androidKeyPassword = System.getenv('BRAI_ANDROID_KEY_PASSWORD') ?: androidStorePassword
+def androidReleaseKeystore = file(androidKeystorePath ?: 'missing-release-keystore.jks')
+def braiWebVersion = System.getenv('BRAI_APP_VERSION') ?: '0.0.10.1'
+def braiAndroidApi = System.getenv('NEXT_PUBLIC_BRAI_ANDROID_API') ?: 'https://api.brightos.world'
+def braiAndroidVersionCode = (System.getenv('BRAI_ANDROID_VERSION_CODE') ?: '1') as Integer
+def braiProductionFallbackBundleVersion = System.getenv('BRAI_PROD_FALLBACK_BUNDLE_VERSION') ?: '0.0.10.1'
+def braiNonProductionFallbackBundleVersion = System.getenv('BRAI_NON_PROD_FALLBACK_BUNDLE_VERSION') ?: "${braiWebVersion}.0"
+
+android {
+    namespace = "world.brightos.bright_os_client"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "world.brightos.bright_os_client"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode braiAndroidVersionCode
+        versionName braiWebVersion
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        manifestPlaceholders = [brightAppLabel: 'Brai']
+        buildConfigField "String", "BRAI_ANDROID_API", "\"${braiAndroidApi}\""
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    buildFeatures {
+        buildConfig true
+    }
+    flavorDimensions "environment"
+    productFlavors {
+        production {
+            dimension "environment"
+            manifestPlaceholders = [brightAppLabel: 'Brai']
+            buildConfigField "String", "BRAI_APP_BUILD", '"1"'
+            buildConfigField "String", "BRAI_FALLBACK_BUNDLE_VERSION", "\"${braiProductionFallbackBundleVersion}\""
+            buildConfigField "String", "BRAI_OTA_MANIFEST_URL", '"https://app.brightos.world/mobile-update/manifest.json"'
+            buildConfigField "String", "BRAI_ENVIRONMENT", '"prod"'
+            buildConfigField "String", "BRAI_PREVIEW_SLOT", '""'
+            buildConfigField "String", "BRAI_OTA_CHANNEL", '"app.brightos.world/mobile-update"'
+            buildConfigField "String", "BRAI_APP_LABEL", '"Brai"'
+        }
+        dev {
+            dimension "environment"
+            applicationIdSuffix ".dev"
+            manifestPlaceholders = [brightAppLabel: 'Brai Dev']
+            buildConfigField "String", "BRAI_APP_BUILD", '"1-dev"'
+            buildConfigField "String", "BRAI_FALLBACK_BUNDLE_VERSION", "\"${braiNonProductionFallbackBundleVersion}\""
+            buildConfigField "String", "BRAI_OTA_MANIFEST_URL", '"https://dev.brightos.world/mobile-update/manifest.json"'
+            buildConfigField "String", "BRAI_ENVIRONMENT", '"dev"'
+            buildConfigField "String", "BRAI_PREVIEW_SLOT", '""'
+            buildConfigField "String", "BRAI_OTA_CHANNEL", '"dev.brightos.world/mobile-update"'
+            buildConfigField "String", "BRAI_APP_LABEL", '"Brai Dev"'
+        }
+        previewA {
+            dimension "environment"
+            applicationIdSuffix ".preview.a"
+            manifestPlaceholders = [brightAppLabel: 'Brai A']
+            buildConfigField "String", "BRAI_APP_BUILD", '"1-a"'
+            buildConfigField "String", "BRAI_FALLBACK_BUNDLE_VERSION", "\"${braiNonProductionFallbackBundleVersion}\""
+            buildConfigField "String", "BRAI_OTA_MANIFEST_URL", '"https://a.test.brightos.world/mobile-update/manifest.json"'
+            buildConfigField "String", "BRAI_ENVIRONMENT", '"preview-a"'
+            buildConfigField "String", "BRAI_PREVIEW_SLOT", '"A"'
+            buildConfigField "String", "BRAI_OTA_CHANNEL", '"a.test.brightos.world/mobile-update"'
+            buildConfigField "String", "BRAI_APP_LABEL", '"Brai A"'
+        }
+        previewB {
+            dimension "environment"
+            applicationIdSuffix ".preview.b"
+            manifestPlaceholders = [brightAppLabel: 'Brai B']
+            buildConfigField "String", "BRAI_APP_BUILD", '"1-b"'
+            buildConfigField "String", "BRAI_FALLBACK_BUNDLE_VERSION", "\"${braiNonProductionFallbackBundleVersion}\""
+            buildConfigField "String", "BRAI_OTA_MANIFEST_URL", '"https://b.test.brightos.world/mobile-update/manifest.json"'
+            buildConfigField "String", "BRAI_ENVIRONMENT", '"preview-b"'
+            buildConfigField "String", "BRAI_PREVIEW_SLOT", '"B"'
+            buildConfigField "String", "BRAI_OTA_CHANNEL", '"b.test.brightos.world/mobile-update"'
+            buildConfigField "String", "BRAI_APP_LABEL", '"Brai B"'
+        }
+        previewC {
+            dimension "environment"
+            applicationIdSuffix ".preview.c"
+            manifestPlaceholders = [brightAppLabel: 'Brai C']
+            buildConfigField "String", "BRAI_APP_BUILD", '"1-c"'
+            buildConfigField "String", "BRAI_FALLBACK_BUNDLE_VERSION", "\"${braiNonProductionFallbackBundleVersion}\""
+            buildConfigField "String", "BRAI_OTA_MANIFEST_URL", '"https://c.test.brightos.world/mobile-update/manifest.json"'
+            buildConfigField "String", "BRAI_ENVIRONMENT", '"preview-c"'
+            buildConfigField "String", "BRAI_PREVIEW_SLOT", '"C"'
+            buildConfigField "String", "BRAI_OTA_CHANNEL", '"c.test.brightos.world/mobile-update"'
+            buildConfigField "String", "BRAI_APP_LABEL", '"Brai C"'
+        }
+        previewD {
+            dimension "environment"
+            applicationIdSuffix ".preview.d"
+            manifestPlaceholders = [brightAppLabel: 'Brai D']
+            buildConfigField "String", "BRAI_APP_BUILD", '"1-d"'
+            buildConfigField "String", "BRAI_FALLBACK_BUNDLE_VERSION", "\"${braiNonProductionFallbackBundleVersion}\""
+            buildConfigField "String", "BRAI_OTA_MANIFEST_URL", '"https://d.test.brightos.world/mobile-update/manifest.json"'
+            buildConfigField "String", "BRAI_ENVIRONMENT", '"preview-d"'
+            buildConfigField "String", "BRAI_PREVIEW_SLOT", '"D"'
+            buildConfigField "String", "BRAI_OTA_CHANNEL", '"d.test.brightos.world/mobile-update"'
+            buildConfigField "String", "BRAI_APP_LABEL", '"Brai D"'
+        }
+        previewE {
+            dimension "environment"
+            applicationIdSuffix ".preview.e"
+            manifestPlaceholders = [brightAppLabel: 'Brai E']
+            buildConfigField "String", "BRAI_APP_BUILD", '"1-e"'
+            buildConfigField "String", "BRAI_FALLBACK_BUNDLE_VERSION", "\"${braiNonProductionFallbackBundleVersion}\""
+            buildConfigField "String", "BRAI_OTA_MANIFEST_URL", '"https://e.test.brightos.world/mobile-update/manifest.json"'
+            buildConfigField "String", "BRAI_ENVIRONMENT", '"preview-e"'
+            buildConfigField "String", "BRAI_PREVIEW_SLOT", '"E"'
+            buildConfigField "String", "BRAI_OTA_CHANNEL", '"e.test.brightos.world/mobile-update"'
+            buildConfigField "String", "BRAI_APP_LABEL", '"Brai E"'
+        }
+    }
+    signingConfigs {
+        releaseEnv {
+            storeFile androidReleaseKeystore
+            storePassword androidStorePassword ?: ''
+            keyAlias androidKeyAlias ?: ''
+            keyPassword androidKeyPassword ?: ''
+        }
+    }
+    buildTypes {
+        release {
+            signingConfig signingConfigs.releaseEnv
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+
+gradle.taskGraph.whenReady { graph ->
+    def needsReleaseSigning = graph.allTasks.any { task ->
+        def taskName = task.name.toLowerCase()
+        task.path.startsWith(':app:')
+            && taskName.contains('release')
+            && (taskName.startsWith('assemble')
+                || taskName.startsWith('bundle')
+                || taskName.startsWith('package')
+                || taskName.startsWith('sign')
+                || taskName.startsWith('validatesigning'))
+    }
+    if (needsReleaseSigning) {
+        if (!androidKeystorePath || !androidStorePassword || !androidKeyAlias || !androidKeyPassword) {
+            throw new GradleException("Release APK signing requires BRAI_ANDROID_KEYSTORE_PATH, BRAI_ANDROID_STORE_PASSWORD, BRAI_ANDROID_KEY_ALIAS, and BRAI_ANDROID_KEY_PASSWORD.")
+        }
+        if (!androidReleaseKeystore.exists()) {
+            throw new GradleException("Release APK signing keystore does not exist: ${androidReleaseKeystore}")
+        }
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}

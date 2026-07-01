@@ -5,7 +5,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-import { classifyDelivery as classifyBrightDelivery } from "../../scripts/bright-task.mjs";
+import { classifyDelivery as classifyBraiDelivery } from "../../scripts/brai-task.mjs";
 
 if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
   const options = parseArgs(process.argv.slice(2));
@@ -16,7 +16,7 @@ if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
 }
 
 export function classifyDeployDelivery(files, context = {}) {
-  const result = classifyBrightDelivery(files, context);
+  const result = classifyBraiDelivery(files, context);
   const isCodexPush = context.eventName === "push" && context.ref?.startsWith("refs/heads/codex/");
   return {
     delivery_class: result.deliveryClass,
@@ -57,8 +57,8 @@ function parseArgs(args) {
     else throw new Error(`Unknown argument: ${arg}`);
   }
 
-  if (process.env.BRIGHT_OS_CHANGED_FILES) {
-    options.files.push(...process.env.BRIGHT_OS_CHANGED_FILES.split(/\r?\n/).filter(Boolean));
+  if (process.env.BRAI_CHANGED_FILES) {
+    options.files.push(...process.env.BRAI_CHANGED_FILES.split(/\r?\n/).filter(Boolean));
   }
 
   return options;
@@ -96,7 +96,7 @@ function changedFiles(options) {
 }
 
 function acceptedBaseRef() {
-  return `origin/${process.env.BRIGHT_OS_ACCEPT_BASE || "main"}`;
+  return `origin/${process.env.BRAI_ACCEPT_BASE || "main"}`;
 }
 
 function gitDiffNames(range) {

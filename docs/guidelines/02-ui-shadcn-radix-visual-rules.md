@@ -6,4 +6,4 @@
 - Use local `ScrollArea` for product scrolling surfaces.
 - Product UI should stay compact, neutral, and usable on Android-sized and desktop viewports.
 - Reproduced registry components must use the actual accepted source as the baseline; unavailable source is a blocker.
-- Preserve existing Bright OS content and data wiring when replacing UI unless a content change is explicitly requested.
+- Preserve existing Brai content and data wiring when replacing UI unless a content change is explicitly requested.

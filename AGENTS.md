@@ -5,17 +5,17 @@ This file routes agents to the project rules.
 ## Route
 
 - Before development, debugging, refactoring, review, UI work, API/DB changes, releases, commits, infrastructure work, or publication, read [docs/DEVELOPMENT_GUIDELINES.md](docs/DEVELOPMENT_GUIDELINES.md).
-- For the first Bright OS question in a working context, read [docs/DEVELOPMENT_GUIDELINES.md](docs/DEVELOPMENT_GUIDELINES.md), [docs/AGENT_CONTEXT.md](docs/AGENT_CONTEXT.md), and `memory-bank/activeContext.md`; for status, version, release, or deployment questions also read `memory-bank/progress.md`.
+- For the first Brai question in a working context, read [docs/DEVELOPMENT_GUIDELINES.md](docs/DEVELOPMENT_GUIDELINES.md), [docs/AGENT_CONTEXT.md](docs/AGENT_CONTEXT.md), and `memory-bank/activeContext.md`; for status, version, release, or deployment questions also read `memory-bank/progress.md`.
 - Keep detailed development rules in `docs/guidelines/`, not here.
 
 ## АХТУНГ: ЭТОТ БЛОК ТЫ ОБЯЗАН ПОМНИТЬ ВСЕГДА И НЕ ЗАБЫВАТЬ И НЕ СЖИМАТЬ
 
 - После сжатия контекста, перед продолжением правок и перед финальным ответом, если были изменения файлов проекта, перечитать `AGENTS.md`.
 - Read-only анализ, планирование и вопросы без project-file writes не требуют новой ветки.
-- Перед первой правкой файлов проекта в новом Codex thread всегда запускать официальный starter от актуального `origin/main`: `scripts/bright-task-start.sh <task-slug>`; выбранная UI ветка не имеет значения.
+- Перед первой правкой файлов проекта в новом Codex thread всегда запускать официальный starter от актуального `origin/main`: `scripts/brai-task-start.sh <task-slug>`; выбранная UI ветка не имеет значения.
 - Нельзя вручную создавать/switch-ить fallback ветки через `git switch`, `git checkout`, `git branch`, `git worktree`.
-- Если текущий thread уже вывел ветку на preview и пользователь ещё не принял её, прямые follow-up правки в этом же thread идут в ту же `codex/*` ветку через `node scripts/bright-task.mjs follow-up`.
-- Пока preview/follow-up ветка не принята, не подтягивать в неё новый `origin/main`: не делать `git fetch origin main`, `git pull origin main`, `git merge origin/main`, `git rebase origin/main` и эквиваленты. База задачи заморожена в `.bright-task/task.json` с момента starter; новые изменения `main` учитываются только после принятия или в новой задаче.
+- Если текущий thread уже вывел ветку на preview и пользователь ещё не принял её, прямые follow-up правки в этом же thread идут в ту же `codex/*` ветку через `node scripts/brai-task.mjs follow-up`.
+- Пока preview/follow-up ветка не принята, не подтягивать в неё новый `origin/main`: не делать `git fetch origin main`, `git pull origin main`, `git merge origin/main`, `git rebase origin/main` и эквиваленты. База задачи заморожена в `.brai-task/task.json` с момента starter; новые изменения `main` учитываются только после принятия или в новой задаче.
 - Если ветка уже принята через PR/merge в `main`, любые новые правки, даже в этом же thread, обязаны начинаться с новой `codex/*` ветки от `origin/main`.
 - Если в процессе работы пришёл вопрос и пользователь не сказал остановиться/пауза/только ответь, ответить на вопрос, принять новые данные в контекст и продолжать задачу.
 - Если во время задачи обнаружена процедурная проблема, ошибочный шаг, sandbox/escalation trap, нехватка инструмента/документации или вынужденный обходной путь, мешающий качественной работе, добавить короткую запись в конец корневого `TASKS.md`: дата, проблема, обходной путь/что исправить; секреты не записывать.

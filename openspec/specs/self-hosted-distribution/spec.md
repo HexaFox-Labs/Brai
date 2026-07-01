@@ -4,7 +4,7 @@
 TBD - created by archiving change migrate-to-next-capacitor-local-first. Update Purpose after archive.
 ## Requirements
 ### Requirement: Source does not contain private credentials
-Bright OS source SHALL NOT contain plaintext tokens, passwords, private keys, password hashes, or private deployment credentials.
+Brai source SHALL NOT contain plaintext tokens, passwords, private keys, password hashes, or private deployment credentials.
 
 #### Scenario: Android artifact needs authorization
 - **WHEN** an Android artifact requires private API authorization for a private release
@@ -12,7 +12,7 @@ Bright OS source SHALL NOT contain plaintext tokens, passwords, private keys, pa
 - **AND** the credential value is not printed, committed, or documented
 
 ### Requirement: Android release signing is env-only
-Bright OS release APK signing SHALL use signing material supplied outside the repository.
+Brai release APK signing SHALL use signing material supplied outside the repository.
 
 #### Scenario: Release APK is built
 - **WHEN** a release APK build runs
@@ -20,7 +20,7 @@ Bright OS release APK signing SHALL use signing material supplied outside the re
 - **AND** no debug keystore path, debug alias, signing password fallback, keystore file, or signing secret is committed
 
 ### Requirement: Store distribution remains policy-aware
-Bright OS SHALL keep future app-store distribution compatible with a self-hosted open-source productivity app model.
+Brai SHALL keep future app-store distribution compatible with a self-hosted open-source productivity app model.
 
 #### Scenario: Store-ready Android build is prepared
 - **WHEN** a Google Play or equivalent store build is prepared
@@ -28,7 +28,7 @@ Bright OS SHALL keep future app-store distribution compatible with a self-hosted
 - **AND** web/OTA updates are limited to behavior consistent with the disclosed app purpose and store policies
 
 ### Requirement: Open-source dependency and service choices are explicit
-Bright OS SHALL distinguish open-source/self-hostable dependencies from managed proprietary services in architecture decisions.
+Brai SHALL distinguish open-source/self-hostable dependencies from managed proprietary services in architecture decisions.
 
 #### Scenario: OTA update mechanism is selected
 - **WHEN** an Android web-bundle update mechanism is chosen
@@ -36,7 +36,7 @@ Bright OS SHALL distinguish open-source/self-hostable dependencies from managed 
 - **AND** records any operational trade-offs before relying on it for releases
 
 ### Requirement: Client uses deployment-controlled server configuration
-Bright OS SHALL select its API base URL from deployment/runtime configuration rather than exposing an in-app user-editable server URL setting.
+Brai SHALL select its API base URL from deployment/runtime configuration rather than exposing an in-app user-editable server URL setting.
 
 #### Scenario: Private production web deployment runs
 - **WHEN** the client runs as the protected `app.brightos.world` web app
@@ -49,20 +49,20 @@ Bright OS SHALL select its API base URL from deployment/runtime configuration ra
 - **AND** the Settings screen does not expose a server URL editor
 
 ### Requirement: Android web OTA updates are self-hosted
-Bright OS SHALL host Android web-layer OTA updates on the configured Bright OS server rather than requiring a managed third-party OTA service.
+Brai SHALL host Android web-layer OTA updates on the configured Brai server rather than requiring a managed third-party OTA service.
 
 #### Scenario: Production app checks for updates
 - **WHEN** the production Android app checks for web-layer updates
-- **THEN** it uses the Bright OS self-hosted update manifest under `app.brightos.world`
+- **THEN** it uses the Brai self-hosted update manifest under `app.brightos.world`
 - **AND** does not require a proprietary OTA service account
 
 #### Scenario: Self-hosted deployment is configured
-- **WHEN** a self-hosted Bright OS deployment configures its own app server
+- **WHEN** a self-hosted Brai deployment configures its own app server
 - **THEN** Android update checks can target that deployment's configured update manifest
 - **AND** update credentials are not committed to source control
 
 ### Requirement: OTA update artifacts do not contain private credentials
-Bright OS SHALL keep private credentials out of OTA manifests, bundle archives, and committed update metadata.
+Brai SHALL keep private credentials out of OTA manifests, bundle archives, and committed update metadata.
 
 #### Scenario: OTA bundle is built
 - **WHEN** a mobile OTA bundle is generated
@@ -73,9 +73,9 @@ Bright OS SHALL keep private credentials out of OTA manifests, bundle archives, 
 - **THEN** it contains only non-secret metadata needed for versioning, compatibility, integrity, and download
 
 ### Requirement: OTA mechanism choice is recorded before implementation
-Bright OS SHALL record the selected self-hosted Android OTA mechanism before implementation proceeds.
+Brai SHALL record the selected self-hosted Android OTA mechanism before implementation proceeds.
 
 #### Scenario: Updater implementation is selected
-- **WHEN** maintainers choose between a vetted self-hostable Capacitor updater and a Bright OS native loader
+- **WHEN** maintainers choose between a vetted self-hostable Capacitor updater and a Brai native loader
 - **THEN** the design records the selected mechanism
 - **AND** records operational trade-offs, maintenance cost, rollback behavior, and security assumptions

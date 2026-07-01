@@ -2,7 +2,7 @@
 
 ## Назначение
 
-Этот guideline нужен перед изменением `services/bright_os_api`, SQLite schema, sync endpoints, canonical replay, migrations или client data contracts.
+Этот guideline нужен перед изменением `services/brai_api`, SQLite schema, sync endpoints, canonical replay, migrations или client data contracts.
 
 ## Источники данных
 
@@ -22,7 +22,7 @@
 
 ## Main entities
 
-- Bright OS main work entities регистрируются в server SQLite таблице `items`.
+- Brai main work entities регистрируются в server SQLite таблице `items`.
 - В technical schema/workflow decisions ссылайся на `items.id`.
 - Первый зарегистрированный main entity - `activities`.
 
@@ -55,7 +55,7 @@
 
 ## Проверка
 
-- API tests: `npm --prefix services/bright_os_api test`.
+- API tests: `npm --prefix services/brai_api test`.
 - Relevant client tests после contract changes.
 - `npm run openspec:validate`, если менялись OpenSpec files.
 - Проверка live service/restart нужна только если изменение реально должно примениться на сервере.

@@ -15,6 +15,6 @@
 - [ ] Если менялся inbound API contract, обновлена `docs/api/inbound-api.md` в том же commit.
 - [ ] Client cache/projection compatibility проверена.
 - [ ] Timer/Activities replay semantics сохранены или обновлены в OpenSpec.
-- [ ] `npm --prefix services/bright_os_api test` выполнен или есть объяснение.
+- [ ] `npm --prefix services/brai_api test` выполнен или есть объяснение.
 - [ ] Relevant client tests выполнены, если менялся contract.
 - [ ] Для невизуальных изменений в handoff указаны проверенные DB path/environment и ключевые SQL/results.

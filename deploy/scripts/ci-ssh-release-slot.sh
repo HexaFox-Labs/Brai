@@ -1,43 +1,43 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-: "${BRIGHT_DEPLOY_HOST:?BRIGHT_DEPLOY_HOST is required}"
-: "${BRIGHT_DEPLOY_USER:?BRIGHT_DEPLOY_USER is required}"
-: "${BRIGHT_DEPLOY_SSH_KEY:?BRIGHT_DEPLOY_SSH_KEY is required}"
-: "${BRIGHT_OS_BRANCH:?BRIGHT_OS_BRANCH is required}"
+: "${BRAI_DEPLOY_HOST:?BRAI_DEPLOY_HOST is required}"
+: "${BRAI_DEPLOY_USER:?BRAI_DEPLOY_USER is required}"
+: "${BRAI_DEPLOY_SSH_KEY:?BRAI_DEPLOY_SSH_KEY is required}"
+: "${BRAI_BRANCH:?BRAI_BRANCH is required}"
 
-DEPLOY_REPO="${BRIGHT_DEPLOY_REPO:-/srv/projects/bright-os}"
-SSH_PORT="${BRIGHT_DEPLOY_SSH_PORT:-22}"
-ENVS_ROOT="${BRIGHT_OS_ENVS_ROOT:-/srv/projects/bright-os-envs}"
-REQUIRE_RELEASE="${BRIGHT_OS_REQUIRE_PREVIEW_SLOT_RELEASE:-false}"
+DEPLOY_REPO="${BRAI_DEPLOY_REPO:-/srv/projects/brai}"
+SSH_PORT="${BRAI_DEPLOY_SSH_PORT:-22}"
+ENVS_ROOT="${BRAI_ENVS_ROOT:-/srv/projects/brai-envs}"
+REQUIRE_RELEASE="${BRAI_REQUIRE_PREVIEW_SLOT_RELEASE:-false}"
 NODE_BIN="${NODE_BIN:-node}"
-KEY_FILE="$(mktemp "${TMPDIR:-/tmp}/bright-deploy-key.XXXXXX")"
+KEY_FILE="$(mktemp "${TMPDIR:-/tmp}/brai-deploy-key.XXXXXX")"
 cleanup() {
   rm -f "$KEY_FILE"
 }
 trap cleanup EXIT
 
-printf '%s\n' "$BRIGHT_DEPLOY_SSH_KEY" >"$KEY_FILE"
+printf '%s\n' "$BRAI_DEPLOY_SSH_KEY" >"$KEY_FILE"
 chmod 600 "$KEY_FILE"
 
-RELEASE_JSON="$(ssh -i "$KEY_FILE" -p "$SSH_PORT" -o StrictHostKeyChecking=accept-new "$BRIGHT_DEPLOY_USER@$BRIGHT_DEPLOY_HOST" \
-  bash -s -- "$DEPLOY_REPO" "$ENVS_ROOT" "$BRIGHT_OS_BRANCH" "$REQUIRE_RELEASE" "${BRIGHT_OS_ACCEPTED_PREVIEW:-false}" <<'REMOTE'
+RELEASE_JSON="$(ssh -i "$KEY_FILE" -p "$SSH_PORT" -o StrictHostKeyChecking=accept-new "$BRAI_DEPLOY_USER@$BRAI_DEPLOY_HOST" \
+  bash -s -- "$DEPLOY_REPO" "$ENVS_ROOT" "$BRAI_BRANCH" "$REQUIRE_RELEASE" "${BRAI_ACCEPTED_PREVIEW:-false}" <<'REMOTE'
 set -euo pipefail
 DEPLOY_REPO="$1"
 ENVS_ROOT="$2"
-BRIGHT_OS_BRANCH="$3"
+BRAI_BRANCH="$3"
 REQUIRE_RELEASE="$4"
-BRIGHT_OS_ACCEPTED_PREVIEW="$5"
-RELEASE_BRANCH="$BRIGHT_OS_BRANCH"
-NODE_PREFIX="${BRIGHT_OS_NODE_PREFIX:-/srv/opt/node-v22.16.0/bin}"
+BRAI_ACCEPTED_PREVIEW="$5"
+RELEASE_BRANCH="$BRAI_BRANCH"
+NODE_PREFIX="${BRAI_NODE_PREFIX:-/srv/opt/node-v22.16.0/bin}"
 if [[ -d "$NODE_PREFIX" ]]; then
   export PATH="$NODE_PREFIX:$PATH"
 fi
 
 RELEASE_ROOT="$DEPLOY_REPO"
-REGISTRY="${BRIGHT_OS_PREVIEW_REGISTRY:-$ENVS_ROOT/preview-slots.json}"
+REGISTRY="${BRAI_PREVIEW_REGISTRY:-$ENVS_ROOT/preview-slots.json}"
 if [[ -f "$REGISTRY" ]]; then
-  SLOT_SOURCE="$(node - "$REGISTRY" "$BRIGHT_OS_BRANCH" <<'NODE' || true
+  SLOT_SOURCE="$(node - "$REGISTRY" "$BRAI_BRANCH" <<'NODE' || true
 const fs = require("node:fs");
 const [registryPath, branch] = process.argv.slice(2);
 const registry = JSON.parse(fs.readFileSync(registryPath, "utf8"));
@@ -78,7 +78,7 @@ process.stdin.on("end", () => {
     }
   }
 });
-' "$BRIGHT_OS_BRANCH")
+' "$BRAI_BRANCH")
 if [[ -n "${SLOT_META[0]:-}" ]]; then
   BASELINE_SOURCE="$ENVS_ROOT/prod/source"
   if [[ -d "$ENVS_ROOT/prod/source" ]]; then
@@ -91,13 +91,13 @@ if [[ -n "${SLOT_META[0]:-}" ]]; then
     exit 1
   fi
   cd "$BASELINE_SOURCE"
-  export BRIGHT_OS_BRANCH=""
-  export BRIGHT_OS_COMMIT=""
-  export BRIGHT_OS_ROOT="$BASELINE_SOURCE"
-  export BRIGHT_OS_RELEASE_TARGET="$DEPLOY_REPO/deploy/releases"
-  export BRIGHT_OS_PROD_DB="$DEPLOY_REPO/data/bright_os.sqlite"
-  export BRIGHT_OS_PROD_WEB_VERSION_JSON="$DEPLOY_REPO/deploy/web/version.json"
-  export BRIGHT_OS_ANDROID_VERSION_CODE="$(deploy/scripts/apk-version-code.sh next "released $RELEASE_BRANCH baseline preview ${SLOT_META[0]}")"
+  export BRAI_BRANCH=""
+  export BRAI_COMMIT=""
+  export BRAI_ROOT="$BASELINE_SOURCE"
+  export BRAI_RELEASE_TARGET="$DEPLOY_REPO/deploy/releases"
+  export BRAI_PROD_DB="$DEPLOY_REPO/data/brai.sqlite"
+  export BRAI_PROD_WEB_VERSION_JSON="$DEPLOY_REPO/deploy/web/version.json"
+  export BRAI_ANDROID_VERSION_CODE="$(deploy/scripts/apk-version-code.sh next "released $RELEASE_BRANCH baseline preview ${SLOT_META[0]}")"
   deploy/scripts/build-android-env-apk.sh "preview${SLOT_META[0]}" >&2
   cd "$RELEASE_ROOT"
 fi
@@ -111,6 +111,6 @@ if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
   printf 'released=%s\n' "$RELEASED" >>"$GITHUB_OUTPUT"
 fi
 if [[ "$REQUIRE_RELEASE" == "true" && "$RELEASED" != "true" ]]; then
-  echo "Required preview slot release did not release a slot for $BRIGHT_OS_BRANCH." >&2
+  echo "Required preview slot release did not release a slot for $BRAI_BRANCH." >&2
   exit 1
 fi

@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Client projects pending action focus events
-Bright OS clients SHALL project pending action-focus timer events from durable
+Brai clients SHALL project pending action-focus timer events from durable
 local outbox state before server acknowledgement.
 
 #### Scenario: Action focus starts offline
@@ -27,7 +27,7 @@ local outbox state before server acknowledgement.
   according to the active session origin
 
 ### Requirement: Client projects pending Focus interval edits
-Bright OS clients SHALL project pending Focus interval edits and deletes from
+Brai clients SHALL project pending Focus interval edits and deletes from
 durable local outbox state before server acknowledgement.
 
 #### Scenario: Interval edit is queued offline
@@ -54,7 +54,7 @@ durable local outbox state before server acknowledgement.
   projected history
 
 ### Requirement: Cached sessions preserve interval details
-Bright OS clients SHALL preserve Focus session interval details in cached
+Brai clients SHALL preserve Focus session interval details in cached
 canonical data used for offline display.
 
 #### Scenario: Cached history reloads offline

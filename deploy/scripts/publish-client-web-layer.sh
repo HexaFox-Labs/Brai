@@ -3,51 +3,51 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEFAULT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-ROOT="${BRIGHT_OS_ROOT:-$DEFAULT_ROOT}"
-NODE_PREFIX="${BRIGHT_OS_NODE_PREFIX:-/srv/opt/node-v22.16.0/bin}"
+ROOT="${BRAI_ROOT:-$DEFAULT_ROOT}"
+NODE_PREFIX="${BRAI_NODE_PREFIX:-/srv/opt/node-v22.16.0/bin}"
 if [[ -d "$NODE_PREFIX" ]]; then
   export PATH="$NODE_PREFIX:$PATH"
 fi
-node -e 'const major = Number(process.versions.node.split(".")[0]); if (major < 22) { console.error(`Bright OS requires Node.js >=22.0.0. Current: ${process.version}.`); process.exit(1); }'
+node -e 'const major = Number(process.versions.node.split(".")[0]); if (major < 22) { console.error(`Brai requires Node.js >=22.0.0. Current: ${process.version}.`); process.exit(1); }'
 
 NPM_BIN="${NPM_BIN:-npm}"
 NODE_BIN="${NODE_BIN:-node}"
-BUILD_CLIENT="${BRIGHT_OS_BUILD_CLIENT:-true}"
+BUILD_CLIENT="${BRAI_BUILD_CLIENT:-true}"
 
 mapfile -t APP_META < <("$NODE_BIN" -e '
 const fs = require("node:fs");
 const path = require("node:path");
 const root = process.argv[1];
-let version = process.env.BRIGHT_OS_APP_VERSION || "";
-const versionFile = path.join(root, "apps/bright_os_app/public/version.json");
+let version = process.env.BRAI_APP_VERSION || "";
+const versionFile = path.join(root, "apps/brai_app/public/version.json");
 if (!version && fs.existsSync(versionFile)) {
   const parsed = JSON.parse(fs.readFileSync(versionFile, "utf8"));
   version = String(parsed.version || "");
 }
 if (!/^\d+\.\d+\.\d+\.\d+$/.test(version)) {
-  throw new Error("Unable to resolve Bright OS X.Y.Z.S app version");
+  throw new Error("Unable to resolve Brai X.Y.Z.S app version");
 }
 console.log(version);
 ' "$ROOT")
 
-VERSION="${BRIGHT_OS_APP_VERSION:-${APP_META[0]}}"
-export BRIGHT_OS_APP_VERSION="$VERSION"
-export BRIGHT_OS_ROOT="$ROOT"
+VERSION="${BRAI_APP_VERSION:-${APP_META[0]}}"
+export BRAI_APP_VERSION="$VERSION"
+export BRAI_ROOT="$ROOT"
 export NODE_BIN="$NODE_BIN"
 
 if [[ "$BUILD_CLIENT" != "false" && "$BUILD_CLIENT" != "0" ]]; then
-  echo "Building Bright OS web layer..."
+  echo "Building Brai web layer..."
   (cd "$ROOT" && "$NPM_BIN" run app:build)
 else
-  echo "Skipping client build because BRIGHT_OS_BUILD_CLIENT=$BUILD_CLIENT"
+  echo "Skipping client build because BRAI_BUILD_CLIENT=$BUILD_CLIENT"
 fi
 
 "$NODE_BIN" -e '
 const fs = require("node:fs");
 const path = require("node:path");
 const [root, version] = process.argv.slice(1);
-const outVersionFile = path.join(root, "apps/bright_os_app/out/version.json");
-const publicVersionFile = path.join(root, "apps/bright_os_app/public/version.json");
+const outVersionFile = path.join(root, "apps/brai_app/out/version.json");
+const publicVersionFile = path.join(root, "apps/brai_app/public/version.json");
 const sourceFile = fs.existsSync(outVersionFile) ? outVersionFile : publicVersionFile;
 const parsed = fs.existsSync(sourceFile) ? JSON.parse(fs.readFileSync(sourceFile, "utf8")) : {};
 const [major, release, build, apk] = version.split(".").map(Number);
@@ -61,17 +61,17 @@ fs.writeFileSync(outVersionFile, `${JSON.stringify(parsed, null, 2)}\n`);
 echo "Publishing browser web assets..."
 "$SCRIPT_DIR/publish-web.sh"
 
-export BRIGHT_OS_MOBILE_BUNDLE_VERSION="${BRIGHT_OS_MOBILE_BUNDLE_VERSION:-$VERSION}"
+export BRAI_MOBILE_BUNDLE_VERSION="${BRAI_MOBILE_BUNDLE_VERSION:-$VERSION}"
 
-ENVIRONMENT="${NEXT_PUBLIC_BRIGHT_OS_ENVIRONMENT:-${BRIGHT_OS_ENVIRONMENT:-prod}}"
+ENVIRONMENT="${NEXT_PUBLIC_BRAI_ENVIRONMENT:-${BRAI_ENVIRONMENT:-prod}}"
 if [[ "$ENVIRONMENT" != "prod" ]]; then
-  if [[ -n "${BRIGHT_OS_REQUIRED_APK_VERSION_CODE:-}" ]]; then
-    export BRIGHT_OS_MIN_APK_VERSION_CODE="${BRIGHT_OS_MIN_APK_VERSION_CODE:-$BRIGHT_OS_REQUIRED_APK_VERSION_CODE}"
-    export BRIGHT_OS_MAX_APK_VERSION_CODE="${BRIGHT_OS_MAX_APK_VERSION_CODE:-$BRIGHT_OS_MIN_APK_VERSION_CODE}"
-  elif [[ "${BRIGHT_OS_NATIVE_APK_CHANGE:-false}" == "true" ]]; then
-    REQUIRED_APK_VERSION_CODE="${BRIGHT_OS_MIN_APK_VERSION_CODE:-$("$NODE_BIN" "$SCRIPT_DIR/resolve-required-apk-version-code.mjs" "$ENVIRONMENT")}"
-    export BRIGHT_OS_MIN_APK_VERSION_CODE="${BRIGHT_OS_MIN_APK_VERSION_CODE:-$REQUIRED_APK_VERSION_CODE}"
-    export BRIGHT_OS_MAX_APK_VERSION_CODE="${BRIGHT_OS_MAX_APK_VERSION_CODE:-$BRIGHT_OS_MIN_APK_VERSION_CODE}"
+  if [[ -n "${BRAI_REQUIRED_APK_VERSION_CODE:-}" ]]; then
+    export BRAI_MIN_APK_VERSION_CODE="${BRAI_MIN_APK_VERSION_CODE:-$BRAI_REQUIRED_APK_VERSION_CODE}"
+    export BRAI_MAX_APK_VERSION_CODE="${BRAI_MAX_APK_VERSION_CODE:-$BRAI_MIN_APK_VERSION_CODE}"
+  elif [[ "${BRAI_NATIVE_APK_CHANGE:-false}" == "true" ]]; then
+    REQUIRED_APK_VERSION_CODE="${BRAI_MIN_APK_VERSION_CODE:-$("$NODE_BIN" "$SCRIPT_DIR/resolve-required-apk-version-code.mjs" "$ENVIRONMENT")}"
+    export BRAI_MIN_APK_VERSION_CODE="${BRAI_MIN_APK_VERSION_CODE:-$REQUIRED_APK_VERSION_CODE}"
+    export BRAI_MAX_APK_VERSION_CODE="${BRAI_MAX_APK_VERSION_CODE:-$BRAI_MIN_APK_VERSION_CODE}"
   fi
 fi
 

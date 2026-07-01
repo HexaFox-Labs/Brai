@@ -2,7 +2,7 @@
 
 ## Decisions
 
-- Treat `scripts/bright-task.mjs` as the local delivery state machine:
+- Treat `scripts/brai-task.mjs` as the local delivery state machine:
   `no-task -> task-started -> write-intent -> committed -> pushed ->
   preview-ready -> handoff-receipt`.
 - Before a valid task branch exists, allow only explicitly read-only commands.
@@ -15,7 +15,7 @@
   interpreted safely.
 - Block manual `codex/*` branch creation or switching through
   `git switch`, `git checkout`, `git branch`, or `git worktree`. New work must
-  use `scripts/bright-task-start.sh`; direct follow-up work must use the
+  use `scripts/brai-task-start.sh`; direct follow-up work must use the
   same-thread `follow-up` marker.
 - Make `startTask()` enable `.githooks` for the created worktree so commit and
   push guards are active without a manual setup step.

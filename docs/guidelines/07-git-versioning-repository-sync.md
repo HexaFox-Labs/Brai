@@ -11,17 +11,17 @@
 Before the first project-file change in every new Codex thread, run:
 
 ```bash
-scripts/bright-task-start.sh <task-slug>
+scripts/brai-task-start.sh <task-slug>
 ```
 
-In Codex Desktop this needs `sandbox_permissions=require_escalated`, because the starter fetches `origin/main`, writes Git worktree metadata, creates `.codex-worktrees/<task-slug>`, writes ignored `.bright-task/` state, enables `.githooks`, and links existing ignored dependency directories.
+In Codex Desktop this needs `sandbox_permissions=require_escalated`, because the starter fetches `origin/main`, writes Git worktree metadata, creates `.codex-worktrees/<task-slug>`, writes ignored `.brai-task/` state, enables `.githooks`, and links existing ignored dependency directories.
 
 Staging changes from a task worktree may also require `sandbox_permissions=require_escalated`,
 because Git writes the index lock under the main checkout's `.git/worktrees/` metadata. If an
 escalated command leaves the task worktree owned by the wrong user, run:
 
 ```bash
-scripts/bright-task-repair-permissions.sh <task-slug-or-worktree-path>
+scripts/brai-task-repair-permissions.sh <task-slug-or-worktree-path>
 ```
 
 Do not create or switch fallback branches manually with `git switch`, `git checkout`, `git branch`, or `git worktree`.
@@ -33,15 +33,15 @@ The branch selected by Codex Desktop is not permission to continue that branch. 
 Same-thread follow-up writes may continue an existing `codex/*` branch only before acceptance and only after:
 
 ```bash
-node scripts/bright-task.mjs follow-up
+node scripts/brai-task.mjs follow-up
 ```
 
-The task base is frozen at starter time in `.bright-task/task.json`. Before acceptance, do not refresh that branch from the later `origin/main`: no `git fetch origin main`, `git pull origin main`, `git merge origin/main`, `git rebase origin/main`, or equivalent base-update command. Continue follow-up work on the same branch and let the acceptance PR/merge surface any real conflict; if the branch was already accepted, start a new task branch from the then-current `origin/main`.
+The task base is frozen at starter time in `.brai-task/task.json`. Before acceptance, do not refresh that branch from the later `origin/main`: no `git fetch origin main`, `git pull origin main`, `git merge origin/main`, `git rebase origin/main`, or equivalent base-update command. Continue follow-up work on the same branch and let the acceptance PR/merge surface any real conflict; if the branch was already accepted, start a new task branch from the then-current `origin/main`.
 
 After acceptance starts, merge conflict resolution is allowed only through:
 
 ```bash
-node scripts/bright-task.mjs acceptance-reconcile <codex-branch>
+node scripts/brai-task.mjs acceptance-reconcile <codex-branch>
 ```
 
 This is the only approved path for updating an accepted preview branch from the current `origin/main`. It keeps the same branch, PR, and preview slot, then requires a new push, preview verification, and rerun of `deploy/scripts/accept-preview.sh`.
@@ -60,7 +60,7 @@ Before final handoff, classify the branch with the guard:
 
 Preview-class work is incomplete until the exact branch head is pushed, CI/deploy has verified the slot, and `scripts/bright-preview-handoff.sh` succeeds. The final implementation response must start with that command's verified `<slot emoji> Preview` header, then URL, branch, and commit.
 
-Infra-docs work is complete only after `node scripts/bright-task.mjs handoff` verifies the no-preview workflow and reports branch, commit, `deliveryClass=infra-docs`, `autoMerge=enabled` when applicable, and `prState=MERGED` with merged PR metadata. `autoMerge=enabled` alone is an intermediate state, not final handoff evidence.
+Infra-docs work is complete only after `node scripts/brai-task.mjs handoff` verifies the no-preview workflow and reports branch, commit, `deliveryClass=infra-docs`, `autoMerge=enabled` when applicable, and `prState=MERGED` with merged PR metadata. `autoMerge=enabled` alone is an intermediate state, not final handoff evidence.
 
 ## Acceptance
 

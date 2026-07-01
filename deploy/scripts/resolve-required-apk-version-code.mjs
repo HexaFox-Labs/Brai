@@ -2,9 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
-const root = process.env.BRIGHT_OS_ROOT ?? path.resolve(import.meta.dirname, "../..");
-const releaseDir = process.env.BRIGHT_OS_RELEASE_TARGET ?? path.join(root, "deploy/releases");
-const environment = process.argv[2] ?? process.env.NEXT_PUBLIC_BRIGHT_OS_ENVIRONMENT ?? process.env.BRIGHT_OS_ENVIRONMENT ?? "prod";
+const root = process.env.BRAI_ROOT ?? path.resolve(import.meta.dirname, "../..");
+const releaseDir = process.env.BRAI_RELEASE_TARGET ?? path.join(root, "deploy/releases");
+const environment = process.argv[2] ?? process.env.NEXT_PUBLIC_BRAI_ENVIRONMENT ?? process.env.BRAI_ENVIRONMENT ?? "prod";
 const { environments } = JSON.parse(fs.readFileSync(path.join(root, "deploy/environments.json"), "utf8"));
 const env = environments[environment];
 if (!env) throw new Error(`unknown environment: ${environment}`);

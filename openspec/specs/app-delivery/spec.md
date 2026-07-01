@@ -4,29 +4,29 @@
 TBD - created by archiving change migrate-to-next-capacitor-local-first. Update Purpose after archive.
 ## Requirements
 ### Requirement: Web deployment publishes Next.js static output
-Bright OS SHALL publish the built Next.js web output to the existing `deploy/web` web root.
+Brai SHALL publish the built Next.js web output to the existing `deploy/web` web root.
 
 #### Scenario: Web assets are published
 - **WHEN** the web app is published
 - **THEN** `deploy/scripts/publish-web.sh` copies or synchronizes from the Next.js static output
 - **AND** removed files are not left behind in `deploy/web`
 
-#### Scenario: Web app calls the Bright OS API
-- **WHEN** the deployed web app calls Bright OS API endpoints
+#### Scenario: Web app calls the Brai API
+- **WHEN** the deployed web app calls Brai API endpoints
 - **THEN** it uses same-origin `/api/*` URLs
-- **AND** the browser bundle does not include the Bright OS API Bearer token
+- **AND** the browser bundle does not include the Brai API Bearer token
 
 ### Requirement: Caddy route boundaries are preserved
-Bright OS SHALL preserve the existing Caddy route boundaries for web, API proxy, direct API access, and protected releases.
+Brai SHALL preserve the existing Caddy route boundaries for web, API proxy, direct API access, and protected releases.
 
 #### Scenario: Web app is deployed
 - **WHEN** `app.brightos.world` serves the migrated web app
-- **THEN** `/api/*` remains routed to the Bright OS API before the web catch-all
+- **THEN** `/api/*` remains routed to the Brai API before the web catch-all
 - **AND** `/releases*` remains routed to the release/auth flow before the web catch-all
 - **AND** application service ports remain localhost-only
 
 ### Requirement: Android release uses Capacitor APK artifacts
-Bright OS SHALL publish Capacitor Android APK artifacts through the existing protected release flow after the migration.
+Brai SHALL publish Capacitor Android APK artifacts through the existing protected release flow after the migration.
 
 #### Scenario: APK is published
 - **WHEN** a Capacitor Android release APK is built
@@ -34,7 +34,7 @@ Bright OS SHALL publish Capacitor Android APK artifacts through the existing pro
 - **AND** the protected release page lists the current filename, version, platform, size, app update time, and APK publication time
 
 ### Requirement: APK updates are separated from web-only updates
-Bright OS SHALL document which changes require an APK update and which may be delivered as web/OTA bundle updates.
+Brai SHALL document which changes require an APK update and which may be delivered as web/OTA bundle updates.
 
 #### Scenario: Web-only code changes
 - **WHEN** a release changes only Next.js UI, TypeScript client logic, Tailwind styles, or local database migrations compatible with the existing native shell
@@ -45,7 +45,7 @@ Bright OS SHALL document which changes require an APK update and which may be de
 - **THEN** a new APK or AAB build is required
 
 ### Requirement: Mobile OTA bundles are published separately from browser web assets
-Bright OS SHALL publish Android mobile OTA web bundles to a durable mobile update area separate from the clean-synchronized browser web root.
+Brai SHALL publish Android mobile OTA web bundles to a durable mobile update area separate from the clean-synchronized browser web root.
 
 #### Scenario: Browser web assets are published
 - **WHEN** `deploy/scripts/publish-web.sh` publishes browser web assets to `deploy/web`
@@ -58,7 +58,7 @@ Bright OS SHALL publish Android mobile OTA web bundles to a durable mobile updat
 - **AND** the stable manifest references that versioned bundle archive
 
 ### Requirement: Mobile OTA manifest updates are atomic
-Bright OS SHALL publish the mobile OTA manifest in a way that avoids clients observing a partially written manifest.
+Brai SHALL publish the mobile OTA manifest in a way that avoids clients observing a partially written manifest.
 
 #### Scenario: Manifest is replaced
 - **WHEN** a new mobile OTA bundle becomes the active update
@@ -66,7 +66,7 @@ Bright OS SHALL publish the mobile OTA manifest in a way that avoids clients obs
 - **AND** the final manifest path is replaced atomically after the bundle archive is already available
 
 ### Requirement: Mobile OTA publication preserves rollback versions
-Bright OS SHALL retain enough previous mobile OTA bundles to support rollback.
+Brai SHALL retain enough previous mobile OTA bundles to support rollback.
 
 #### Scenario: New bundle is published
 - **WHEN** a new mobile OTA bundle is published
@@ -74,7 +74,7 @@ Bright OS SHALL retain enough previous mobile OTA bundles to support rollback.
 - **AND** cleanup does not remove the bundle currently referenced by the manifest
 
 ### Requirement: Delivery commands distinguish APK and web-layer releases
-Bright OS SHALL keep release commands and documentation clear about whether a change is delivered by web OTA or APK.
+Brai SHALL keep release commands and documentation clear about whether a change is delivered by web OTA or APK.
 
 #### Scenario: Web-layer release is prepared
 - **WHEN** a release changes only OTA-eligible web-layer behavior
@@ -85,18 +85,18 @@ Bright OS SHALL keep release commands and documentation clear about whether a ch
 - **THEN** the release checklist requires a new APK build and publication
 
 ### Requirement: Web-layer client releases publish browser web and Android OTA together
-Bright OS SHALL publish ordinary client web-layer releases to both the browser web root and Android OTA channel from the same static build.
+Brai SHALL publish ordinary client web-layer releases to both the browser web root and Android OTA channel from the same static build.
 
 #### Scenario: Web-layer client release is published
 - **WHEN** a release changes only OTA-eligible client web-layer behavior
-- **THEN** the release workflow builds one Next.js static output with the supported Bright OS Node runtime
+- **THEN** the release workflow builds one Next.js static output with the supported Brai Node runtime
 - **AND** publishes that output to `deploy/web`
 - **AND** publishes an Android OTA bundle from that same output to `deploy/mobile-update`
 - **AND** does not require a new APK
 - **AND** uses the same `X.Y.Z.S` version for browser web and Android OTA
 
 ### Requirement: Native Android changes publish release APK artifacts
-Bright OS SHALL publish a release APK whenever a change crosses the native Android release boundary.
+Brai SHALL publish a release APK whenever a change crosses the native Android release boundary.
 
 #### Scenario: Native Android release is required
 - **WHEN** a release changes Android native code, Capacitor configuration, permissions, signing, manifest values, application id, SDK versions, native plugins, icons, splash assets, or the supported Node runtime used for native build tooling
@@ -105,7 +105,7 @@ Bright OS SHALL publish a release APK whenever a change crosses the native Andro
 - **AND** updates and verifies the release page metadata
 
 ### Requirement: Release versions use one build ledger
-Bright OS SHALL track public release versions in the server SQLite `build_versions` table with type metadata from `version_types`.
+Brai SHALL track public release versions in the server SQLite `build_versions` table with type metadata from `version_types`.
 
 `build_versions.version` SHALL be an integer counter scoped to `version_type_id`.
 
@@ -146,18 +146,18 @@ The public app version SHALL be assembled as `canon.release.build.apk` from the 
 #### Scenario: Separate web or OTA version is requested
 - **WHEN** a request asks to publish or update only browser web, only OTA, or different browser web and Android OTA versions
 - **THEN** the workflow stops before changing files or publishing artifacts
-- **AND** reports that Bright OS forbids separate web/OTA versions until the versioning rules are explicitly changed
+- **AND** reports that Brai forbids separate web/OTA versions until the versioning rules are explicitly changed
 
 ### Requirement: Delivery scripts do not depend on unsupported host Node
-Bright OS delivery scripts SHALL select the supported Bright OS Node runtime before running JavaScript build or publication logic.
+Brai delivery scripts SHALL select the supported Brai Node runtime before running JavaScript build or publication logic.
 
 #### Scenario: Publish script is run from a clean shell
 - **WHEN** a maintainer runs `npm run publish:client-web-layer`
-- **THEN** the build, browser web publication, and Android OTA publication use the supported Bright OS Node runtime
+- **THEN** the build, browser web publication, and Android OTA publication use the supported Brai Node runtime
 - **AND** the workflow succeeds even when the host default `node` is unsupported
 
 ### Requirement: Retired timer and history URLs are not served
-Bright OS SHALL not serve retired `/timer*` or `/history*` web app URLs after Timer is renamed to Focus and History is merged into Focus.
+Brai SHALL not serve retired `/timer*` or `/history*` web app URLs after Timer is renamed to Focus and History is merged into Focus.
 
 #### Scenario: Focus static route is served
 - **WHEN** `app.brightos.world/focus` is requested
@@ -174,7 +174,7 @@ Bright OS SHALL not serve retired `/timer*` or `/history*` web app URLs after Ti
 - **AND** it does not serve the app fallback
 
 ### Requirement: Branch classes map to production and preview environments
-Bright OS SHALL use one production environment and five preview environments.
+Brai SHALL use one production environment and five preview environments.
 
 #### Scenario: A branch is deployed
 - **WHEN** `main` is deployed
@@ -183,7 +183,7 @@ Bright OS SHALL use one production environment and five preview environments.
 - **THEN** it allocates or reuses one preview slot from `A` through `E`
 
 ### Requirement: Preview Android apps are separately installable
-Bright OS SHALL provide non-production Android flavors for preview slots `A` through `E`.
+Brai SHALL provide non-production Android flavors for preview slots `A` through `E`.
 
 #### Scenario: Non-production Android apps are built
 - **WHEN** preview APKs are built
@@ -191,7 +191,7 @@ Bright OS SHALL provide non-production Android flavors for preview slots `A` thr
 - **AND** they can be installed side-by-side with production
 
 ### Requirement: Non-production APK builds use exact OTA compatibility
-Bright OS SHALL keep Preview APK artifacts aligned with their OTA manifests through a monotonic technical Android `versionCode`.
+Brai SHALL keep Preview APK artifacts aligned with their OTA manifests through a monotonic technical Android `versionCode`.
 
 #### Scenario: Native preview APK is published
 - **WHEN** a `codex/*` branch changes the native Android boundary
@@ -203,7 +203,7 @@ Bright OS SHALL keep Preview APK artifacts aligned with their OTA manifests thro
 - **THEN** Preview A-E APKs are rebuilt from production source during slot release
 
 ### Requirement: Deployment metadata is recorded per environment
-Bright OS SHALL record deployment metadata for production and preview environments.
+Brai SHALL record deployment metadata for production and preview environments.
 
 #### Scenario: Branch deployment completes
 - **WHEN** a branch deploy succeeds

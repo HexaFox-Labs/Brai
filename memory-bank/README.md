@@ -1,6 +1,6 @@
 # Memory Bank
 
-This directory stores public, durable project context for future Bright OS development sessions.
+This directory stores public, durable project context for future Brai development sessions.
 
 Read order:
 

@@ -46,7 +46,7 @@ are made.
 
 ## Impact
 
-- Planned implementation will affect `scripts/bright-task.mjs`, `.codex/hooks.json`,
+- Planned implementation will affect `scripts/brai-task.mjs`, `.codex/hooks.json`,
   `.githooks/`, `deploy/scripts/accept-preview.sh`, repository operation docs,
   and delivery guard tests.
 - This OpenSpec change does not implement those changes.

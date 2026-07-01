@@ -2,10 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
-const root = process.env.BRIGHT_OS_ROOT ?? path.resolve(import.meta.dirname, "../..");
-const envsRoot = process.env.BRIGHT_OS_ENVS_ROOT ?? "/srv/projects/bright-os-envs";
-const registryPath = process.env.BRIGHT_OS_PREVIEW_REGISTRY ?? path.join(envsRoot, "preview-slots.json");
-const statusDir = process.env.BRIGHT_OS_PREVIEW_STATUS_DIR ?? path.join(envsRoot, "preview-status");
+const root = process.env.BRAI_ROOT ?? path.resolve(import.meta.dirname, "../..");
+const envsRoot = process.env.BRAI_ENVS_ROOT ?? "/srv/projects/brai-envs";
+const registryPath = process.env.BRAI_PREVIEW_REGISTRY ?? path.join(envsRoot, "preview-slots.json");
+const statusDir = process.env.BRAI_PREVIEW_STATUS_DIR ?? path.join(envsRoot, "preview-status");
 const environments = JSON.parse(fs.readFileSync(path.join(root, "deploy/environments.json"), "utf8")).environments;
 const slots = ["A", "B", "C", "D", "E"];
 const [command, ...args] = process.argv.slice(2);
@@ -220,7 +220,7 @@ function renderStatusPage(registry) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Bright OS Preview Slots</title>
+  <title>Brai Preview Slots</title>
   <style>
     :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #0c1110; color: #edf7f4; }
     body { margin: 0; padding: 32px; }
@@ -243,7 +243,7 @@ function renderStatusPage(registry) {
 </head>
 <body>
   <main>
-    <h1>Bright OS Preview Slots</h1>
+    <h1>Brai Preview Slots</h1>
     <div class="grid">${cards}</div>
     <section class="queue">
       <h2>Queue</h2>

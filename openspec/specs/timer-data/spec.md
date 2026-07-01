@@ -2,10 +2,10 @@
 
 ## Purpose
 
-Define how Bright OS records timer actions durably across clients, synchronizes pending offline work, derives canonical timer sessions from server-side events, and keeps history and goal totals consistent without manual conflict resolution.
+Define how Brai records timer actions durably across clients, synchronizes pending offline work, derives canonical timer sessions from server-side events, and keeps history and goal totals consistent without manual conflict resolution.
 ## Requirements
 ### Requirement: Clients support offline timer events
-Bright OS clients SHALL allow timer start and stop actions to be recorded while the client is disconnected from the Bright OS API.
+Brai clients SHALL allow timer start and stop actions to be recorded while the client is disconnected from the Brai API.
 
 #### Scenario: Client starts timer offline
 - **WHEN** a client has no API connectivity and the user starts the timer
@@ -29,7 +29,7 @@ Bright OS clients SHALL allow timer start and stop actions to be recorded while 
 - **AND** each event has a stable event id and per-device sequence number
 
 ### Requirement: Server stores timer event log
-The Bright OS API SHALL store timer start and stop events in a durable server-side event log with stable device identity and idempotent event identity.
+The Brai API SHALL store timer start and stop events in a durable server-side event log with stable device identity and idempotent event identity.
 
 #### Scenario: New device syncs events
 - **WHEN** a client syncs events with a stable `device_id`
@@ -37,7 +37,7 @@ The Bright OS API SHALL store timer start and stop events in a durable server-si
 - **AND** stores each new timer event with `event_id`, `device_id`, `client_sequence`, event type, event timestamp, and server receive timestamp
 
 #### Scenario: Existing completed sessions are migrated
-- **WHEN** offline-first sync is introduced to an existing Bright OS database
+- **WHEN** offline-first sync is introduced to an existing Brai database
 - **THEN** existing completed timer sessions remain visible in history and goal calculations
 - **AND** the migration seeds or preserves canonical data so previous work is not lost
 
@@ -47,7 +47,7 @@ The Bright OS API SHALL store timer start and stop events in a durable server-si
 - **AND** the migrated canonical history does not double-count previous sessions
 
 ### Requirement: Event sync is idempotent
-The Bright OS API SHALL expose an idempotent event batch sync endpoint for pending client timer events.
+The Brai API SHALL expose an idempotent event batch sync endpoint for pending client timer events.
 
 #### Scenario: Client uploads pending events
 - **WHEN** a client calls `POST /v1/timer/events/sync` with pending events
@@ -68,7 +68,7 @@ The Bright OS API SHALL expose an idempotent event batch sync endpoint for pendi
 - **AND** excludes it from canonical sessions
 
 #### Scenario: Unauthorized sync is rejected
-- **WHEN** a sync request omits valid Bright OS API authorization
+- **WHEN** a sync request omits valid Brai API authorization
 - **THEN** the server rejects the request
 - **AND** no device or event rows are stored
 
@@ -78,7 +78,7 @@ The Bright OS API SHALL expose an idempotent event batch sync endpoint for pendi
 - **AND** timer state, history, and goal totals remain unchanged
 
 ### Requirement: Canonical sessions are derived from events
-Bright OS SHALL derive the active timer state and completed timer sessions from the accepted timer event log.
+Brai SHALL derive the active timer state and completed timer sessions from the accepted timer event log.
 
 #### Scenario: Online start uses event model
 - **WHEN** a client starts the timer while online through the existing start endpoint
@@ -91,7 +91,7 @@ Bright OS SHALL derive the active timer state and completed timer sessions from 
 - **AND** recomputes canonical completed sessions from events
 
 #### Scenario: Server restarts during active timer
-- **WHEN** the Bright OS API restarts while canonical event history contains an open interval
+- **WHEN** the Brai API restarts while canonical event history contains an open interval
 - **THEN** the server reconstructs the active timer state from persisted events
 - **AND** clients recover the same active timer after reconnect
 
@@ -111,7 +111,7 @@ Bright OS SHALL derive the active timer state and completed timer sessions from 
 - **AND** no stop event changes canonical sessions
 
 ### Requirement: Overlapping offline intervals are merged automatically
-Bright OS SHALL resolve overlapping timer intervals from multiple devices without user input by merging half-open UTC intervals and counting overlapping time once.
+Brai SHALL resolve overlapping timer intervals from multiple devices without user input by merging half-open UTC intervals and counting overlapping time once.
 
 #### Scenario: Offline intervals overlap partially
 - **WHEN** one device syncs `10:00-11:00`
@@ -141,7 +141,7 @@ Bright OS SHALL resolve overlapping timer intervals from multiple devices withou
 - **AND** remains active until canonical event history closes all merged open intervals
 
 ### Requirement: Manual conflict UI is not used
-Bright OS MUST NOT require or present manual conflict resolution UI for offline timer synchronization conflicts.
+Brai MUST NOT require or present manual conflict resolution UI for offline timer synchronization conflicts.
 
 #### Scenario: Sync detects overlapping intervals
 - **WHEN** the server detects overlapping offline and server timer intervals
@@ -149,7 +149,7 @@ Bright OS MUST NOT require or present manual conflict resolution UI for offline 
 - **AND** the client shows the resulting canonical timer state without asking the project owner to choose a version
 
 ### Requirement: Clients reconcile pending local events after reconnect
-Bright OS clients SHALL upload pending local timer events after reconnect and replace local projected state with server canonical state.
+Brai clients SHALL upload pending local timer events after reconnect and replace local projected state with server canonical state.
 
 #### Scenario: Client reconnects after offline start
 - **WHEN** a client reconnects after recording an offline start event
@@ -187,7 +187,7 @@ Bright OS clients SHALL upload pending local timer events after reconnect and re
 - **AND** reconciles again after pending events are acknowledged
 
 ### Requirement: Goal calculations use canonical merged sessions
-Bright OS SHALL calculate daily and challenge goal progress from canonical merged sessions.
+Brai SHALL calculate daily and challenge goal progress from canonical merged sessions.
 
 #### Scenario: Merged offline intervals affect daily goal
 - **WHEN** overlapping offline intervals are merged into one canonical session
@@ -236,7 +236,7 @@ The Next.js/Capacitor client SHALL cache canonical timer state, recent sessions,
 - **AND** cross-midnight sessions are split into per-day display chunks
 
 ### Requirement: Focus sessions keep editable current versions
-Bright OS SHALL store editable start, end, and duration values for completed
+Brai SHALL store editable start, end, and duration values for completed
 Focus sessions in a versioned server-side table.
 
 #### Scenario: Existing sessions are migrated to current versions
@@ -251,7 +251,7 @@ Focus sessions in a versioned server-side table.
   `is_current = 1`
 
 ### Requirement: Completed Focus sessions can be edited offline-first
-Bright OS clients SHALL record completed Focus session edits as durable pending
+Brai clients SHALL record completed Focus session edits as durable pending
 timer events and sync them through the accepted timer event endpoint.
 
 #### Scenario: Client edits a completed session offline
@@ -301,7 +301,7 @@ timer events and sync them through the accepted timer event endpoint.
   calculations
 
 ### Requirement: Completed Focus sessions can be soft-deleted offline-first
-Bright OS clients SHALL record completed Focus session deletions as durable
+Brai clients SHALL record completed Focus session deletions as durable
 pending `delete_session` timer events and sync them through the accepted timer
 event endpoint.
 

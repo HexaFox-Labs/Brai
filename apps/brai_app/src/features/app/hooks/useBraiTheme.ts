@@ -1,0 +1,31 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { platformName } from "@/shared/platform/platform";
+import { getBraiLocalStorageItem, setBraiLocalStorageItem } from "@/shared/storage/localStorageKeys";
+import type { ThemeMode } from "../appModel";
+
+/**
+ * Persists the Brai light/dark theme and platform marker on the document.
+ */
+export function useBraiTheme() {
+  const [theme, setTheme] = useState<ThemeMode>(() => {
+    if (typeof window === "undefined") return "light";
+    const saved = getBraiLocalStorageItem("brai_theme_mode");
+    return saved === "dark" || saved === "light" ? saved : window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  });
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    setBraiLocalStorageItem("brai_theme_mode", theme);
+  }, [theme]);
+
+  useEffect(() => {
+    document.documentElement.dataset.platform = platformName();
+    return () => {
+      delete document.documentElement.dataset.platform;
+    };
+  }, []);
+
+  return { setTheme, theme };
+}

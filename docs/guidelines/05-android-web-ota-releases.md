@@ -1,6 +1,6 @@
 # Android, Web, OTA, And Releases
 
-Bright OS version rows use four `version_type_id` values: `apk`, `build`, `release`, `canon`.
+Brai version rows use four `version_type_id` values: `apk`, `build`, `release`, `canon`.
 
 - `build_versions.version` is an integer counter scoped to `version_type_id`.
 - The public app version is assembled as `canon.release.build.apk` from the latest counters; missing `canon` or `release` is `0`.
@@ -15,13 +15,13 @@ Build and publish a release APK only when native Android code, Capacitor config,
 
 ## Shipped APK Ledger Order
 
-For an intentional public APK ledger release, set `BRIGHT_OS_RECORD_APK_LEDGER=true`, resolve the APK `versionName` from the production `build_versions` ledger as `canon.release.build.(apk + 1)` before the Gradle build, publish the APK with that exact `X.Y.Z.S`, then record the new `apk` row immediately after the APK is published. If the same target branch/commit is retried, reuse its existing `apk` row instead of incrementing again. Preview APKs, routine production/native rebuilds, and non-production baseline APK rebuilds must not create `apk` rows.
+For an intentional public APK ledger release, set `BRAI_RECORD_APK_LEDGER=true`, resolve the APK `versionName` from the production `build_versions` ledger as `canon.release.build.(apk + 1)` before the Gradle build, publish the APK with that exact `X.Y.Z.S`, then record the new `apk` row immediately after the APK is published. If the same target branch/commit is retried, reuse its existing `apk` row instead of incrementing again. Preview APKs, routine production/native rebuilds, and non-production baseline APK rebuilds must not create `apk` rows.
 
 Release APK signing is env-only. Required variables:
 
-- `BRIGHT_OS_ANDROID_KEYSTORE_PATH`
-- `BRIGHT_OS_ANDROID_STORE_PASSWORD`
-- `BRIGHT_OS_ANDROID_KEY_ALIAS`
-- `BRIGHT_OS_ANDROID_KEY_PASSWORD`
+- `BRAI_ANDROID_KEYSTORE_PATH`
+- `BRAI_ANDROID_STORE_PASSWORD`
+- `BRAI_ANDROID_KEY_ALIAS`
+- `BRAI_ANDROID_KEY_PASSWORD`
 
 Do not commit APKs, OTA bundles, release pages, keystores, signing passwords, or generated deploy output.

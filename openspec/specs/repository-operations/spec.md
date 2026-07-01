@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This specification captures accepted repository structure, tooling, runtime, and synchronization rules for Bright OS work.
+This specification captures accepted repository structure, tooling, runtime, and synchronization rules for Brai work.
 ## Requirements
 ### Requirement: Repository assumptions are explicit
 The repository SHALL document product behavior, runtime stack, and architecture assumptions before future work depends on them.
@@ -36,7 +36,7 @@ The public repository SHALL start from a clean baseline history rather than expo
 - **AND** runtime databases, generated deployment artifacts, signing material, local backups, private keys, and personal workspace notes are absent from the tree and history
 
 ### Requirement: Public hygiene gate protects every active branch class
-Bright OS SHALL run the public branch guard before accepting source into `main` or `codex/*`.
+Brai SHALL run the public branch guard before accepting source into `main` or `codex/*`.
 
 #### Scenario: A branch or pull request is checked
 - **WHEN** GitHub Actions runs for `main`, a `codex/*` branch, or a pull request targeting `main`
@@ -44,9 +44,9 @@ Bright OS SHALL run the public branch guard before accepting source into `main` 
 - **AND** the workflow fails on forbidden paths, signing files, credential-like files, high-confidence secrets, local workspace paths, or personal markers
 
 ### Requirement: Task branches deploy through preview slots
-Agents working on ordinary Bright OS feature, fix, refactor, or infrastructure implementation tasks SHALL start from the latest `origin/main` branch unless the project owner explicitly requests another base.
+Agents working on ordinary Brai feature, fix, refactor, or infrastructure implementation tasks SHALL start from the latest `origin/main` branch unless the project owner explicitly requests another base.
 
-Ordinary `codex/*` task branch pushes to `origin` and their preview deploys SHALL be treated as standing Bright OS CI/CD automation approved by the project owner, not as optional per-task manual confirmations.
+Ordinary `codex/*` task branch pushes to `origin` and their preview deploys SHALL be treated as standing Brai CI/CD automation approved by the project owner, not as optional per-task manual confirmations.
 
 Infrastructure/documentation-only task branches MAY skip preview slot allocation only when Temporal classifies the branch as `deliveryClass=infra-docs` and records `no_preview_required`.
 
@@ -104,12 +104,12 @@ Native-boundary preview branches SHALL publish a slot-specific APK before handof
 - **AND** the preview branch remains unmerged
 
 ### Requirement: Agent delivery guards fail closed
-Bright OS SHALL block project-file writes, commits, pushes, and final handoff when local guard state cannot prove that the current task is on a valid same-thread `codex/*` branch from `origin/main` and has the required delivery verification.
+Brai SHALL block project-file writes, commits, pushes, and final handoff when local guard state cannot prove that the current task is on a valid same-thread `codex/*` branch from `origin/main` and has the required delivery verification.
 
 #### Scenario: Project-file write starts before valid task branch
 - **WHEN** an agent attempts to change a repository file before a valid task branch and task marker exist
 - **THEN** the write is blocked
-- **AND** the blocker names `scripts/bright-task-start.sh <task-slug>` as the required next step
+- **AND** the blocker names `scripts/brai-task-start.sh <task-slug>` as the required next step
 
 #### Scenario: Hook input is nested or unknown
 - **WHEN** hook input contains namespaced, custom, nested, or unknown tool calls
@@ -133,48 +133,48 @@ Bright OS SHALL block project-file writes, commits, pushes, and final handoff wh
 - **AND** the agent reports the missing delivery evidence as incomplete or blocked
 
 ### Requirement: OpenSpec CLI is pinned as project tooling
-The project SHALL pin `@fission-ai/openspec` as development tooling and require the supported Bright OS Node 22 runtime for OpenSpec CLI usage.
+The project SHALL pin `@fission-ai/openspec` as development tooling and require the supported Brai Node 22 runtime for OpenSpec CLI usage.
 
 #### Scenario: OpenSpec commands are run
 - **WHEN** a maintainer runs OpenSpec through project tooling
 - **THEN** the command uses the pinned package version
-- **AND** it uses the supported Bright OS Node runtime under `/srv/opt/node-v22.16.0` or an explicitly approved successor runtime
+- **AND** it uses the supported Brai Node runtime under `/srv/opt/node-v22.16.0` or an explicitly approved successor runtime
 - **AND** it resolves the package binary instead of executing the repository `openspec/` directory by name
 
 ### Requirement: Repository includes Next Capacitor client after migration
-The Bright OS repository SHALL include a Next.js/Capacitor client as the primary future client after this migration is implemented.
+The Brai repository SHALL include a Next.js/Capacitor client as the primary future client after this migration is implemented.
 
 #### Scenario: Migration source is present
 - **WHEN** the repository is inspected after the migration
-- **THEN** the active client source is placed under `apps/bright_os_app`
+- **THEN** the active client source is placed under `apps/brai_app`
 - **AND** generated build artifacts remain out of source control unless explicitly accepted as deployment artifacts
 
 ### Requirement: Retired client source is removed after cutover
-The Bright OS repository SHALL not keep the retired pre-migration client source as an active rollback surface after cutover.
+The Brai repository SHALL not keep the retired pre-migration client source as an active rollback surface after cutover.
 
 #### Scenario: Cutover is complete
 - **WHEN** the Next.js web app and Capacitor Android app are the active release
 - **THEN** future product development targets the Next.js/Capacitor client
 - **AND** retired client source and release artifacts are removed from current project state
 
-### Requirement: Bright OS uses one supported Node runtime
-Bright OS repository commands and runtime services SHALL use the supported Node.js runtime installed under `/srv/opt/` instead of relying on the host default `node`.
+### Requirement: Brai uses one supported Node runtime
+Brai repository commands and runtime services SHALL use the supported Node.js runtime installed under `/srv/opt/` instead of relying on the host default `node`.
 
 #### Scenario: Root project command is run from a clean shell
-- **WHEN** a maintainer runs an ordinary Bright OS root command such as `npm run app:build`, `npm run app:test`, or `npm run openspec:validate`
-- **THEN** the command uses the supported Bright OS Node runtime
+- **WHEN** a maintainer runs an ordinary Brai root command such as `npm run app:build`, `npm run app:test`, or `npm run openspec:validate`
+- **THEN** the command uses the supported Brai Node runtime
 - **AND** it does not execute with `/usr/bin/node` when that binary is an unsupported Node version
 
 #### Scenario: Unsupported Node is first in PATH
-- **WHEN** `/usr/bin/node` resolves to a Node version below the Bright OS requirement
-- **THEN** Bright OS tooling fails fast with a clear runtime error or selects the supported `/srv/opt/` runtime before running project code
+- **WHEN** `/usr/bin/node` resolves to a Node version below the Brai requirement
+- **THEN** Brai tooling fails fast with a clear runtime error or selects the supported `/srv/opt/` runtime before running project code
 
 #### Scenario: Node engine metadata is inspected
-- **WHEN** Bright OS root or app package metadata declares a Node.js engine
+- **WHEN** Brai root or app package metadata declares a Node.js engine
 - **THEN** the declared engine requires Node.js `>=22.0.0`
 - **AND** it remains compatible with the approved runtime at `/srv/opt/node-v22.16.0`
 
 #### Scenario: Host-level Node removal is considered
 - **WHEN** maintainers consider removing or disabling the system Node.js package
-- **THEN** they first verify registered services and installed tools outside Bright OS do not depend on it
+- **THEN** they first verify registered services and installed tools outside Brai do not depend on it
 - **AND** they update the runtime/service registry outside the repository in the same change if Node.js installation or usage changes

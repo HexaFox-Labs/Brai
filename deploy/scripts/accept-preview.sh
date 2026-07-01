@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BASE_BRANCH="${BRIGHT_OS_ACCEPT_BASE:-main}"
+BASE_BRANCH="${BRAI_ACCEPT_BASE:-main}"
 BRANCH="${1:-}"
-INFRA_DOCS_LABEL="bright-delivery:infra-docs"
-MERGE_METHOD="${BRIGHT_OS_ACCEPT_MERGE_METHOD:-squash}"
+INFRA_DOCS_LABEL="brai-delivery:infra-docs"
+MERGE_METHOD="${BRAI_ACCEPT_MERGE_METHOD:-squash}"
 
 usage() {
   cat <<'USAGE'
 usage: deploy/scripts/accept-preview.sh [codex/<task-branch>]
 
-Creates or reuses a GitHub PR from a Bright OS preview branch into the accepted base, then
+Creates or reuses a GitHub PR from a Brai preview branch into the accepted base, then
 enables GitHub merge/auto-merge for the exact pushed head commit.
 USAGE
 }
@@ -45,7 +45,7 @@ fi
 ROOT="$(git rev-parse --show-toplevel)"
 
 run_bright_node() {
-  local node_prefix="${BRIGHT_OS_NODE_PREFIX:-/srv/opt/node-v22.16.0/bin}"
+  local node_prefix="${BRAI_NODE_PREFIX:-/srv/opt/node-v22.16.0/bin}"
   if [[ -x "$node_prefix/node" ]]; then
     "$ROOT/scripts/use-node22.sh" node "$@"
     return
@@ -55,18 +55,18 @@ run_bright_node() {
 }
 
 ensure_acceptance_marker_writable() {
-  local dir="$ROOT/.bright-task"
+  local dir="$ROOT/.brai-task"
   local probe
   if [[ -L "$dir" ]]; then
-    echo "Bright OS task state must not be a symlink: $dir" >&2
+    echo "Brai task state must not be a symlink: $dir" >&2
     exit 1
   fi
   if ! mkdir -p "$dir"; then
-    echo "Cannot create Bright OS task state directory: $dir" >&2
+    echo "Cannot create Brai task state directory: $dir" >&2
     exit 1
   fi
   if ! probe="$(mktemp "$dir/.acceptance-write.XXXXXX")"; then
-    echo "Cannot write Bright OS acceptance receipt under $dir; repair task-state permissions before accepting preview work." >&2
+    echo "Cannot write Brai acceptance receipt under $dir; repair task-state permissions before accepting preview work." >&2
     exit 1
   fi
   rm -f "$probe"
@@ -82,10 +82,10 @@ write_acceptance_marker() {
 const fs = require("node:fs");
 const path = require("node:path");
 const [root, branch, commit, baseBranch, prNumber, prUrl, mergeMethod, status, deliveryClass, acceptedAt] = process.argv.slice(1);
-const dir = path.join(root, ".bright-task");
+const dir = path.join(root, ".brai-task");
 fs.mkdirSync(dir, { recursive: true });
 fs.writeFileSync(path.join(dir, "acceptance.json"), `${JSON.stringify({
-  receiptType: "bright-acceptance-v1",
+  receiptType: "brai-acceptance-v1",
   branch,
   commit,
   baseBranch,
@@ -108,7 +108,7 @@ mark_reconcile_required() {
   echo "PR: $pr_url"
   echo "Head: $HEAD_SHA"
   echo "mergeStateStatus: $merge_state"
-  echo "Run: node scripts/bright-task.mjs acceptance-reconcile $BRANCH"
+  echo "Run: node scripts/brai-task.mjs acceptance-reconcile $BRANCH"
 }
 
 if [[ -n "$(git status --porcelain)" ]]; then
@@ -140,13 +140,13 @@ done < <(run_bright_node "$ROOT/deploy/scripts/classify-delivery.mjs" \
   --event-name push \
   --ref "refs/heads/$BRANCH")
 
-if [[ "${BRIGHT_OS_ACCEPT_INFRA_DOCS_ONLY:-false}" == "true" && "$DELIVERY_CLASS" != "infra-docs" ]]; then
+if [[ "${BRAI_ACCEPT_INFRA_DOCS_ONLY:-false}" == "true" && "$DELIVERY_CLASS" != "infra-docs" ]]; then
   echo "Expected infra-docs delivery branch, got: $DELIVERY_CLASS" >&2
   exit 1
 fi
 
 if [[ "$REQUIRES_PREVIEW" == "true" ]]; then
-  run_bright_node "$ROOT/scripts/bright-task.mjs" require-preview "$BRANCH" "$HEAD_SHA"
+  run_bright_node "$ROOT/scripts/brai-task.mjs" require-preview "$BRANCH" "$HEAD_SHA"
 fi
 
 MERGED_PR_NUMBER="$(gh pr list --base "$BASE_BRANCH" --head "$BRANCH" --state merged --json number,headRefOid --jq "map(select(.headRefOid == \"$HEAD_SHA\"))[0].number // \"\"")"

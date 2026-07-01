@@ -1,6 +1,6 @@
 # Чеклист изменения клиента
 
-Перед изменением `apps/bright_os_app`:
+Перед изменением `apps/brai_app`:
 
 - [ ] Прочитан `docs/guidelines/03-next-capacitor-client.md`.
 - [ ] Изменение совместимо с Next static export.

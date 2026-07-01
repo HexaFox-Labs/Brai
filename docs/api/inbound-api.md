@@ -1,15 +1,15 @@
 # Inbound API
 
-Внутренняя справочная страница по универсальному внешнему inbound API Bright OS.
+Внутренняя справочная страница по универсальному внешнему inbound API Brai.
 Здесь описан контракт, по которому сторонние приложения отправляют данные в
-Bright OS.
+Brai.
 
 Не записывай сюда реальные токены, пароли, приватные URL, дампы runtime БД или
 пользовательские payload-ы.
 
 ## Текущий контракт
 
-Bright OS использует короткий inbound endpoint:
+Brai использует короткий inbound endpoint:
 
 ```text
 /v1/
@@ -48,11 +48,11 @@ routes.
 Все inbound-запросы требуют:
 
 ```http
-X-Bright-API-Key: <BRIGHT_OS_INBOUND_API_KEY>
+X-Bright-API-Key: <BRAI_INBOUND_API_KEY>
 ```
 
-Значение API-ключа живет в env как `BRIGHT_OS_INBOUND_API_KEY`. Legacy env
-`BRIGHT_OS_INBOUND_TOKEN` и legacy `Authorization: Bearer <key>` пока
+Значение API-ключа живет в env как `BRAI_INBOUND_API_KEY`. Legacy env
+`BRAI_INBOUND_TOKEN` и legacy `Authorization: Bearer <key>` пока
 принимаются для обратной совместимости. Новый caller должен использовать
 `X-Bright-API-Key`. Не коммить значение и не пиши его в документации.
 
@@ -226,7 +226,7 @@ X-Bright-Target: finance
 | Суммарный decoded size вложений | 12 MB |
 
 Attachment links сохраняются как `/v1/inbox/attachments/<file>`. Файлы лежат в
-storage root окружения из `BRIGHT_OS_INBOUND_STORAGE_ROOT`.
+storage root окружения из `BRAI_INBOUND_STORAGE_ROOT`.
 
 ## Типы записей
 
@@ -269,7 +269,7 @@ Handler генерирует `inbox.title` из `text`.
 | `id` | `inbound.inbox.title_generator` |
 | `target` | `inbox` |
 | `kind` | `inbound_llm_title_generator` |
-| `source_module` | `services/bright_os_api/src/inbound.js` |
+| `source_module` | `services/brai_api/src/inbound.js` |
 
 В этой строке хранятся описание, условия срабатывания/пропуска,
 взаимодействия, side effects, `llm_provider`, `llm_model`,
@@ -279,9 +279,9 @@ Runtime-настройки:
 
 | Env | Назначение |
 | --- | --- |
-| `BRIGHT_OS_CODEX_BIN` | Путь к Codex CLI. |
-| `BRIGHT_OS_CODEX_MODEL` | Runtime override модели Codex CLI; если не задан, используется `handlers.llm_model`. |
-| `BRIGHT_OS_CODEX_TIMEOUT_MS` | Runtime override timeout генерации заголовка; если не задан, используется `handlers.llm_timeout_ms`. |
+| `BRAI_CODEX_BIN` | Путь к Codex CLI. |
+| `BRAI_CODEX_MODEL` | Runtime override модели Codex CLI; если не задан, используется `handlers.llm_model`. |
+| `BRAI_CODEX_TIMEOUT_MS` | Runtime override timeout генерации заголовка; если не задан, используется `handlers.llm_timeout_ms`. |
 
 Prompt хранится в `handlers.llm_prompt_template`; `{{text}}` заменяется на
 входной `text`. Текущий template:
@@ -339,5 +339,5 @@ Prompt хранится в `handlers.llm_prompt_template`; `{{text}}` замен
 1. Обновить OpenSpec requirements, если меняется поведение.
 2. Обновить или добавить API tests, которые сломаются при регрессе документированного поведения.
 3. Обновить `docs/checklists/CHECKLIST_API_OR_MIGRATION.md`, только если меняется процесс.
-4. Запустить `npm --prefix services/bright_os_api test`.
+4. Запустить `npm --prefix services/brai_api test`.
 5. Запустить `npm run openspec:validate`, если менялись OpenSpec files.

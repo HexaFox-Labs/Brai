@@ -4,8 +4,8 @@ import path from "node:path";
 import process from "node:process";
 
 const args = parseArgs(process.argv.slice(2));
-const root = process.env.BRIGHT_OS_ROOT ?? path.resolve(import.meta.dirname, "../..");
-const releaseDir = process.env.BRIGHT_OS_RELEASE_TARGET ?? path.join(root, "deploy/releases");
+const root = process.env.BRAI_ROOT ?? path.resolve(import.meta.dirname, "../..");
+const releaseDir = process.env.BRAI_RELEASE_TARGET ?? path.join(root, "deploy/releases");
 const indexPath = path.join(releaseDir, "releases.json");
 const environments = JSON.parse(fs.readFileSync(path.join(root, "deploy/environments.json"), "utf8")).environments;
 const releaseKey = required(args, "release");
@@ -68,7 +68,7 @@ function renderReleasePage(data, htmlPath) {
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Bright OS: APK-релизы</title>
+    <title>Brai: APK-релизы</title>
     <style>
       :root { color-scheme: dark; --bg: #0c1110; --panel: #121a18; --line: #2a3935; --text: #edf7f4; --muted: #9fb0ab; --accent: #4cc3ad; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
       * { box-sizing: border-box; }
@@ -90,7 +90,7 @@ function renderReleasePage(data, htmlPath) {
   </head>
   <body>
     <main>
-      <h1>APK-релизы Bright OS</h1>
+      <h1>APK-релизы Brai</h1>
       <p class="lead">Production и preview A-E устанавливаются как отдельные Android-приложения.</p>
       <div class="grid">${cards}</div>
     </main>

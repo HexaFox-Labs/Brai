@@ -1,4 +1,4 @@
-# Bright OS Development Guidelines
+# Brai Development Guidelines
 
 This document is the index for project rules. `AGENTS.md` routes here; detailed rules live in `docs/guidelines/`, checklists live in `docs/checklists/`, accepted requirements live in `openspec/specs/`, and current public context lives in `memory-bank/`.
 
@@ -36,8 +36,8 @@ Each procedural rule must have one canonical home. Other files may only route to
 
 - Public hygiene: `npm run public:guard`
 - OpenSpec: `npm run openspec:validate`
-- Guard drift: `scripts/bright-guard-sync-check.sh --check`
+- Guard drift: `scripts/brai-guard-sync-check.sh --check`
 - Client: `npm run app:lint`, `npm run app:test`
-- API: `npm --prefix services/bright_os_api test`
+- API: `npm --prefix services/brai_api test`
 
 Before commit or push, use [CHECKLIST_REPOSITORY_SYNC.md](checklists/CHECKLIST_REPOSITORY_SYNC.md).

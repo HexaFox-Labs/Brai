@@ -12,14 +12,14 @@ opening a `codex/tasks-md-dedupe-*` infra/docs PR and enabling auto-merge.
 - Add `handler_schedules` as the source of truth for scheduled runtime handler
   due time, interval, lock state, and last run status.
 - Register `maintenance.tasks_md_deduper` in `handlers`.
-- Run scheduled handlers through `brightos-scheduler.timer` and
-  `brightos-scheduler.service`.
+- Run scheduled handlers through `brai-scheduler.timer` and
+  `brai-scheduler.service`.
 - Keep `TASKS.md` changes in Git branch/PR flow instead of dirtying the main
   server checkout, with branch protection/auto-merge landing the PR.
 
 ## Rationale
 
-Bright OS already has a `handlers` registry, but no schedule state. A custom
+Brai already has a `handlers` registry, but no schedule state. A custom
 daemon loop would duplicate systemd timer behavior. The minimum durable design
 is one systemd timer as the wakeup mechanism and one SQLite table for handler
 due/lock/run state.

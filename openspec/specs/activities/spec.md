@@ -4,7 +4,7 @@
 TBD - created by archiving change add-actions-task-list. Update Purpose after archive.
 ## Requirements
 ### Requirement: Activities are synced tasks
-Bright OS SHALL provide an Activities module for task records synchronized between Web and Android.
+Brai SHALL provide an Activities module for task records synchronized between Web and Android.
 
 #### Scenario: Activity is deleted
 - **WHEN** the user deletes an activity
@@ -30,7 +30,7 @@ Activity records SHALL store status directly on the record as either `New` or `D
 - **THEN** it is stored with status `Done`
 
 ### Requirement: Activities synchronize offline-first
-Bright OS clients SHALL record activity mutations locally before showing the mutation as applied and synchronize those mutations through the API when connectivity is available.
+Brai clients SHALL record activity mutations locally before showing the mutation as applied and synchronize those mutations through the API when connectivity is available.
 
 #### Scenario: Activity is restored offline
 - **WHEN** the user restores an archived activity while disconnected
@@ -72,7 +72,7 @@ Activity records SHALL support an optional Markdown description stored as Markdo
 - **AND** canonical Activities state remains unchanged after the first application
 
 ### Requirement: Deleted Activities are archived
-Bright OS SHALL expose deleted Activities separately from active Activities.
+Brai SHALL expose deleted Activities separately from active Activities.
 
 #### Scenario: Activities state is requested
 - **WHEN** a client requests Activities state

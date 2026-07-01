@@ -1,0 +1,23 @@
+[Unit]
+Description=Brai Temporal CI/CD worker
+Wants=brai-temporal.service
+After=network-online.target brai-temporal.service
+
+[Service]
+Type=simple
+User=brai
+Group=brai
+SupplementaryGroups=brai-deploy
+WorkingDirectory=/srv/projects/brai/services/brai_temporal
+Environment=TEMPORAL_ADDRESS=127.0.0.1:7233
+Environment=TEMPORAL_NAMESPACE=default
+Environment=BRAI_ROOT=/srv/projects/brai
+Environment=BRAI_ENVS_ROOT=/srv/projects/brai-envs
+ExecStart=/srv/opt/node-v22.16.0/bin/node src/worker.mjs
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

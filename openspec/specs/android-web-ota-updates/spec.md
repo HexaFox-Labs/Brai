@@ -4,7 +4,7 @@
 TBD - created by archiving change enable-android-web-ota-updates. Update Purpose after archive.
 ## Requirements
 ### Requirement: Android APK includes an offline fallback web layer
-Bright OS Android SHALL include a bundled fallback web layer inside every APK that can start without network access.
+Brai Android SHALL include a bundled fallback web layer inside every APK that can start without network access.
 
 #### Scenario: App starts without OTA bundle
 - **WHEN** the Android app starts and no verified OTA bundle is stored locally
@@ -18,7 +18,7 @@ Bright OS Android SHALL include a bundled fallback web layer inside every APK th
 - **AND** does not block startup on manifest or bundle download
 
 ### Requirement: Android uses a self-hosted update manifest
-Bright OS Android SHALL discover mobile web-layer updates from a self-hosted update manifest.
+Brai Android SHALL discover mobile web-layer updates from a self-hosted update manifest.
 
 #### Scenario: Manifest is requested
 - **WHEN** the Android app has network access and performs an update check
@@ -37,7 +37,7 @@ Bright OS Android SHALL discover mobile web-layer updates from a self-hosted upd
 - **AND** it may include a non-production suffix for deploy identity
 
 ### Requirement: Android applies only compatible OTA bundles
-Bright OS Android SHALL apply only OTA bundles compatible with the installed APK.
+Brai Android SHALL apply only OTA bundles compatible with the installed APK.
 
 Native-boundary Preview OTA manifests SHALL require exact Android `versionCode` compatibility by setting both `minApkVersionCode` and `maxApkVersionCode` to the required technical APK code. Web-only Preview OTA manifests SHALL NOT force a new APK when the installed native shell is still compatible.
 
@@ -66,7 +66,7 @@ Native-boundary Preview OTA manifests SHALL require exact Android `versionCode` 
 - **AND** the app may download and activate the web bundle without installing a new APK
 
 ### Requirement: Android verifies OTA bundle integrity before activation
-Bright OS Android SHALL verify downloaded OTA bundles before extracting or activating them.
+Brai Android SHALL verify downloaded OTA bundles before extracting or activating them.
 
 #### Scenario: Archive checksum matches
 - **WHEN** the app downloads a bundle archive
@@ -85,7 +85,7 @@ Bright OS Android SHALL verify downloaded OTA bundles before extracting or activ
 - **AND** does not activate the bundle
 
 ### Requirement: Candidate bundles require successful startup confirmation
-Bright OS Android SHALL promote a downloaded OTA bundle to stable only after the web layer confirms successful startup.
+Brai Android SHALL promote a downloaded OTA bundle to stable only after the web layer confirms successful startup.
 
 #### Scenario: Candidate is downloaded while app is visible
 - **WHEN** the app downloads a compatible OTA bundle after the current web layer is already visible
@@ -105,7 +105,7 @@ Bright OS Android SHALL promote a downloaded OTA bundle to stable only after the
 - **AND** rolls back to the previous stable bundle or APK fallback
 
 ### Requirement: Android rolls back failed OTA updates
-Bright OS Android SHALL preserve a working startup path when OTA update activation fails.
+Brai Android SHALL preserve a working startup path when OTA update activation fails.
 
 #### Scenario: Previous stable bundle exists
 - **WHEN** a candidate bundle fails activation
@@ -122,7 +122,7 @@ Bright OS Android SHALL preserve a working startup path when OTA update activati
 - **THEN** the app does not repeatedly activate that failed bundle in a startup loop
 
 ### Requirement: OTA updates are limited to the web layer
-Bright OS SHALL reserve OTA updates for web-layer changes compatible with the installed native shell.
+Brai SHALL reserve OTA updates for web-layer changes compatible with the installed native shell.
 
 #### Scenario: Web-only change is released
 - **WHEN** a release changes UI, Russian copy, styles, client-side logic, ordinary static pages, or web-layer static assets
@@ -138,7 +138,7 @@ Bright OS SHALL reserve OTA updates for web-layer changes compatible with the in
 - **THEN** the Preview OTA manifest requires the newly published APK `versionCode`
 
 ### Requirement: OTA update failures are non-blocking for normal startup
-Bright OS Android SHALL continue to start from a known-good local web layer when OTA update checks or downloads fail.
+Brai Android SHALL continue to start from a known-good local web layer when OTA update checks or downloads fail.
 
 #### Scenario: Manifest is unavailable
 - **WHEN** the manifest request fails
@@ -151,7 +151,7 @@ Bright OS Android SHALL continue to start from a known-good local web layer when
 - **AND** retries only according to normal update retry policy
 
 ### Requirement: OTA state is inspectable for verification
-Bright OS Android SHALL expose enough update state for release verification and troubleshooting without exposing secrets.
+Brai Android SHALL expose enough update state for release verification and troubleshooting without exposing secrets.
 
 #### Scenario: Maintainer checks installed update state
 - **WHEN** a maintainer verifies an Android OTA release

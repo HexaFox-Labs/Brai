@@ -1,0 +1,45 @@
+brai_repo: /srv/projects/brai
+brai_env_root: /srv/projects/brai-envs
+brai_node_root: /srv/opt/node-v22.16.0
+brai_node_bin: /srv/opt/node-v22.16.0/bin/node
+brai_caddyfile: /etc/caddy/Caddyfile
+brai_public_site_domain: brightos.world
+brai_public_site_root: "{{ brai_repo }}/landing/public"
+brai_deploy_user: brai-deploy
+brai_deploy_writers: []
+brai_service_user: brai
+brai_service_group: brai
+brai_api_env_source: /etc/brai/brai-api.env
+brai_basic_auth_directive: "import brai_unified_basic_auth"
+brai_envs:
+  prod:
+    domain: app.brightos.world
+    path: prod
+    api_port: 3020
+    service: brai-api.service
+  preview-a:
+    domain: a.test.brightos.world
+    path: preview-a
+    api_port: 3031
+    service: brai-api-preview-a.service
+  preview-b:
+    domain: b.test.brightos.world
+    path: preview-b
+    api_port: 3032
+    service: brai-api-preview-b.service
+  preview-c:
+    domain: c.test.brightos.world
+    path: preview-c
+    api_port: 3033
+    service: brai-api-preview-c.service
+  preview-d:
+    domain: d.test.brightos.world
+    path: preview-d
+    api_port: 3034
+    service: brai-api-preview-d.service
+  preview-e:
+    domain: e.test.brightos.world
+    path: preview-e
+    api_port: 3035
+    service: brai-api-preview-e.service
+brai_preview_status_domain: previews.brightos.world

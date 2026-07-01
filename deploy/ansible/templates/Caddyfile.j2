@@ -1,8 +1,8 @@
-http://{{ bright_os_public_site_domain }} {
-  redir https://{{ bright_os_public_site_domain }}{uri} permanent
+http://{{ brai_public_site_domain }} {
+  redir https://{{ brai_public_site_domain }}{uri} permanent
 }
 
-{{ bright_os_public_site_domain }} {
+{{ brai_public_site_domain }} {
   encode zstd gzip
   tls {
     issuer acme {
@@ -10,12 +10,12 @@ http://{{ bright_os_public_site_domain }} {
     }
   }
 
-  root * {{ bright_os_public_site_root }}
+  root * {{ brai_public_site_root }}
   try_files {path} {path}.html {path}/ /index.html
   file_server
 }
 
-{% for name, env in bright_os_envs.items() if name != 'prod' %}
+{% for name, env in brai_envs.items() if name != 'prod' %}
 http://{{ env.domain }} {
   redir https://{{ env.domain }}{uri} permanent
 }
@@ -38,31 +38,31 @@ http://{{ env.domain }} {
 
   handle_path /mobile-update/* {
     header /manifest.json Cache-Control "no-store"
-    root * {{ bright_os_env_root }}/{{ env.path }}/mobile-update
+    root * {{ brai_env_root }}/{{ env.path }}/mobile-update
     file_server
   }
 
   handle {
-    {{ bright_os_basic_auth_directive }}
-    root * {{ bright_os_env_root }}/{{ env.path }}/web
+    {{ brai_basic_auth_directive }}
+    root * {{ brai_env_root }}/{{ env.path }}/web
     try_files {path} {path}.html {path}/ /index.html
     file_server
   }
 }
 {% endfor %}
 
-http://{{ bright_os_preview_status_domain }} {
-  redir https://{{ bright_os_preview_status_domain }}{uri} permanent
+http://{{ brai_preview_status_domain }} {
+  redir https://{{ brai_preview_status_domain }}{uri} permanent
 }
 
-{{ bright_os_preview_status_domain }} {
-  {{ bright_os_basic_auth_directive }}
+{{ brai_preview_status_domain }} {
+  {{ brai_basic_auth_directive }}
   encode zstd gzip
   tls {
     issuer acme {
       disable_http_challenge
     }
   }
-  root * {{ bright_os_env_root }}/preview-status
+  root * {{ brai_env_root }}/preview-status
   file_server
 }

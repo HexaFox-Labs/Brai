@@ -2,11 +2,11 @@
 
 ## Назначение
 
-Этот guideline нужен перед изменением `apps/bright_os_app`.
+Этот guideline нужен перед изменением `apps/brai_app`.
 
 ## Клиентская платформа
 
-- Primary client находится в `apps/bright_os_app`.
+- Primary client находится в `apps/brai_app`.
 - Web и Android используют один Next.js/React/TypeScript/Tailwind продуктовый UI.
 - Android получает тот же static export через Capacitor.
 - Обычные web-layer изменения должны работать и в browser web, и в Android WebView.

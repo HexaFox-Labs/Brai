@@ -2,12 +2,12 @@
 
 ## Purpose
 
-This specification defines the durable workflow and documentation rules for Bright OS so future project work has a stable source of truth.
+This specification defines the durable workflow and documentation rules for Brai so future project work has a stable source of truth.
 
 ## Requirements
 
 ### Requirement: OpenSpec is the accepted requirements source
-Accepted durable requirements for Bright OS SHALL be recorded under `openspec/specs/`.
+Accepted durable requirements for Brai SHALL be recorded under `openspec/specs/`.
 
 #### Scenario: Durable project rule is discovered
 - **WHEN** a durable behavior, architecture constraint, workflow rule, local service, or project invariant is established
@@ -87,10 +87,10 @@ Agents and maintainers MUST verify runtime tables, services, deployments, and en
 - **THEN** the handoff includes the environment, path or system checked, and key query or command results
 
 ### Requirement: Main entities are registered in items
-Bright OS SHALL treat the server SQLite `items` table as the registry of main work entities.
+Brai SHALL treat the server SQLite `items` table as the registry of main work entities.
 
 #### Scenario: Main entity is used in technical work
-- **WHEN** a schema, workflow, API, or project decision refers to a main Bright OS work entity
+- **WHEN** a schema, workflow, API, or project decision refers to a main Brai work entity
 - **THEN** it uses an entity id registered in the `items` table
 
 #### Scenario: Initial main entity registry is created
@@ -98,7 +98,7 @@ Bright OS SHALL treat the server SQLite `items` table as the registry of main wo
 - **THEN** the `items` table contains the `activities` entity
 
 ### Requirement: Server schema metadata is registered in table_descriptions
-Bright OS SHALL treat the server SQLite `table_descriptions` table as the registry for schema metadata.
+Brai SHALL treat the server SQLite `table_descriptions` table as the registry for schema metadata.
 
 #### Scenario: Server schema metadata changes
 - **WHEN** a server SQLite change adds or changes a table, column, index, relationship, dependency, or schema purpose
