@@ -42,7 +42,7 @@ Preview slots are still allocated and released by the existing slot scripts:
 9. GitHub Actions signals `preview_deploy_passed` or `preview_deploy_failed`.
 10. A failed classification, check, or preview deploy leaves workflow state at `waiting_for_fix`.
 11. Accepted preview completion signals `pr_merged`, `accepted_preview_started`, `accepted_preview_promoted` or `accepted_preview_failed`, `slot_release_started`, and `slot_released` or `slot_release_failed`.
-12. Manual release requires a real slot release. Delete-triggered release is idempotent: if the slot was already released, Temporal records `branch_deleted`.
+12. Manual release requires a real slot release. Delete-triggered release is idempotent: if the slot was already released, Temporal records `branch_deleted`. Closing a `codex/*` PR without merge also runs slot release; if no slot is found, Temporal still records `slot_released` so abandoned preview workflows do not stay in release-started state.
 
 The preview slot registry remains `/srv/projects/bright-os-envs/preview-slots.json`; Temporal does not replace that lock or registry.
 

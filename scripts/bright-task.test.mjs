@@ -933,6 +933,16 @@ test("infra docs workflow marks handoff passed only from the PR merge job", () =
   assert.match(recordMergeJob, /BRIGHT_OS_PR_MERGED_AT/);
 });
 
+test("delivery workflow releases preview slots for unmerged closed codex PRs", () => {
+  const workflow = fs.readFileSync(new URL("../.github/workflows/bright-os-delivery.yml", import.meta.url), "utf8");
+  const releaseJob = workflow.slice(workflow.indexOf("release-preview-slot:"));
+
+  assert.match(releaseJob, /github\.event\.pull_request\.merged == false/);
+  assert.match(releaseJob, /github\.event\.pull_request\.head\.ref/);
+  assert.match(releaseJob, /github\.event\.pull_request\.head\.sha/);
+  assert.match(releaseJob, /steps\.release_slot\.outputs\.released == 'true' \|\| github\.event_name == 'pull_request'/);
+});
+
 test("delivery handoff writes infra-docs receipt only for merged PRs", () => {
   const fixture = setupInfraDocsHandoffFixture({ prState: "MERGED", mergedAt: "2026-06-26T00:00:00Z" });
   const result = runDeliveryHandoffFixture(fixture);
