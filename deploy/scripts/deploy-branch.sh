@@ -140,7 +140,7 @@ if [[ "$ENVIRONMENT" != "prod" || "${BRIGHT_OS_RECORD_PROD_BRANCH_DEPLOYMENT:-fa
     --web-ota-version "$BUNDLE_VERSION" \
     --short-changes "$DEPLOY_SHORT_CHANGES" \
     --detailed-changes "$DEPLOY_DETAILED_CHANGES" \
-    --reason "${BRIGHT_OS_DEPLOY_REASON:-Automated branch delivery}"; then
+    --reason "${BRIGHT_OS_DEPLOY_REASON:-Автоматическая доставка ветки}"; then
     if [[ "$ENVIRONMENT" != preview-* ]]; then
       exit 1
     fi

@@ -245,27 +245,27 @@ try {
     versionTypeId: "release",
     version: 5,
     includedInVersionId: null,
-    shortChanges: "Production release",
-    detailedChanges: "Production release",
-    reason: "Needed for test",
+    shortChanges: "Production-релиз",
+    detailedChanges: "Production-релиз",
+    reason: "Нужно для теста",
     releasedAtUtc: "2026-06-28T17:29:00.000Z",
   });
   store.upsertBuildVersion({
     versionTypeId: "build",
     version: 43,
     includedInVersionId: null,
-    shortChanges: "Production build",
-    detailedChanges: "Production build",
-    reason: "Needed for test",
+    shortChanges: "Production-сборка",
+    detailedChanges: "Production-сборка",
+    reason: "Нужно для теста",
     releasedAtUtc: "2026-06-28T17:29:00.000Z",
   });
   store.upsertBuildVersion({
     versionTypeId: "apk",
     version: 1,
     includedInVersionId: null,
-    shortChanges: "Production APK",
-    detailedChanges: "Production APK",
-    reason: "Needed for test",
+    shortChanges: "Production APK-сборка",
+    detailedChanges: "Production APK-сборка",
+    reason: "Нужно для теста",
     releasedAtUtc: "2026-06-28T17:29:00.000Z",
   });
 } finally {

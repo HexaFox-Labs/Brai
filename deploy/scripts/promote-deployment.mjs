@@ -31,7 +31,7 @@ try {
       webOtaVersion: args["web-ota-version"] || sourceRecord.web_ota_version,
       apkVersion: args["apk-version"] || sourceRecord.apk_version,
       shortChanges: sourceRecord.short_changes,
-      detailedChanges: `Promoted from ${sourceRecord.environment}${sourceRecord.slot ? ` ${sourceRecord.slot}` : ""} (${sourceRecord.branch}@${sourceRecord.commit_sha}). ${sourceRecord.detailed_changes}`,
+      detailedChanges: `Повышено из ${sourceRecord.environment}${sourceRecord.slot ? ` ${sourceRecord.slot}` : ""} (${sourceRecord.branch}@${sourceRecord.commit_sha}). ${sourceRecord.detailed_changes}`,
       reason: args.reason || 'Нужно перенести принятую preview-сборку в production.',
       deployedAtUtc,
     });
