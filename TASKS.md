@@ -12,6 +12,7 @@
 - 2026-07-01 — `npm run app:build` в Codex sandbox может падать Turbopack panic на `creating new process`/`binding to a port` с `Operation not permitted`; повторять build с `sandbox_permissions=require_escalated`.
 - 2026-07-01 — `deploy/scripts/accept-preview.sh` читает receipt из текущего checkout; если основной checkout содержит receipt другой ветки, запускать accept из matching `.codex-worktrees/<task-slug>` и проверять `.bright-task/preview-handoff.json`.
 - 2026-07-01 — после `acceptance_started` Bright OS git hooks блокируют даже merge/push для разрешения конфликтного accepted PR; временный обход — `--no-verify` только для проверенного conflict-resolution commit, а guard нужно научить отдельному official flow.
+- 2026-07-01 — закрытый без merge superseded `codex/*` PR оставлял preview slot занятым; временный обход — ручной `preview-slots.sh release <slot|branch>`, исправление — `pull_request.closed` release job для unmerged `codex/*` PR.
 
 ## Закрыто
 
