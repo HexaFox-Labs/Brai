@@ -19,8 +19,8 @@ const ZERO_SHA = "0000000000000000000000000000000000000000";
 const PREVIEW_SLOT_EMOJI = { A: "🅰️", B: "🅱️", C: "🅲", D: "🅳", E: "🅴" };
 const DELIVERY_RECEIPT_VERSION = "bright-delivery-handoff-v1";
 const ACCEPTANCE_RECEIPT_VERSION = "bright-acceptance-v1";
-const INFRA_DOCS_HANDOFF_WAIT_MS = Number(process.env.BRIGHT_OS_INFRA_DOCS_HANDOFF_WAIT_MS ?? 180000);
-const INFRA_DOCS_HANDOFF_POLL_MS = Number(process.env.BRIGHT_OS_INFRA_DOCS_HANDOFF_POLL_MS ?? 10000);
+const DEFAULT_INFRA_DOCS_HANDOFF_WAIT_MS = 180000;
+const DEFAULT_INFRA_DOCS_HANDOFF_POLL_MS = 10000;
 const DELIVERY_CLASS = {
   BLOCKED: "blocked",
   INFRA_DOCS: "infra-docs",
@@ -39,12 +39,14 @@ export {
   PROTECTED_PATH_RE,
   analyzeHookInput,
   classifyDelivery,
+  deliveryHandoff,
   deliveryClassForFile,
   dependencySourceRoot,
   deriveTaskState,
   enableGitHooks,
   isManualCodexBranchCommand,
   isManualBranchCommand,
+  isTaskBaseRefreshCommand,
   isBlockingAcceptanceReceipt,
   isReadOnlyShellCommand,
   isSensitivePath,
@@ -180,7 +182,7 @@ function markFollowUp(branchArg) {
   writeTaskMarker(git("rev-parse", "--show-toplevel"), withThreadId({
     branch,
     mode: "follow-up",
-    base: git("rev-parse", acceptedBaseRef()),
+    base: marker.base,
     createdAt: new Date().toISOString(),
   }));
   console.log(`Marked explicit follow-up for ${branch}`);
@@ -212,7 +214,6 @@ function preToolUse() {
 }
 
 function preCommit() {
-  fetchAcceptedBase();
   const validation = validateTaskBranch({ requireExpectedUpstream: true });
   if (!validation.ok) throw new Error(validation.message);
   const reuse = validateBranchReuse();
@@ -233,7 +234,6 @@ function preCommit() {
 function prePush(remoteName) {
   if (remoteName !== "origin") throw new Error(`Bright OS task branches must push to origin, got: ${remoteName || "(empty)"}`);
 
-  fetchAcceptedBase();
   const validation = validateTaskBranch({ requireExpectedUpstream: true });
   if (!validation.ok) throw new Error(validation.message);
   const reuse = validateBranchReuse();
@@ -244,14 +244,15 @@ function prePush(remoteName) {
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
-  for (const line of updates) validatePushUpdate(line, branch, { isAcceptedRemote: (sha) => isAncestor(sha, acceptedBaseRef()) });
+  for (const line of updates) validatePushUpdate(line, branch);
 
   const upstream = gitMaybe("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}");
   if (upstream && upstream !== `origin/${branch}`) {
     throw new Error(`Wrong upstream: ${upstream}. Expected origin/${branch}. Fix with: git push -u origin HEAD`);
   }
-  if (!isAncestor(acceptedBaseRef(), "HEAD")) {
-    throw new Error(`${acceptedBaseRef()} is not an ancestor of HEAD. Start from current ${acceptedBaseRef()} or rebase intentionally before pushing.`);
+  const baseRef = taskBaseRefForBranch(branch);
+  if (!isAncestor(baseRef, "HEAD")) {
+    throw new Error(`Task base ${baseRef} is not an ancestor of HEAD. Start a fresh task branch instead of rebasing or merging ${acceptedBaseRef()}.`);
   }
 
   const changed = diffFromAcceptedBase();
@@ -288,11 +289,12 @@ function previewHandoff(branchArg) {
   if (branch !== currentBranch()) throw new Error(`Current branch is ${currentBranch()}, not ${branch}`);
   const head = git("rev-parse", "HEAD");
 
-  fetchAcceptedBaseAndBranch(branch);
+  fetchTaskBranch(branch);
   const remoteSha = git("rev-parse", `origin/${branch}`);
   if (remoteSha !== head) throw new Error(`HEAD ${head} is not pushed to origin/${branch} (${remoteSha}). Push before handoff.`);
   if (git("status", "--porcelain").trim()) throw new Error("Working tree is not clean. Commit or remove local changes before handoff.");
-  if (!isAncestor(acceptedBaseRef(), head)) throw new Error(`${acceptedBaseRef()} is not an ancestor of ${head}.`);
+  const baseRef = taskBaseRefForBranch(branch);
+  if (!isAncestor(baseRef, head)) throw new Error(`Task base ${baseRef} is not an ancestor of ${head}.`);
 
   const run = findSuccessfulDeliveryRun(branch, head, ["public-guard", "checks", "temporal-worker-check", "deploy-preview"]);
   const slot = readPreviewSlot(branch, head);
@@ -326,7 +328,7 @@ function deliveryHandoff(branchArg) {
   if (branch !== currentBranch()) throw new Error(`Current branch is ${currentBranch()}, not ${branch}`);
   const head = git("rev-parse", "HEAD");
 
-  fetchAcceptedBaseAndBranch(branch);
+  fetchTaskBranch(branch);
   const remoteSha = git("rev-parse", `origin/${branch}`);
   if (remoteSha !== head) throw new Error(`HEAD ${head} is not pushed to origin/${branch} (${remoteSha}). Push before handoff.`);
   if (git("status", "--porcelain").trim()) throw new Error("Working tree is not clean. Commit or remove local changes before handoff.");
@@ -338,18 +340,20 @@ function deliveryHandoff(branchArg) {
   let pr = findInfraDocsPr(branch, head);
   if (pr?.state !== "MERGED") {
     ensureInfraDocsPr(branch);
-    pr = findInfraDocsPr(branch, head) ?? pr;
   }
   const run = waitForSuccessfulDeliveryRun(branch, head, ["public-guard", "checks", "temporal-worker-check", "auto-merge-infra-docs"]);
+  pr = findInfraDocsPr(branch, head) ?? pr;
+  if (pr?.state !== "MERGED" || !pr?.number || !pr?.url || !pr?.mergedAt) throw new Error(infraDocsPrPendingMessage(pr, branch, head, run));
   const receipt = {
     receiptType: DELIVERY_RECEIPT_VERSION,
     branch,
     commit: head,
     deliveryClass: classification.deliveryClass,
     classification,
-    prNumber: pr?.number,
-    prUrl: pr?.url,
-    prState: pr?.state,
+    prNumber: pr.number,
+    prUrl: pr.url,
+    prState: pr.state,
+    mergedAt: pr.mergedAt,
     runId: run.databaseId,
     runUrl: run.url ?? `https://github.com/sergobright/Bright-OS/actions/runs/${run.databaseId}`,
     verifiedAt: new Date().toISOString(),
@@ -360,7 +364,32 @@ function deliveryHandoff(branchArg) {
   console.log("Infra/docs delivery");
   console.log(`Branch: ${branch}`);
   console.log(`Commit: ${head}`);
+  console.log(`Delivery class: ${receipt.deliveryClass}`);
+  console.log(`PR: #${receipt.prNumber} ${receipt.prUrl}`);
+  console.log(`PR state: ${receipt.prState}`);
+  console.log(`Merged at: ${receipt.mergedAt}`);
   console.log(`GitHub Actions run: ${receipt.runUrl}`);
+}
+
+function infraDocsPrPendingMessage(pr, branch, head, run) {
+  const prUrl = pr?.url ?? "(missing)";
+  const state = pr?.state ?? "(missing)";
+  const mergeStateStatus = pr?.mergeStateStatus ?? "(missing)";
+  const autoMerge = pr?.autoMergeRequest ? "enabled" : "disabled";
+  const mergedAt = pr?.mergedAt ?? "(missing)";
+  const runUrl = run?.url ?? (run?.databaseId ? `https://github.com/sergobright/Bright-OS/actions/runs/${run.databaseId}` : "(missing)");
+  return [
+    "Infra/docs delivery is not complete until its PR is merged into main.",
+    `Branch: ${branch}`,
+    `Commit: ${head}`,
+    `PR: ${prUrl}`,
+    `PR state: ${state}`,
+    `mergeStateStatus: ${mergeStateStatus}`,
+    `autoMerge: ${autoMerge}`,
+    `mergedAt: ${mergedAt}`,
+    `GitHub Actions run: ${runUrl}`,
+    "Rerun node scripts/bright-task.mjs handoff after the PR state is MERGED.",
+  ].join("\n");
 }
 
 function classifyCli(args) {
@@ -512,6 +541,10 @@ function validateDeliveryReceipt(receipt, branch, head, deliveryClass = DELIVERY
   if (receipt.branch !== branch) return { ok: false, message: `Delivery receipt is for ${receipt.branch || "(missing)"}, not ${branch}.` };
   if (receipt.commit !== head) return { ok: false, message: `Delivery receipt is for ${receipt.commit || "(missing)"}, not ${head}.` };
   if (receipt.deliveryClass !== deliveryClass) return { ok: false, message: `Delivery receipt class is ${receipt.deliveryClass || "(missing)"}, not ${deliveryClass}.` };
+  if (!receipt.prNumber) return { ok: false, message: "Delivery receipt has no merged PR number." };
+  if (!receipt.prUrl || !String(receipt.prUrl).startsWith("https://")) return { ok: false, message: "Delivery receipt has no merged PR URL." };
+  if (receipt.prState !== "MERGED") return { ok: false, message: `Delivery receipt PR state is ${receipt.prState || "(missing)"}, not MERGED.` };
+  if (!receipt.mergedAt) return { ok: false, message: "Delivery receipt has no merged PR timestamp." };
   if (!receipt.runId) return { ok: false, message: "Delivery receipt has no GitHub Actions run id." };
   if (!receipt.verifiedAt) return { ok: false, message: "Delivery receipt has no verification timestamp." };
   return { ok: true };
@@ -523,8 +556,9 @@ function validateTaskBranch({ requireExpectedUpstream }) {
   if (!CODEX_BRANCH_RE.test(branch)) {
     return { ok: false, message: `Implementation work must run on codex/<task-slug>, got: ${branch}` };
   }
-  if (!gitMaybe("rev-parse", "--verify", acceptedBaseRef())) {
-    return { ok: false, message: `${acceptedBaseRef()} is missing locally. Run: git fetch origin ${acceptedBaseBranch()}` };
+  const baseRef = taskBaseRefForBranch(branch);
+  if (!gitMaybe("rev-parse", "--verify", `${baseRef}^{commit}`)) {
+    return { ok: false, message: `${baseRef} is missing locally. Start a fresh task branch with scripts/bright-task-start.sh <task-slug>.` };
   }
 
   const upstream = gitMaybe("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}");
@@ -534,8 +568,8 @@ function validateTaskBranch({ requireExpectedUpstream }) {
   if (requireExpectedUpstream && upstream && upstream !== `origin/${branch}`) {
     return { ok: false, message: `${branch} tracks ${upstream}. Expected origin/${branch} or no upstream before first push.` };
   }
-  if (!isAncestor(acceptedBaseRef(), "HEAD")) {
-    return { ok: false, message: `${acceptedBaseRef()} is not an ancestor of HEAD. Start the task from ${acceptedBaseRef()}.` };
+  if (!isAncestor(baseRef, "HEAD")) {
+    return { ok: false, message: `Task base ${baseRef} is not an ancestor of HEAD. Start a fresh task branch instead of rebasing or merging ${acceptedBaseRef()}.` };
   }
 
   return { ok: true };
@@ -682,6 +716,11 @@ function acceptedBaseFetchRefspec() {
   return `+refs/heads/${branch}:refs/remotes/origin/${branch}`;
 }
 
+function taskBaseRefForBranch(branch = currentBranch()) {
+  const marker = readTaskMarker();
+  return validateTaskMarker(marker, branch).ok ? marker.base : acceptedBaseRef();
+}
+
 function dependencySourceRoot(root) {
   const parent = path.dirname(root);
   if (path.basename(parent) === ".codex-worktrees") {
@@ -726,14 +765,8 @@ function taskPathAccepted(taskPath) {
     return true;
   }
   const receipt = readJson(path.join(taskPath, ".bright-task", "delivery-handoff.json"));
-  if (
-    receipt?.receiptType === DELIVERY_RECEIPT_VERSION &&
-    receipt?.branch === marker?.branch &&
-    receipt?.prState === "MERGED"
-  ) {
-    return true;
-  }
   const head = gitMaybeIn(taskPath, "rev-parse", "HEAD");
+  if (head && validateDeliveryReceipt(receipt, marker?.branch, head).ok) return true;
   return head ? isAncestor(head, acceptedBaseRef()) : true;
 }
 
@@ -832,6 +865,15 @@ function classifyToolCall({ tool, input }) {
     if (isUnsafeRepoTaskStarterCommand(commandText)) {
       return { ok: true, write: true, blockedReason: `Repo-local task starter is stale in this checkout.\n\n${taskStartGuidance()}` };
     }
+    if (isTaskBaseRefreshCommand(commandText) && hasActiveTaskMarker()) {
+      return {
+        ok: true,
+        write: true,
+        blockedReason:
+          `Bright OS follow-up branches keep their original task base until acceptance.\n\n` +
+          `Do not fetch, pull, merge, or rebase ${acceptedBaseRef()} into an active codex/* branch; continue with: node scripts/bright-task.mjs follow-up`,
+      };
+    }
     if (isManualCodexBranchCommand(commandText)) return { ok: true, write: true, manualCodexBranch: true };
     if (isOfficialTaskStarterCommand(commandText)) return { ok: true, write: false, officialTaskStarter: true };
     return { ok: true, write: isWriteLikeCommand(commandText) };
@@ -914,6 +956,24 @@ function isReadOnlyShellSegment(segment) {
 
 function isManualCodexBranchCommand(commandText) {
   return isManualBranchCommand(commandText);
+}
+
+function isTaskBaseRefreshCommand(commandText) {
+  const base = acceptedBaseBranch().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const remoteBase = `origin/${base}`;
+  const basePattern = new RegExp(`(?:\\b${base}\\b|refs/heads/${base}|\\b${remoteBase}\\b)`);
+  return splitShellSegments(commandText).some((segment) => {
+    if (/^git\s+fetch\s+origin(?:\s|$)/.test(segment)) {
+      return !/^git\s+fetch\s+origin\s+\+?refs\/heads\/codex\//.test(segment) || basePattern.test(segment);
+    }
+    return new RegExp(`^git\\s+pull\\b.*\\borigin\\s+${base}\\b`).test(segment) ||
+      new RegExp(`^git\\s+(?:merge|rebase)\\b.*(?:\\b${remoteBase}\\b|\\b${base}\\b)`).test(segment);
+  });
+}
+
+function hasActiveTaskMarker() {
+  const branch = currentBranch();
+  return CODEX_BRANCH_RE.test(branch) && validateTaskMarker(readTaskMarker(), branch).ok;
 }
 
 function isManualBranchCommand(commandText) {
@@ -1011,7 +1071,6 @@ function deliveryClassForFile(file) {
   }
   if (
     file.startsWith("apps/bright_os_app/") ||
-    file.startsWith("apps/bright_os_site/") ||
     file.startsWith("services/bright_os_api/") ||
     file.startsWith("assets/brand/")
   ) {
@@ -1116,8 +1175,8 @@ function fetchAcceptedBase() {
   git("fetch", "origin", acceptedBaseFetchRefspec());
 }
 
-function fetchAcceptedBaseAndBranch(branch) {
-  git("fetch", "origin", acceptedBaseFetchRefspec(), `+refs/heads/${branch}:refs/remotes/origin/${branch}`);
+function fetchTaskBranch(branch) {
+  git("fetch", "origin", `+refs/heads/${branch}:refs/remotes/origin/${branch}`);
 }
 
 function remoteBranchExists(branch) {
@@ -1237,16 +1296,17 @@ function runRequired(args, message) {
 }
 
 function ensureInfraDocsPr(branch) {
-  const result = spawnSync("deploy/scripts/accept-preview.sh", [branch], {
-    cwd: git("rev-parse", "--show-toplevel"),
+  const root = git("rev-parse", "--show-toplevel");
+  const result = spawnSync("bash", [path.join(root, "deploy/scripts/accept-preview.sh"), branch], {
+    cwd: root,
     stdio: "inherit",
     env: { ...process.env, BRIGHT_OS_ACCEPT_BASE: acceptedBaseBranch(), BRIGHT_OS_ACCEPT_INFRA_DOCS_ONLY: "true" },
   });
-  if (result.status !== 0) throw new Error(`Failed to create or enable infra/docs PR for ${branch}.`);
+  if (result.status !== 0 || result.error) throw new Error(`Failed to create or enable infra/docs PR for ${branch}: ${result.error?.message ?? `exit ${result.status}`}.`);
 }
 
 function findInfraDocsPr(branch, head) {
-  const prs = runJson(["gh", "pr", "list", "--base", acceptedBaseBranch(), "--head", branch, "--state", "all", "--json", "number,url,state,headRefOid,labels,mergedAt"]);
+  const prs = runJson(["gh", "pr", "list", "--base", acceptedBaseBranch(), "--head", branch, "--state", "all", "--json", "number,url,state,headRefOid,labels,mergedAt,mergeStateStatus,autoMergeRequest"]);
   return prs.find((pr) =>
     pr.headRefOid === head &&
     Array.isArray(pr.labels) &&
@@ -1278,7 +1338,9 @@ function runJsonMaybe(args) {
 }
 
 function waitForSuccessfulDeliveryRun(branch, sha, requiredJobs) {
-  const deadline = Date.now() + INFRA_DOCS_HANDOFF_WAIT_MS;
+  const waitMs = Number(process.env.BRIGHT_OS_INFRA_DOCS_HANDOFF_WAIT_MS ?? DEFAULT_INFRA_DOCS_HANDOFF_WAIT_MS);
+  const pollMs = Number(process.env.BRIGHT_OS_INFRA_DOCS_HANDOFF_POLL_MS ?? DEFAULT_INFRA_DOCS_HANDOFF_POLL_MS);
+  const deadline = Date.now() + waitMs;
   let lastError;
   do {
     try {
@@ -1286,7 +1348,7 @@ function waitForSuccessfulDeliveryRun(branch, sha, requiredJobs) {
     } catch (error) {
       lastError = error;
       if (Date.now() >= deadline) break;
-      spawnSync("sleep", [String(Math.max(1, Math.ceil(INFRA_DOCS_HANDOFF_POLL_MS / 1000)))], { stdio: "ignore" });
+      spawnSync("sleep", [String(Math.max(1, Math.ceil(pollMs / 1000)))], { stdio: "ignore" });
     }
   } while (Date.now() < deadline);
   throw lastError;

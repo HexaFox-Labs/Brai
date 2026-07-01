@@ -67,9 +67,9 @@ export const deploymentMethods = {
   }) {
     const existing = this.findBuildVersionByTargetCommit({ targetBranch, targetCommit, versionTypeId: 'build' });
     const version = existing?.version ?? this.nextVersion('build');
-    const fallbackShortChanges = 'Приняты изменения preview без авторского описания релиза.';
-    const fallbackDetailedChanges = 'Авторское описание релиза из preview недоступно; аудит-метаданные сохранены отдельно.';
-    const fallbackReason = 'Нужно записать принятую сборку, хотя авторское описание релиза из preview недоступно.';
+    const fallbackShortChanges = 'Принята сборка Bright OS.';
+    const fallbackDetailedChanges = 'Сборка принята; технические branch/commit-данные сохранены отдельно.';
+    const fallbackReason = 'Нужно зафиксировать принятую сборку без смешивания release notes с техническими метаданными.';
     const shortChanges = usefulChanges(sourceShortChanges) || fallbackShortChanges;
     const detailedChanges = usefulChanges(sourceDetails) || (shortChanges === fallbackShortChanges ? fallbackDetailedChanges : shortChanges);
     this.upsertBuildVersion({
@@ -81,7 +81,7 @@ export const deploymentMethods = {
       reason: usefulReason(sourceReason)
         || (shortChanges === fallbackShortChanges ? fallbackReason : '')
         || reasonFromChanges(detailedChanges, shortChanges)
-        || 'Нужно записать принятую сборку в журнал версий.',
+        || 'Нужно зафиксировать принятую сборку.',
       releasedAtUtc,
       sourceBranch,
       sourceCommit,
@@ -89,6 +89,33 @@ export const deploymentMethods = {
       targetCommit,
     });
     return { versionTypeId: 'build', version };
+  },
+
+  recordShippedApkVersion({
+    version,
+    versionCode,
+    sourceBranch = null,
+    sourceCommit = null,
+    targetBranch,
+    targetCommit,
+    releasedAtUtc,
+  }) {
+    const existing = this.findBuildVersionByTargetCommit({ targetBranch, targetCommit, versionTypeId: 'apk' });
+    if (existing) return { versionTypeId: 'apk', version: existing.version };
+    this.upsertBuildVersion({
+      versionTypeId: 'apk',
+      version,
+      includedInVersionId: null,
+      shortChanges: `APK-сборка ${version}.`,
+      detailedChanges: `Опубликована Android APK-сборка ${version} с versionCode ${versionCode}.`,
+      reason: 'Нужно зафиксировать публичную Android APK-сборку.',
+      releasedAtUtc,
+      sourceBranch,
+      sourceCommit,
+      targetBranch,
+      targetCommit,
+    });
+    return { versionTypeId: 'apk', version };
   },
 
   recordReleaseVersion({
@@ -119,12 +146,12 @@ export const deploymentMethods = {
       versionTypeId: 'release',
       version,
       includedInVersionId: null,
-      shortChanges: usefulChanges(sourceShortChanges) || `Релиз ${version}.`,
+      shortChanges: usefulChanges(sourceShortChanges) || `Release ${version}.`,
       detailedChanges: [
-        `Включённые сборки: ${builds.map((row) => `сборка ${row.version}: ${row.short_changes}`).join('; ')}.`,
+        `Included builds: ${builds.map((row) => `build ${row.version}: ${row.short_changes}`).join('; ')}.`,
         sourceChanges,
       ].filter(Boolean).join(' '),
-      reason: usefulReason(sourceReason) || 'Нужно объединить принятые сборки в ручной релиз.',
+      reason: usefulReason(sourceReason) || 'Needed to group accepted builds into a manual release.',
       releasedAtUtc,
       sourceBranch,
       sourceCommit,
@@ -168,12 +195,12 @@ export const deploymentMethods = {
       versionTypeId: 'canon',
       version,
       includedInVersionId: null,
-      shortChanges: usefulChanges(sourceShortChanges) || `Канон ${version}.`,
+      shortChanges: usefulChanges(sourceShortChanges) || `Canon ${version}.`,
       detailedChanges: [
-        `Включённые релизы: ${releases.map((row) => `релиз ${row.version}: ${row.short_changes}`).join('; ')}.`,
+        `Included releases: ${releases.map((row) => `release ${row.version}: ${row.short_changes}`).join('; ')}.`,
         sourceChanges,
       ].filter(Boolean).join(' '),
-      reason: usefulReason(sourceReason) || 'Нужно объединить релизы в ручной канон.',
+      reason: usefulReason(sourceReason) || 'Needed to group releases into a manual canon.',
       releasedAtUtc,
       sourceBranch,
       sourceCommit,
@@ -234,6 +261,38 @@ export const deploymentMethods = {
     return this.db
       .prepare("SELECT * FROM build_versions WHERE version_type_id = ? ORDER BY version DESC LIMIT 1")
       .get(versionTypeId);
+  },
+
+  currentAppVersion() {
+    const rows = this.db
+      .prepare(`
+        SELECT build_versions.*
+        FROM build_versions
+        JOIN (
+          SELECT version_type_id, MAX(version) AS version
+          FROM build_versions
+          GROUP BY version_type_id
+        ) latest
+          ON latest.version_type_id = build_versions.version_type_id
+         AND latest.version = build_versions.version
+      `)
+      .all();
+    const latest = { canon: null, release: null, build: null, apk: null };
+    for (const row of rows) {
+      if (Object.hasOwn(latest, row.version_type_id)) latest[row.version_type_id] = formatBuildVersionRow(row);
+    }
+    const parts = {
+      canon: latest.canon?.version ?? 0,
+      release: latest.release?.version ?? 0,
+      build: latest.build?.version ?? 0,
+      apk: latest.apk?.version ?? 0,
+    };
+
+    return {
+      version: `${parts.canon}.${parts.release}.${parts.build}.${parts.apk}`,
+      parts,
+      latest,
+    };
   },
 
   upsertBuildVersion({
@@ -341,8 +400,7 @@ function usefulChanges(value) {
   if (/^Accepted \S+@\S+ without preview deployment metadata\.?$/i.test(oneLine)) return '';
   if (/^Accepted preview changes without authored release notes\.?$/i.test(oneLine)) return '';
   if (/^No authored preview release notes were available; audit metadata is stored separately\.?$/i.test(oneLine)) return '';
-  if (/^Приняты изменения preview без авторского описания релиза\.?$/i.test(oneLine)) return '';
-  if (/^Авторское описание релиза из preview недоступно; аудит-метаданные сохранены отдельно\.?$/i.test(oneLine)) return '';
+  if (!/[А-Яа-яЁё]/.test(oneLine)) return '';
   return text;
 }
 
@@ -362,4 +420,18 @@ function reasonFromChanges(detailedChanges, shortChanges) {
   const text = usefulChanges(detailedChanges) || usefulChanges(shortChanges);
   if (!text) return '';
   return `Нужно: ${text.replace(/\.$/, '')}.`;
+}
+
+function formatBuildVersionRow(row) {
+  return {
+    id: row.id,
+    version_type_id: row.version_type_id,
+    version: row.version,
+    included_in_version_id: row.included_in_version_id,
+    short_changes: row.short_changes,
+    detailed_changes: row.detailed_changes,
+    reason: row.reason,
+    released_at_utc: row.released_at_utc,
+    created_at_utc: row.created_at_utc,
+  };
 }

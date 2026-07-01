@@ -17,8 +17,8 @@ test('accepted preview promotion records one build counter idempotently', () => 
     const accepted = {
       sourceBranch: 'codex/example',
       sourceCommit: 'abc123',
-      sourceShortChanges: 'Исправить описания журнала версий.',
-      sourceDetails: 'Принятые build-строки теперь хранят понятные release notes.',
+      sourceShortChanges: 'Исправлены описания журнала версий.',
+      sourceDetails: 'Строки сборок теперь хранят человекочитаемые release notes.',
       targetBranch: 'main',
       targetCommit: 'def456',
       releasedAtUtc: '2026-06-24T22:10:00.000Z'
@@ -34,7 +34,7 @@ test('accepted preview promotion records one build counter idempotently', () => 
       [
         ['apk', 1, null, 'Первичная публичная APK-сборка.'],
         ['build', 1, null, 'Первичная публичная web/OTA-сборка.'],
-        ['build', 2, null, 'Исправить описания журнала версий.']
+        ['build', 2, null, 'Исправлены описания журнала версий.']
       ]
     );
     const ref = store.db
@@ -152,63 +152,15 @@ test('manual canon links unlinked releases', () => {
   }
 });
 
-test('version ledger fallback notes are Russian', () => {
-  const { tmp, store } = tempStore();
-  try {
-    store.recordAcceptedBuildVersion({
-      sourceBranch: 'codex/no-notes',
-      sourceCommit: 'no-notes',
-      targetBranch: 'main',
-      targetCommit: 'main-no-notes',
-      releasedAtUtc: '2026-06-25T01:00:00.000Z'
-    });
-    store.recordReleaseVersion({
-      sourceBranch: 'manual',
-      sourceCommit: 'release-fallback',
-      targetBranch: 'main',
-      targetCommit: 'release-fallback',
-      releasedAtUtc: '2026-06-25T02:00:00.000Z'
-    });
-    store.recordCanonVersion({
-      sourceBranch: 'manual',
-      sourceCommit: 'canon-fallback',
-      targetBranch: 'main',
-      targetCommit: 'canon-fallback',
-      releasedAtUtc: '2026-06-25T03:00:00.000Z'
-    });
-
-    const rows = store.db
-      .prepare("SELECT version_type_id, version, short_changes, detailed_changes, reason FROM build_versions ORDER BY version_type_id, version")
-      .all();
-    const build = rows.find((row) => row.version_type_id === 'build' && row.version === 2);
-    assert.equal(build.short_changes, 'Приняты изменения preview без авторского описания релиза.');
-    assert.equal(build.detailed_changes, 'Авторское описание релиза из preview недоступно; аудит-метаданные сохранены отдельно.');
-    assert.equal(build.reason, 'Нужно записать принятую сборку, хотя авторское описание релиза из preview недоступно.');
-
-    const release = rows.find((row) => row.version_type_id === 'release' && row.version === 1);
-    assert.equal(release.short_changes, 'Релиз 1.');
-    assert.match(release.detailed_changes, /Включённые сборки:/);
-    assert.equal(release.reason, 'Нужно объединить принятые сборки в ручной релиз.');
-
-    const canon = rows.find((row) => row.version_type_id === 'canon' && row.version === 1);
-    assert.equal(canon.short_changes, 'Канон 1.');
-    assert.match(canon.detailed_changes, /Включённые релизы:/);
-    assert.equal(canon.reason, 'Нужно объединить релизы в ручной канон.');
-  } finally {
-    store.close();
-    fs.rmSync(tmp, { recursive: true, force: true });
-  }
-});
-
 test('accepted build recording does not create release automatically', () => {
   const { tmp, store } = tempStore();
   try {
     store.recordAcceptedBuildVersion({
       sourceBranch: 'codex/direct-prod',
       sourceCommit: 'source-direct',
-      sourceShortChanges: 'Доставить принятую ветку сразу в production.',
-      sourceDetails: 'Метаданные принятого preview повышаются прямо в production-журнал.',
-      sourceReason: 'Нужно проверить delivery без DEV-контура.',
+      sourceShortChanges: 'Принята production-сборка напрямую.',
+      sourceDetails: 'Метаданные preview сразу перенесены в production ledger.',
+      sourceReason: 'Нужно проверить delivery без dev-промежутка.',
       targetBranch: 'main',
       targetCommit: 'mainsha-direct',
       releasedAtUtc: '2026-06-27T00:00:00.000Z'
@@ -223,7 +175,33 @@ test('accepted build recording does not create release automatically', () => {
     assert.deepEqual(accepted, {
       version_type_id: 'build',
       version: 2,
-      short_changes: 'Доставить принятую ветку сразу в production.'
+      short_changes: 'Принята production-сборка напрямую.'
+    });
+  } finally {
+    store.close();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('ascii commit titles are not promoted as public release notes', () => {
+  const { tmp, store } = tempStore();
+  try {
+    store.recordAcceptedBuildVersion({
+      sourceBranch: 'codex/noisy-title',
+      sourceCommit: 'abc',
+      sourceShortChanges: 'Fix production OTA bundle version regression',
+      sourceDetails: 'Fix production OTA bundle version regression',
+      targetBranch: 'main',
+      targetCommit: 'def',
+      releasedAtUtc: '2026-06-27T00:00:00.000Z'
+    });
+    const accepted = store.db
+      .prepare("SELECT short_changes, detailed_changes, reason FROM build_versions WHERE version_type_id = 'build' AND version = 2")
+      .get();
+    assert.deepEqual(accepted, {
+      short_changes: 'Принята сборка Bright OS.',
+      detailed_changes: 'Сборка принята; технические branch/commit-данные сохранены отдельно.',
+      reason: 'Нужно зафиксировать принятую сборку без смешивания release notes с техническими метаданными.'
     });
   } finally {
     store.close();

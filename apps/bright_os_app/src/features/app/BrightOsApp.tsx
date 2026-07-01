@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { BookOpen, Crown, Info, Settings } from "lucide-react";
 import { APP_ENVIRONMENT, APP_OTA_CHANNEL, APP_PREVIEW_SLOT } from "@/shared/config/runtime";
 import { installAndroidBackHandler } from "@/shared/platform/platform";
@@ -19,14 +19,21 @@ import { ActionsSection } from "./sections/actions/ActionsSection";
 import { ActionsInfoPanel } from "./sections/actions/ActionsInfoPanel";
 import { ArchiveSection } from "./sections/actions/ArchiveSection";
 import { EvilEyeSection } from "./sections/EvilEyeSection";
+import { EngineSection } from "./sections/engine/EngineSection";
 import { FocusBackground, FocusContextPanelSheet, FocusSection } from "./sections/focus/FocusSection";
 import { InboxSection } from "./sections/inbox/InboxSection";
 import { SettingsSection } from "./sections/settings/SettingsSection";
+import type { MobileCreateDraft } from "./sections/MobileCreateComposer";
 
 const SECTION_PAGE_INSET_CLASS = "grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] pb-11 pl-7 pr-0 pt-3.5 max-[860px]:px-3.5 max-[860px]:pb-7 max-[860px]:pt-[var(--mobile-top-padding)]";
+const EMPTY_MOBILE_CREATE_DRAFT: MobileCreateDraft = { title: "", descriptionMd: "" };
+const ACTIONS_MOBILE_CREATE_DRAFT_STORAGE_KEY = "bright_os_actions_mobile_create_draft";
+const INBOX_MOBILE_CREATE_DRAFT_STORAGE_KEY = "bright_os_inbox_mobile_create_draft";
 
 export function BrightOsApp({ initialSection = "actions" }: { initialSection?: SectionId }) {
   const app = useBrightOsAppState(initialSection);
+  const [actionsMobileCreateDraft, setActionsMobileCreateDraft] = useStoredMobileCreateDraft(ACTIONS_MOBILE_CREATE_DRAFT_STORAGE_KEY);
+  const [inboxMobileCreateDraft, setInboxMobileCreateDraft] = useStoredMobileCreateDraft(INBOX_MOBILE_CREATE_DRAFT_STORAGE_KEY);
   const mobileViewport = useMountedMobileNavigationViewport();
   const sectionRef = useRef(app.section);
   const selectSectionRef = useRef(app.selectSection);
@@ -61,6 +68,8 @@ export function BrightOsApp({ initialSection = "actions" }: { initialSection?: S
           icon={sectionIcon(screenSection)}
           syncStatus={app.displaySyncStatus}
           pendingCount={app.totalPendingCount}
+          showEnvironmentBadge={mobileViewport}
+          showSyncStatus={mobileViewport}
           leading={isPrimarySection(screenSection) ? <MobileMenuButton onClick={() => app.setMobileMenuOpen(true)} /> : null}
           trailing={
             screenSection === "actions" && mobileViewport ? (
@@ -70,7 +79,7 @@ export function BrightOsApp({ initialSection = "actions" }: { initialSection?: S
             ) : screenSection === "focus" ? (
               <>
                 <IconButton icon={Crown} label="Цели фокусировки" active={app.focusGoalActive} onClick={() => app.toggleFocusContextPanel("goal")} />
-                <IconButton icon={BookOpen} label="История фокуса" active={app.focusHistoryActive} onClick={() => app.toggleFocusContextPanel("history")} />
+                <IconButton icon={BookOpen} label="История фокуса" active={app.focusHistoryActive} className="min-[861px]:mr-5 max-[860px]:mr-1.5" onClick={() => app.toggleFocusContextPanel("history")} />
               </>
             ) : screenSection === "archive" ? (
               <IconButton icon={Settings} label="Назад к настройкам" onClick={app.openSettingsPage} />
@@ -92,7 +101,13 @@ export function BrightOsApp({ initialSection = "actions" }: { initialSection?: S
             onSetStatus={app.onSetActionStatus}
             onDelete={app.onDeleteAction}
             onReorder={app.onReorderActions}
+            mobileCreateDraft={actionsMobileCreateDraft}
+            onMobileCreateDraftChange={setActionsMobileCreateDraft}
             onMobileOverlayChange={app.setActionOverlayOpen}
+            activeActivityId={app.timer.active_activity_id ?? null}
+            activeActivityElapsedSeconds={app.timer.active_interval_elapsed_seconds ?? 0}
+            onStartActionFocus={app.onStartActionFocus}
+            onStopActionFocus={app.onStopActionFocus}
           />
         ) : screenSection === "inbox" ? (
           <InboxSection
@@ -103,6 +118,8 @@ export function BrightOsApp({ initialSection = "actions" }: { initialSection?: S
             onUpdateTitle={app.onUpdateInboxTitle}
             onAutosaveDetails={app.onAutosaveInboxDetails}
             onDelete={app.onDeleteInboxItem}
+            mobileCreateDraft={inboxMobileCreateDraft}
+            onMobileCreateDraftChange={setInboxMobileCreateDraft}
             onMobileOverlayChange={app.setActionOverlayOpen}
           />
         ) : screenSection === "archive" ? (
@@ -120,19 +137,26 @@ export function BrightOsApp({ initialSection = "actions" }: { initialSection?: S
             onStart={app.onStart}
             onStop={app.onStop}
             onDeleteSession={app.onDeleteFocusSession}
+            onEditInterval={app.onEditFocusInterval}
             onEditSession={app.onEditFocusSession}
             onBackground={app.setFocusBackground}
           />
         ) : screenSection === "evil-eye" ? (
           <EvilEyeSection />
-        ) : screenSection === "settings" ? (
-          <SettingsSection
+        ) : screenSection === "engine" ? (
+          <EngineSection
+            appVersionState={app.versionState}
             otaState={app.otaState}
             otaCheckedAt={app.otaCheckedAt}
             otaRefreshing={app.otaRefreshing}
             bundlePublishedAt={app.bundlePublishedAt}
-            onRefreshOta={app.refreshOtaStateOnce}
+            versionCheckedAt={app.versionCheckedAt}
+            versionError={app.versionError}
+            versionRefreshing={app.versionRefreshing}
+            onRefreshEngine={app.refreshEngineOnce}
           />
+        ) : screenSection === "settings" ? (
+          <SettingsSection />
         ) : null}
       </>
     );
@@ -157,7 +181,15 @@ export function BrightOsApp({ initialSection = "actions" }: { initialSection?: S
       <DesktopRail
         expanded={app.desktopRailExpanded}
         section={app.section}
+        appVersionState={app.versionState}
+        otaRefreshing={app.otaRefreshing}
+        otaState={app.otaState}
+        pendingCount={app.totalPendingCount}
+        versionError={app.versionError}
+        versionRefreshing={app.versionRefreshing}
+        syncStatus={app.displaySyncStatus}
         onSettings={app.openSettingsPage}
+        onEngine={() => app.selectSection("engine")}
         onArchive={() => app.selectSection("archive")}
         onLogout={app.onLogout}
       />
@@ -190,12 +222,19 @@ export function BrightOsApp({ initialSection = "actions" }: { initialSection?: S
         hidden={app.actionOverlayOpen || app.mobileContextPanel != null}
         onSection={app.selectSection}
         swipeHandlers={app.swipeNavigation.handlers}
+        timer={app.timer}
       />
       {app.mobileMenuOpen && isPrimarySection(app.section) ? (
         <MobileProfileDrawer
           section={app.section}
+          appVersionState={app.versionState}
+          otaRefreshing={app.otaRefreshing}
+          otaState={app.otaState}
+          versionError={app.versionError}
+          versionRefreshing={app.versionRefreshing}
           onClose={() => app.setMobileMenuOpen(false)}
           onSettings={app.openSettingsPage}
+          onEngine={() => app.selectSection("engine")}
           onArchive={() => app.selectSection("archive")}
           onLogout={app.onLogout}
         />
@@ -211,10 +250,10 @@ export function BrightOsApp({ initialSection = "actions" }: { initialSection?: S
         </MobileContextSheet>
       ) : null}
       {app.mobileContextPanel === "focus-goal" && app.section === "focus" ? (
-        <FocusContextPanelSheet panel="goal" history={app.history} goal={app.goal} todayKey={app.todayKey} onClose={() => app.setMobileContextPanel(null)} onCloseStart={app.markMobileContextPanelClosing} onDeleteSession={app.onDeleteFocusSession} onEditSession={app.onEditFocusSession} />
+        <FocusContextPanelSheet panel="goal" history={app.history} goal={app.goal} todayKey={app.todayKey} onClose={() => app.setMobileContextPanel(null)} onCloseStart={app.markMobileContextPanelClosing} onDeleteSession={app.onDeleteFocusSession} onEditInterval={app.onEditFocusInterval} onEditSession={app.onEditFocusSession} />
       ) : null}
       {app.mobileContextPanel === "focus-history" && app.section === "focus" ? (
-        <FocusContextPanelSheet panel="history" history={app.history} goal={app.goal} todayKey={app.todayKey} onClose={() => app.setMobileContextPanel(null)} onCloseStart={app.markMobileContextPanelClosing} onDeleteSession={app.onDeleteFocusSession} onEditSession={app.onEditFocusSession} />
+        <FocusContextPanelSheet panel="history" history={app.history} goal={app.goal} todayKey={app.todayKey} onClose={() => app.setMobileContextPanel(null)} onCloseStart={app.markMobileContextPanelClosing} onDeleteSession={app.onDeleteFocusSession} onEditInterval={app.onEditFocusInterval} onEditSession={app.onEditFocusSession} />
       ) : null}
     </SidebarProvider>
   );
@@ -233,6 +272,43 @@ function subscribeMobileNavigationViewport(onStoreChange: () => void) {
   const query = window.matchMedia("(max-width: 860px)");
   query.addEventListener("change", onStoreChange);
   return () => query.removeEventListener("change", onStoreChange);
+}
+
+function useStoredMobileCreateDraft(storageKey: string) {
+  const [draft, setDraftState] = useState<MobileCreateDraft>(() => loadMobileCreateDraft(storageKey));
+  const setDraft = useCallback((nextDraft: MobileCreateDraft) => {
+    setDraftState(nextDraft);
+    saveMobileCreateDraft(storageKey, nextDraft);
+  }, [storageKey]);
+  return [draft, setDraft] as const;
+}
+
+function loadMobileCreateDraft(storageKey: string): MobileCreateDraft {
+  if (typeof window === "undefined") return EMPTY_MOBILE_CREATE_DRAFT;
+  try {
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) return EMPTY_MOBILE_CREATE_DRAFT;
+    const parsed = JSON.parse(raw) as Partial<MobileCreateDraft>;
+    return {
+      title: typeof parsed.title === "string" ? parsed.title : "",
+      descriptionMd: typeof parsed.descriptionMd === "string" ? parsed.descriptionMd : "",
+    };
+  } catch {
+    return EMPTY_MOBILE_CREATE_DRAFT;
+  }
+}
+
+function saveMobileCreateDraft(storageKey: string, draft: MobileCreateDraft) {
+  if (typeof window === "undefined") return;
+  try {
+    if (!draft.title.trim() && !draft.descriptionMd.trim()) {
+      window.localStorage.removeItem(storageKey);
+      return;
+    }
+    window.localStorage.setItem(storageKey, JSON.stringify(draft));
+  } catch {
+    // localStorage can be unavailable in constrained WebViews.
+  }
 }
 
 function isDevPreviewApkIncompatible(otaState: BrightOtaState | null): boolean {

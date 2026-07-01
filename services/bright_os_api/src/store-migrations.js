@@ -24,6 +24,7 @@ export const migrationMethods = {
     this.ensureEventSchema();
     this.allowTimerEditSessionEvents();
     this.allowTimerDeleteSessionEvents();
+    this.allowFocusActionTimerEvents();
     this.ensureFocusSessionSchema();
     if (!this.hasMigration(2)) {
       this.seedLegacyEvents();
@@ -143,6 +144,7 @@ export const migrationMethods = {
     this.ensureBuildVersionRefs();
     this.ensureInboxSchema();
     this.ensureHandlerSchema();
+    this.ensureHandlerScheduleSchema();
     this.ensureTableDescriptions();
 
     if (!this.hasMigration(25)) {
@@ -208,6 +210,20 @@ export const migrationMethods = {
     if (!this.hasMigration(39)) {
       this.recordMigration(39, 'shorten inbound API route');
     }
+
+    if (!this.hasMigration(40)) {
+      this.allowFocusActionTimerEvents();
+      this.ensureFocusSessionSchema();
+      this.backfillFocusSessionIntervals();
+      this.recomputeCanonicalSessions(now);
+      this.dropLegacyFocusSessionVersions();
+      this.ensureTableDescriptions();
+      this.recordMigration(40, 'replace focus session versions with intervals');
+    }
+
+    if (!this.hasMigration(41)) {
+      this.recordMigration(41, 'add scheduled runtime handlers');
+    }
   }
 ,
 
@@ -253,7 +269,7 @@ export const migrationMethods = {
         device_id TEXT NOT NULL,
         client_sequence INTEGER NOT NULL,
         server_sequence INTEGER NOT NULL UNIQUE,
-        type TEXT NOT NULL CHECK (type IN ('start', 'stop', 'edit_session', 'delete_session', 'invalid')),
+        type TEXT NOT NULL CHECK (type IN ('start', 'stop', 'edit_session', 'delete_session', 'start_activity_focus', 'switch_activity_focus', 'stop_activity_focus', 'edit_focus_interval', 'invalid')),
         occurred_at_utc TEXT NOT NULL,
         received_at_utc TEXT NOT NULL,
         local_timer_id TEXT,
@@ -290,36 +306,44 @@ export const migrationMethods = {
         created_at_utc TEXT NOT NULL,
         updated_at_utc TEXT NOT NULL,
         deleted_at_utc TEXT,
-        deleted_event_id TEXT
+        deleted_event_id TEXT,
+        start_origin TEXT NOT NULL DEFAULT 'focus' CHECK (start_origin IN ('focus', 'activity')),
+        started_by_activity_id TEXT
       );
 
-      CREATE TABLE IF NOT EXISTS focus_session_versions (
+      CREATE TABLE IF NOT EXISTS focus_session_intervals (
         id TEXT PRIMARY KEY,
         focus_session_id TEXT NOT NULL,
+        activity_id TEXT,
         started_at_utc TEXT NOT NULL,
         ended_at_utc TEXT,
         duration_seconds INTEGER,
-        is_current INTEGER NOT NULL CHECK (is_current IN (0, 1)),
         created_at_utc TEXT NOT NULL,
+        updated_at_utc TEXT NOT NULL,
         created_event_id TEXT,
+        ended_event_id TEXT,
         created_by_device_id TEXT,
         FOREIGN KEY (focus_session_id) REFERENCES focus_sessions(id) ON DELETE CASCADE,
         FOREIGN KEY (created_event_id) REFERENCES timer_events(event_id),
+        FOREIGN KEY (ended_event_id) REFERENCES timer_events(event_id),
         FOREIGN KEY (created_by_device_id) REFERENCES timer_devices(device_id)
       );
 
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_focus_session_versions_one_current
-      ON focus_session_versions (focus_session_id)
-      WHERE is_current = 1;
+      CREATE INDEX IF NOT EXISTS idx_focus_session_intervals_session_started
+      ON focus_session_intervals (focus_session_id, started_at_utc);
 
-      CREATE INDEX IF NOT EXISTS idx_focus_session_versions_started
-      ON focus_session_versions (started_at_utc);
+      CREATE INDEX IF NOT EXISTS idx_focus_session_intervals_activity_started
+      ON focus_session_intervals (activity_id, started_at_utc);
 
-      CREATE INDEX IF NOT EXISTS idx_focus_session_versions_ended
-      ON focus_session_versions (ended_at_utc);
+      CREATE INDEX IF NOT EXISTS idx_focus_session_intervals_started
+      ON focus_session_intervals (started_at_utc);
 
-      CREATE INDEX IF NOT EXISTS idx_focus_session_versions_current_ended
-      ON focus_session_versions (is_current, ended_at_utc);
+      CREATE INDEX IF NOT EXISTS idx_focus_session_intervals_ended
+      ON focus_session_intervals (ended_at_utc);
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_focus_session_intervals_one_active
+      ON focus_session_intervals (focus_session_id)
+      WHERE ended_at_utc IS NULL;
 
       CREATE TABLE IF NOT EXISTS focus_session_sources (
         session_id TEXT NOT NULL,
@@ -336,6 +360,12 @@ export const migrationMethods = {
     }
     if (this.tableExists('focus_sessions') && !this.columnExists('focus_sessions', 'deleted_event_id')) {
       this.db.exec('ALTER TABLE focus_sessions ADD COLUMN deleted_event_id TEXT;');
+    }
+    if (this.tableExists('focus_sessions') && !this.columnExists('focus_sessions', 'start_origin')) {
+      this.db.exec("ALTER TABLE focus_sessions ADD COLUMN start_origin TEXT NOT NULL DEFAULT 'focus';");
+    }
+    if (this.tableExists('focus_sessions') && !this.columnExists('focus_sessions', 'started_by_activity_id')) {
+      this.db.exec('ALTER TABLE focus_sessions ADD COLUMN started_by_activity_id TEXT;');
     }
   }
 ,
@@ -436,6 +466,102 @@ export const migrationMethods = {
   }
 ,
 
+  allowFocusActionTimerEvents() {
+    if (!this.tableExists('timer_events')) return;
+    const row = this.db
+      .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'timer_events'")
+      .get();
+    if (
+      row?.sql?.includes("'start_activity_focus'") &&
+      row?.sql?.includes("'switch_activity_focus'") &&
+      row?.sql?.includes("'stop_activity_focus'") &&
+      row?.sql?.includes("'edit_focus_interval'")
+    ) {
+      return;
+    }
+
+    this.db.pragma('foreign_keys = OFF');
+    try {
+      this.db.exec(`
+        CREATE TABLE timer_events_next (
+          event_id TEXT PRIMARY KEY,
+          device_id TEXT NOT NULL,
+          client_sequence INTEGER NOT NULL,
+          server_sequence INTEGER NOT NULL UNIQUE,
+          type TEXT NOT NULL CHECK (type IN ('start', 'stop', 'edit_session', 'delete_session', 'start_activity_focus', 'switch_activity_focus', 'stop_activity_focus', 'edit_focus_interval', 'invalid')),
+          occurred_at_utc TEXT NOT NULL,
+          received_at_utc TEXT NOT NULL,
+          local_timer_id TEXT,
+          base_server_revision INTEGER,
+          status TEXT NOT NULL CHECK (status IN ('accepted', 'ignored')),
+          ignore_reason TEXT,
+          payload_version INTEGER NOT NULL,
+          metadata_json TEXT,
+          FOREIGN KEY (device_id) REFERENCES timer_devices(device_id)
+        );
+
+        INSERT INTO timer_events_next (
+          event_id, device_id, client_sequence, server_sequence, type,
+          occurred_at_utc, received_at_utc, local_timer_id, base_server_revision,
+          status, ignore_reason, payload_version, metadata_json
+        )
+        SELECT
+          event_id, device_id, client_sequence, server_sequence, type,
+          occurred_at_utc, received_at_utc, local_timer_id, base_server_revision,
+          status, ignore_reason, payload_version, metadata_json
+        FROM timer_events;
+
+        DROP TABLE timer_events;
+        ALTER TABLE timer_events_next RENAME TO timer_events;
+      `);
+    } finally {
+      this.db.pragma('foreign_keys = ON');
+    }
+    this.ensureEventSchema();
+  }
+,
+
+  backfillFocusSessionIntervals() {
+    if (!this.tableExists('focus_session_versions')) return;
+    if (!this.tableExists('focus_session_intervals')) this.ensureFocusSessionSchema();
+    const existing = this.db.prepare('SELECT COUNT(*) AS count FROM focus_session_intervals').get();
+    if (existing.count > 0) return;
+
+    this.db.exec(`
+      INSERT INTO focus_session_intervals (
+        id, focus_session_id, activity_id, started_at_utc, ended_at_utc,
+        duration_seconds, created_at_utc, updated_at_utc, created_event_id,
+        ended_event_id, created_by_device_id
+      )
+      SELECT
+        focus_session_id || ':interval:legacy',
+        focus_session_id,
+        NULL,
+        started_at_utc,
+        ended_at_utc,
+        duration_seconds,
+        created_at_utc,
+        created_at_utc,
+        created_event_id,
+        NULL,
+        created_by_device_id
+      FROM focus_session_versions
+      WHERE is_current = 1;
+    `);
+  }
+,
+
+  dropLegacyFocusSessionVersions() {
+    this.db.exec(`
+      DROP INDEX IF EXISTS idx_focus_session_versions_one_current;
+      DROP INDEX IF EXISTS idx_focus_session_versions_started;
+      DROP INDEX IF EXISTS idx_focus_session_versions_ended;
+      DROP INDEX IF EXISTS idx_focus_session_versions_current_ended;
+      DROP TABLE IF EXISTS focus_session_versions;
+    `);
+  }
+,
+
   dropLegacyTimerSessionTables() {
     this.db.exec(`
       DROP TABLE IF EXISTS timer_session_sources;
@@ -466,19 +592,20 @@ export const migrationMethods = {
       ['build_version_refs', 'Связи версий', 'Технические связи версий.', 'Хранит source/target branch и commit для build_versions, чтобы audit-метаданные не подменяли короткое изменение, детальные изменения и причину выпуска.'],
       ['build_versions', 'Версии', 'Типизированный журнал версий.', 'Хранит версии типов apk, build, release и canon. Поле version является счётчиком внутри типа; included_in_version_id связывает build/APK с release и release с canon. Публичная строка версии собирается из последних счётчиков.'],
       ['deployment_records', 'Деплои', 'Журнал выкладок.', 'Хранит факты деплоя: окружение, ветку, commit, домен, web/OTA версию, APK версию и описание доставки.'],
-      ['focus_sessions', 'Сессии фокуса', 'Стабильные Focus-сессии.', 'Хранит стабильные идентификаторы Focus-сессий, включая soft-delete метку. Редактируемые время старта, финиша и длительность лежат в focus_session_versions.'],
+      ['focus_sessions', 'Сессии фокуса', 'Стабильные Focus-сессии.', 'Хранит стабильные идентификаторы Focus-сессий, soft-delete метку, origin старта и activity, из которой сессия была начата. Время хранится в focus_session_intervals.'],
       ['focus_session_sources', 'Источники Focus-сессий', 'Связи Focus-сессий и событий.', 'Связывает итоговые Focus-сессии с timer_events, из которых они получились при deterministic replay.'],
-      ['focus_session_versions', 'Версии Focus-сессий', 'История значений Focus-сессий.', 'Хранит версии старта, финиша и длительности Focus-сессий. Только одна версия на сессию может быть текущей.'],
+      ['focus_session_intervals', 'Интервалы Focus-сессий', 'Интервалы времени фокуса.', 'Хранит все временные интервалы Focus-сессий: обычный фокус с NULL activity_id, activity-linked интервалы, начало, конец, длительность и события, которыми интервал открыт или закрыт.'],
       ['inbox', 'Входящие', 'Список входящих материалов.', 'Хранит входящие материалы Bright OS до нормализации: заголовок, описание, источник, ключ источника, требование ответа, связь с предыдущим входящим, тип записи, дату, автора, предварительный раздел, срочность, ссылки на вложения, пояснение, текст нормализации и признак нормализации.'],
       ['inbox_events', 'События входящих', 'Журнал изменений входящих.', 'Хранит клиентские события по входящим для offline-first синхронизации, аудита и восстановления текущей таблицы inbox.'],
       ['inbox_record_types', 'Типы входящих', 'Справочник типов входящих.', 'Хранит разрешённые типы записей Inbox: входящее от человека по API, входящее от агента по API, внутреннее входящее от агента и добавленное человеком из интерфейса.'],
       ['handlers', 'Обработчики', 'Реестр runtime-обработчиков.', 'Хранит полный реестр обработчиков Bright OS: stable id, target, тип, статус, подробное описание, условия срабатывания, входы, выходы, взаимодействия, side effects, используемый LLM provider/model, prompt template, timeout, fallback и source module. Каждое добавление или изменение обработчика должно обновлять соответствующую строку.'],
+      ['handler_schedules', 'Расписания обработчиков', 'Очередь scheduled runtime-обработчиков.', 'Хранит расписания runtime-обработчиков Bright OS: ссылку на handlers, статус, следующий запуск, повторяемый интервал, lock от параллельного запуска, последние timestamps и последнюю ошибку. Внешний systemd timer только будит scheduler-runner; due-логика хранится здесь.'],
       ['items', 'Сущности', 'Реестр рабочих сущностей.', 'Хранит главные рабочие сущности Bright OS как стабильные id для схемы, API и технических решений.'],
       ['schema_migrations', 'Миграции', 'Журнал изменений схемы.', 'Хранит версии уже примененных миграций SQLite, время применения и краткое описание.'],
       ['sqlite_sequence', 'Счётчики', 'Служебные счетчики SQLite.', 'Внутренняя таблица SQLite для AUTOINCREMENT-счетчиков. Это не бизнес-данные Bright OS.'],
       ['table_descriptions', 'Описания таблиц', 'Справочник описаний таблиц.', 'Хранит читаемый русский заголовок и описание для каждой SQLite-таблицы, которые показывает admin-панель.'],
       ['timer_devices', 'Устройства', 'Устройства синхронизации.', 'Хранит устройства, которые отправляют события фокуса и действий: stable device_id, платформу, имя и параметры синхронизации.'],
-      ['timer_events', 'События фокуса', 'Журнал событий фокуса.', 'Хранит start, stop, edit_session и delete_session события фокуса с устройством, клиентской и серверной последовательностью.'],
+      ['timer_events', 'События фокуса', 'Журнал событий фокуса.', 'Хранит start, stop, start_activity_focus, switch_activity_focus, stop_activity_focus, edit_session, edit_focus_interval и delete_session события фокуса с устройством, клиентской и серверной последовательностью.'],
       ['version_types', 'Типы версий', 'Справочник типов версий.', 'Хранит типы записей для build_versions: apk, build, release и canon.']
     ];
     const actualTables = new Set(
@@ -503,7 +630,7 @@ export const migrationMethods = {
       }
     }
     this.db
-      .prepare("DELETE FROM table_descriptions WHERE table_name IN ('timer_sessions', 'timer_session_sources')")
+      .prepare("DELETE FROM table_descriptions WHERE table_name IN ('timer_sessions', 'timer_session_sources', 'focus_session_versions')")
       .run();
   }
 ,
@@ -665,7 +792,7 @@ export const migrationMethods = {
       ON handlers (target, status);
     `);
 
-    this.db.prepare(`
+    const upsertHandler = this.db.prepare(`
       INSERT INTO handlers (
         id, target, kind, status, title, summary, trigger_description,
         conditions_description, input_description, output_description,
@@ -686,11 +813,15 @@ export const migrationMethods = {
         interactions_description = excluded.interactions_description,
         side_effects_description = excluded.side_effects_description,
         llm_provider = excluded.llm_provider,
+        llm_model = excluded.llm_model,
         llm_prompt_template = excluded.llm_prompt_template,
+        llm_timeout_ms = excluded.llm_timeout_ms,
         fallback_description = excluded.fallback_description,
         source_module = excluded.source_module,
         updated_at_utc = excluded.updated_at_utc
-    `).run(
+    `);
+
+    upsertHandler.run(
       'inbound.inbox.title_generator',
       'inbox',
       'inbound_llm_title_generator',
@@ -714,6 +845,80 @@ export const migrationMethods = {
       3000,
       'Если Codex CLI падает, возвращает пустой ответ или превышает timeout, используется локальный fallback: первые семь слов text, очищенные и обрезанные до 80 символов; если они пустые, заголовок Входящее.',
       'services/bright_os_api/src/inbound.js',
+      now
+    );
+    upsertHandler.run(
+      'maintenance.tasks_md_deduper',
+      'repository',
+      'scheduled_llm_git_pr',
+      'active',
+      'Дедупликация TASKS.md',
+      'Раз в шесть часов проверяет корневой TASKS.md и удаляет только очевидные дубли или повторяющиеся записи.',
+      'Срабатывает из services/bright_os_api/src/scheduler-runner.js, когда handler_schedules.next_run_at_utc наступил и строка не заблокирована другим запуском.',
+      'Запускается только если нет открытого PR от codex/tasks-md-dedupe-* и Codex CLI вернул измененный полный TASKS.md. Если изменений нет, ветка и PR не создаются.',
+      'Получает текущий корневой TASKS.md из отдельного временного clone/worktree, prompt template из handlers и runtime git/Codex окружение сервера.',
+      'Создает codex/tasks-md-dedupe-* ветку с единственным изменением TASKS.md, коммитом Deduplicate TASKS.md entries и push в origin; существующий infra-docs workflow создает PR и включает auto-merge.',
+      'Читает handlers и handler_schedules из server SQLite, запускает Codex CLI read-only для получения полного обновленного TASKS.md, затем использует git CLI для clone, branch, commit и push.',
+      'Может создать временную директорию, codex/tasks-md-dedupe-* ветку, commit, push и GitHub PR через существующий CI auto-merge flow. Не меняет main checkout напрямую и abort, если diff выходит за TASKS.md.',
+      'codex-cli',
+      '',
+      [
+        'Ты обслуживаешь корневой TASKS.md проекта Bright OS.',
+        'Нужно убрать только очевидные дубли или почти одинаковые записи в разделе "## Записи".',
+        'Не добавляй новые факты, не переписывай стиль, не меняй смысл уникальных записей.',
+        'Если дубликатов нет, верни ровно: NO_CHANGES',
+        'Если изменения нужны, верни полный новый файл TASKS.md без Markdown fence и без пояснений.',
+        '',
+        '{{tasks_md}}'
+      ].join('\n'),
+      120000,
+      'Если Codex CLI падает, возвращает невалидный файл, меняет не только TASKS.md, git/gh недоступны или push не проходит, запуск записывает last_error и повторится только на следующем интервале.',
+      'services/bright_os_api/src/scheduler-runner.js',
+      now
+    );
+  }
+,
+
+  ensureHandlerScheduleSchema() {
+    const now = new Date().toISOString();
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS handler_schedules (
+        id TEXT PRIMARY KEY,
+        handler_id TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('active', 'paused', 'disabled')),
+        next_run_at_utc TEXT,
+        interval_seconds INTEGER CHECK (interval_seconds IS NULL OR interval_seconds > 0),
+        locked_until_utc TEXT,
+        last_started_at_utc TEXT,
+        last_finished_at_utc TEXT,
+        last_error TEXT NOT NULL DEFAULT '',
+        updated_at_utc TEXT NOT NULL,
+        FOREIGN KEY (handler_id) REFERENCES handlers(id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_handler_schedules_due
+      ON handler_schedules (status, next_run_at_utc, locked_until_utc);
+
+      CREATE INDEX IF NOT EXISTS idx_handler_schedules_handler
+      ON handler_schedules (handler_id);
+    `);
+
+    this.db.prepare(`
+      INSERT INTO handler_schedules (
+        id, handler_id, status, next_run_at_utc, interval_seconds,
+        locked_until_utc, last_started_at_utc, last_finished_at_utc,
+        last_error, updated_at_utc
+      ) VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, '', ?)
+      ON CONFLICT(id) DO UPDATE SET
+        handler_id = excluded.handler_id,
+        interval_seconds = excluded.interval_seconds,
+        updated_at_utc = excluded.updated_at_utc
+    `).run(
+      'maintenance.tasks_md_deduper',
+      'maintenance.tasks_md_deduper',
+      'active',
+      now,
+      6 * 60 * 60,
       now
     );
   }
@@ -1033,26 +1238,26 @@ export const migrationMethods = {
     `);
     insertType.run(
       'build',
-      'Build версия',
-      'Accepted web/OTA build counter. Builds are linked to a release only by manual release recording.',
+      'Сборка',
+      'Принятая web/OTA сборка Bright OS. Увеличивает Z в версии X.Y.Z.S.',
       now
     );
     insertType.run(
       'apk',
-      'APK версия',
-      'Installable Android APK counter. The current APK row is linked when a release is recorded.',
+      'APK',
+      'Публичная Android APK-линия. Увеличивается только при осознанном выпуске нового APK.',
       now
     );
     insertType.run(
       'release',
-      'Release версия',
-      'Manual release counter. A release collects unlinked build rows and the current APK row.',
+      'Релиз',
+      'Ручной релиз, который группирует принятые сборки и текущую APK-запись.',
       now
     );
     insertType.run(
       'canon',
-      'Canon версия',
-      'Manual canon counter. A canon collects unlinked release rows.',
+      'Канон',
+      'Ручной канон, который группирует релизы для публичной линии.',
       now
     );
   }
@@ -1255,7 +1460,7 @@ export const migrationMethods = {
       1,
       null,
       'Первичная публичная web/OTA-сборка.',
-      'Опубликована первичная browser web и Android OTA-сборка 1 с минимальным APK versionCode 1.',
+      'Опубликована baseline web/OTA-сборка 1 с минимальным Android versionCode 1.',
       'Нужно зафиксировать первую чистую публичную web/OTA-версию.',
       buildReleasedAt,
       now
@@ -1265,8 +1470,8 @@ export const migrationMethods = {
       1,
       null,
       'Первичная публичная APK-сборка.',
-      'Первичная APK-сборка 1 использует Android versionCode 1. Release signing material хранится вне репозитория.',
-      'Нужно зафиксировать первую устанавливаемую публичную APK-сборку.',
+      'APK baseline 1 использует Android versionCode 1. Release signing material хранится вне репозитория.',
+      'Нужно зафиксировать первую публичную Android APK-сборку.',
       apkReleasedAt,
       now
     );

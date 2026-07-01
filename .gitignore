@@ -38,6 +38,7 @@ dist/
 coverage/
 *.apk
 *.aab
+/landing/
 deploy/web/
 deploy/site/
 deploy/releases/

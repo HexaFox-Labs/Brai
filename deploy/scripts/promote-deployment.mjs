@@ -32,7 +32,7 @@ try {
       apkVersion: args["apk-version"] || sourceRecord.apk_version,
       shortChanges: sourceRecord.short_changes,
       detailedChanges: `Повышено из ${sourceRecord.environment}${sourceRecord.slot ? ` ${sourceRecord.slot}` : ""} (${sourceRecord.branch}@${sourceRecord.commit_sha}). ${sourceRecord.detailed_changes}`,
-      reason: args.reason || `Повышение принятого деплоя из ${sourceBranch}`,
+      reason: args.reason || 'Нужно перенести принятую preview-сборку в production.',
       deployedAtUtc,
     });
   }
@@ -85,10 +85,10 @@ function fallbackSourceRecord(values, sourceBranch, targetEnvironment) {
     commit_sha: values["source-commit"],
     web_ota_version: values["web-ota-version"] || null,
     apk_version: values["apk-version"] || null,
-    short_changes: values["source-short-changes"] || 'Приняты изменения preview без авторского описания релиза.',
+    short_changes: values["source-short-changes"] || 'Принята сборка Bright OS.',
     reason: values["source-reason"] || values.reason || '',
     detailed_changes:
-      values["source-details"] || 'Авторское описание релиза из preview недоступно; аудит-метаданные сохранены отдельно.',
+      values["source-details"] || 'Сборка принята; технические branch/commit-данные сохранены отдельно.',
   };
 }
 
@@ -98,8 +98,8 @@ function normalizeSourceRecord(record, fallbackRecord) {
   const detailedChanges = usefulChanges(record.detailed_changes) || usefulChanges(fallbackRecord?.detailed_changes) || shortChanges;
   return {
     ...record,
-    short_changes: shortChanges || 'Приняты изменения preview без авторского описания релиза.',
-    detailed_changes: detailedChanges || shortChanges || 'Авторское описание релиза из preview недоступно; аудит-метаданные сохранены отдельно.',
+    short_changes: shortChanges || 'Принята сборка Bright OS.',
+    detailed_changes: detailedChanges || shortChanges || 'Сборка принята; технические branch/commit-данные сохранены отдельно.',
   };
 }
 
@@ -118,8 +118,7 @@ function usefulChanges(value) {
   if (/^Accepted \S+@\S+ without preview deployment metadata\.?$/i.test(oneLine)) return '';
   if (/^Accepted preview changes without authored release notes\.?$/i.test(oneLine)) return '';
   if (/^No authored preview release notes were available; audit metadata is stored separately\.?$/i.test(oneLine)) return '';
-  if (/^Приняты изменения preview без авторского описания релиза\.?$/i.test(oneLine)) return '';
-  if (/^Авторское описание релиза из preview недоступно; аудит-метаданные сохранены отдельно\.?$/i.test(oneLine)) return '';
+  if (!/[А-Яа-яЁё]/.test(oneLine)) return '';
   return text;
 }
 

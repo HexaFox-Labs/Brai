@@ -84,7 +84,8 @@ Native-boundary preview branches SHALL publish a slot-specific APK before handof
 - **AND** Temporal records `delivery_classified` with `deliveryClass=infra-docs`
 - **AND** Temporal records `no_preview_required`
 - **THEN** Temporal marks `preview_deploy`, `accepted_preview_promotion`, and `slot_release` as `not_applicable`
-- **AND** the handoff reports the branch, commit, `deliveryClass=infra-docs`, `handoff=passed`, and `autoMerge=enabled` instead of a preview slot URL
+- **AND** `autoMerge=enabled` is treated as an intermediate state, not final handoff evidence
+- **AND** the final handoff reports the branch, commit, `deliveryClass=infra-docs`, `handoff=passed`, PR number, PR URL, `prState=MERGED`, and `mergedAt` instead of a preview slot URL
 - **AND** `pr_merged` completes the branch lifecycle without requiring a preview slot release
 
 #### Scenario: Preview work is accepted

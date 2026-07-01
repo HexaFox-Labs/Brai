@@ -25,20 +25,6 @@ Bright OS SHALL preserve the existing Caddy route boundaries for web, API proxy,
 - **AND** `/releases*` remains routed to the release/auth flow before the web catch-all
 - **AND** application service ports remain localhost-only
 
-### Requirement: Public site is separated from protected app delivery
-Bright OS SHALL serve the public website from a separate static root from the protected Bright OS app web layer.
-
-#### Scenario: Public site is served
-- **WHEN** `brightos.world` is requested
-- **THEN** Caddy serves the public site static root
-- **AND** Caddy does not apply unified Basic Auth to that route
-- **AND** protected app environments keep their existing authentication boundaries
-
-#### Scenario: Public site assets are published
-- **WHEN** production branch deployment runs
-- **THEN** the public site source is copied to `deploy/site`
-- **AND** the generated public site output is not committed
-
 ### Requirement: Android release uses Capacitor APK artifacts
 Bright OS SHALL publish Capacitor Android APK artifacts through the existing protected release flow after the migration.
 
@@ -121,6 +107,10 @@ Bright OS SHALL publish a release APK whenever a change crosses the native Andro
 ### Requirement: Release versions use one build ledger
 Bright OS SHALL track public release versions in the server SQLite `build_versions` table with type metadata from `version_types`.
 
+`build_versions.version` SHALL be an integer counter scoped to `version_type_id`.
+
+The public app version SHALL be assembled as `canon.release.build.apk` from the latest counters. Missing `canon` or `release` counters SHALL be treated as `0`.
+
 `short_changes` and `detailed_changes` SHALL contain Russian human-readable release notes about what changed in the product or delivery workflow.
 
 `reason` SHALL be written in Russian and describe the human reason for the change: the problem, risk, or product/workflow need that made the change necessary. Branch names, commit SHAs, target commits, domains, and similar audit metadata SHALL NOT be stored in `reason`; it belongs in `build_version_refs` or deployment records.
@@ -132,22 +122,26 @@ Bright OS SHALL track public release versions in the server SQLite `build_versio
 
 #### Scenario: Accepted task lands in main
 - **WHEN** a `codex/*` task branch is accepted and merged into `main`
-- **THEN** the workflow increments only `Z` in `X.Y.Z.S`
-- **AND** keeps `X`, `Y`, and `S` unchanged
-- **AND** writes one `build_versions` row with all four numeric fields, the full version string, short changes, detailed changes, release time, reason, and `version_type_id = build`
+- **THEN** the workflow writes one `build_versions` row with `version_type_id = build`
+- **AND** sets `version` to the next build counter value
+- **AND** stores short changes, detailed changes, reason, and release time
+- **AND** stores branch and commit audit metadata in `build_version_refs`
 
 #### Scenario: Main is deployed to production
 - **WHEN** accepted `main` is deployed to production
-- **THEN** the workflow increments only `Y` in `X.Y.Z.S`
-- **AND** keeps `X`, `Z`, and `S` unchanged
-- **AND** writes one `build_versions` row with all four numeric fields, the full version string, short changes, detailed changes, release time, reason, and `version_type_id = build`
-- **AND** preserves the accepted task index, for example `0.0.10.1` becomes `0.1.10.1`
+- **THEN** the workflow does not create `release` or `canon` rows automatically
+- **AND** does not increment the release or canon counters
 
 #### Scenario: APK release is prepared
 - **WHEN** the project owner asks to make or publish an APK release
-- **THEN** the workflow increments only `S` in `X.Y.Z.S`
-- **AND** keeps `X`, `Y`, and `Z` unchanged
-- **AND** writes one `build_versions` row with all four numeric fields, the full version string, short changes, detailed changes, release time, reason, and `version_type_id = apk`
+- **THEN** the workflow writes one `build_versions` row with `version_type_id = apk`
+- **AND** sets `version` to the next APK counter value
+- **AND** stores short changes, detailed changes, reason, and release time
+
+#### Scenario: Release or canon version is requested
+- **WHEN** the project owner explicitly asks to create a release or canon version
+- **THEN** the workflow writes the requested `release` or `canon` row with the next counter value for that type
+- **AND** links included versions through `included_in_version_id`
 
 #### Scenario: Separate web or OTA version is requested
 - **WHEN** a request asks to publish or update only browser web, only OTA, or different browser web and Android OTA versions

@@ -43,7 +43,13 @@ test('migration seeds legacy sessions and survives close and reopen', async () =
     assert.ok(state.body.active_session);
     assert.equal(runtime.store.db.prepare('SELECT COUNT(*) AS count FROM timer_events').get().count, 3);
     assert.equal(runtime.store.db.prepare('SELECT COUNT(*) AS count FROM focus_sessions').get().count, 2);
-    assert.equal(runtime.store.db.prepare('SELECT COUNT(*) AS count FROM focus_session_versions WHERE is_current = 1').get().count, 2);
+    assert.equal(runtime.store.db.prepare('SELECT COUNT(*) AS count FROM focus_session_intervals').get().count, 2);
+    assert.equal(
+      runtime.store.db
+        .prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name = 'focus_session_versions'")
+        .get().count,
+      0
+    );
     assert.equal(
       runtime.store.db
         .prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name = 'timer_sessions'")
@@ -67,7 +73,7 @@ test('migration seeds legacy sessions and survives close and reopen', async () =
     state = await request(baseUrl, '/v1/timer/state');
     assert.ok(state.body.active_session);
     assert.equal(state.body.server_revision, 3);
-    assert.equal(runtime.store.db.prepare('SELECT COUNT(*) AS count FROM focus_session_versions WHERE is_current = 1').get().count, 2);
+    assert.equal(runtime.store.db.prepare('SELECT COUNT(*) AS count FROM focus_session_intervals').get().count, 2);
   } finally {
     await runtime.close();
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -189,9 +195,14 @@ test('migration adds inbox entity schema and metadata', async () => {
       fixture.store.db.prepare('SELECT description FROM schema_migrations WHERE version = 35').get().description,
       'add handler registry'
     );
+    assert.equal(
+      fixture.store.db.prepare('SELECT description FROM schema_migrations WHERE version = 41').get().description,
+      'add scheduled runtime handlers'
+    );
     assert.ok(fixture.store.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'inbox_events'").get());
     assert.ok(fixture.store.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'inbox_record_types'").get());
     assert.ok(fixture.store.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'handlers'").get());
+    assert.ok(fixture.store.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'handler_schedules'").get());
     assert.deepEqual(
       fixture.store.db.prepare('SELECT id FROM inbox_record_types ORDER BY id').all().map((row) => row.id),
       [1, 2, 3, 4]
@@ -203,6 +214,10 @@ test('migration adds inbox entity schema and metadata', async () => {
     assert.equal(
       fixture.store.db.prepare("SELECT title FROM table_descriptions WHERE table_name = 'handlers'").get().title,
       'Обработчики'
+    );
+    assert.equal(
+      fixture.store.db.prepare("SELECT title FROM table_descriptions WHERE table_name = 'handler_schedules'").get().title,
+      'Расписания обработчиков'
     );
     const handler = fixture.store.db
       .prepare(`
@@ -220,12 +235,44 @@ test('migration adds inbox entity schema and metadata', async () => {
     assert.match(handler.llm_prompt_template, /{{text}}/);
     assert.equal(handler.llm_timeout_ms, 3000);
     assert.equal(handler.source_module, 'services/bright_os_api/src/inbound.js');
+    const scheduledHandler = fixture.store.db
+      .prepare(`
+        SELECT target, kind, trigger_description, side_effects_description, llm_provider,
+          llm_prompt_template, llm_timeout_ms, source_module
+        FROM handlers
+        WHERE id = 'maintenance.tasks_md_deduper'
+      `)
+      .get();
+    assert.equal(scheduledHandler.target, 'repository');
+    assert.equal(scheduledHandler.kind, 'scheduled_llm_git_pr');
+    assert.match(scheduledHandler.trigger_description, /handler_schedules/);
+    assert.match(scheduledHandler.side_effects_description, /codex\/tasks-md-dedupe/);
+    assert.equal(scheduledHandler.llm_provider, 'codex-cli');
+    assert.match(scheduledHandler.llm_prompt_template, /{{tasks_md}}/);
+    assert.equal(scheduledHandler.llm_timeout_ms, 120000);
+    assert.equal(scheduledHandler.source_module, 'services/bright_os_api/src/scheduler-runner.js');
+    const schedule = fixture.store.db
+      .prepare(`
+        SELECT handler_id, status, interval_seconds
+        FROM handler_schedules
+        WHERE id = 'maintenance.tasks_md_deduper'
+      `)
+      .get();
+    assert.equal(schedule.handler_id, 'maintenance.tasks_md_deduper');
+    assert.equal(schedule.status, 'active');
+    assert.equal(schedule.interval_seconds, 21600);
 
     fixture.store.migrate();
     assert.equal(fixture.store.db.prepare("SELECT COUNT(*) AS count FROM items WHERE id = 'inbox'").get().count, 1);
     assert.equal(
       fixture.store.db
         .prepare("SELECT COUNT(*) AS count FROM handlers WHERE id = 'inbound.inbox.title_generator'")
+        .get().count,
+      1
+    );
+    assert.equal(
+      fixture.store.db
+        .prepare("SELECT COUNT(*) AS count FROM handler_schedules WHERE id = 'maintenance.tasks_md_deduper'")
         .get().count,
       1
     );
@@ -341,16 +388,16 @@ test('migration seeds unified build version ledger', async () => {
     assert.ok(baselineApk);
     assert.equal(baselineApk.included_in_version_id, null);
     assert.equal(baselineApk.released_at_utc, '2026-06-23T09:13:50Z');
-    assert.match(baselineApk.short_changes, /публичная APK-сборка/);
+    assert.match(baselineApk.short_changes, /APK/);
     assert.match(baselineApk.detailed_changes, /versionCode 1/);
-    assert.match(baselineApk.detailed_changes, /вне репозитория/);
+    assert.match(baselineApk.detailed_changes, /Release signing material/);
 
     const baselineBuild = versions.find((version) => version.version_type_id === 'build' && version.version === 1);
     assert.ok(baselineBuild);
     assert.equal(baselineBuild.included_in_version_id, null);
     assert.equal(baselineBuild.released_at_utc, '2026-06-23T09:12:45Z');
-    assert.match(baselineBuild.short_changes, /web\/OTA-сборка/);
-    assert.match(baselineBuild.detailed_changes, /минимальным APK versionCode 1/);
+    assert.match(baselineBuild.short_changes, /web\/OTA/);
+    assert.match(baselineBuild.detailed_changes, /versionCode 1/);
 
     fixture.store.migrate();
     assert.equal(fixture.store.db.prepare('SELECT COUNT(*) AS count FROM build_versions').get().count, 2);
@@ -370,9 +417,9 @@ test('migration adds environment deployment ledger', async () => {
       commit: 'abc123456789',
       domain: 'a.test.brightos.world',
       webOtaVersion: '0.0.1.2.42',
-      shortChanges: 'Preview-деплой',
-      detailedChanges: 'Автоматический preview-деплой.',
-      reason: 'Preview принят',
+      shortChanges: 'Preview deploy',
+      detailedChanges: 'Automated preview deploy.',
+      reason: 'Preview accepted',
       deployedAtUtc: '2026-06-23T12:00:00.000Z'
     });
 

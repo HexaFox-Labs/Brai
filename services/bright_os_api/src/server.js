@@ -11,7 +11,7 @@ import {
   serveInboxAttachment
 } from './inbound.js';
 import { sendReleaseLoginPage, serveRelease } from './release-routes.js';
-import { BrightOsStore, formatSession } from './store.js';
+import { BrightOsStore, formatFocusInterval, formatSession } from './store.js';
 
 const BASE_JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
@@ -172,6 +172,11 @@ export function createBrightOsServer({
 
       if (req.method === 'GET' && url.pathname === '/v1/timer/state') {
         sendJson(req, res, 200, timerState(store, now()));
+        return;
+      }
+
+      if (req.method === 'GET' && url.pathname === '/v1/version') {
+        sendJson(req, res, 200, versionState(store, now(), releaseDir));
         return;
       }
 
@@ -340,16 +345,25 @@ export function createBrightOsServer({
 
 export function timerState(store, nowDate) {
   const active = formatSession(store.getActiveSession());
+  const activeInterval = formatFocusInterval(store.getActiveInterval());
   const nowIso = nowDate.toISOString();
   const elapsedSeconds = active
     ? Math.max(0, Math.floor((Date.parse(nowIso) - Date.parse(active.started_at_utc)) / 1000))
+    : 0;
+  const activeIntervalElapsedSeconds = activeInterval
+    ? Math.max(0, Math.floor((Date.parse(nowIso) - Date.parse(activeInterval.started_at_utc)) / 1000))
     : 0;
   return {
     server_time_utc: nowIso,
     server_revision: store.getServerRevision(),
     timezone: 'Europe/Moscow',
     active_session: active,
-    elapsed_seconds: elapsedSeconds
+    elapsed_seconds: elapsedSeconds,
+    active_interval: activeInterval,
+    active_interval_elapsed_seconds: activeIntervalElapsedSeconds,
+    active_activity_id: activeInterval?.activity_id ?? null,
+    active_session_start_origin: active?.start_origin ?? null,
+    active_session_started_by_activity_id: active?.started_by_activity_id ?? null
   };
 }
 
@@ -360,6 +374,31 @@ export function activitiesState(store, nowDate) {
     activities: store.listActivities(),
     archived_activities: store.listArchivedActivities()
   };
+}
+
+export function versionState(store, nowDate, releaseDir = null) {
+  return {
+    server_time_utc: nowDate.toISOString(),
+    ...store.currentAppVersion(),
+    apk_release: latestApkRelease(releaseDir)
+  };
+}
+
+function latestApkRelease(releaseDir) {
+  if (!releaseDir) return null;
+  try {
+    const releaseIndex = JSON.parse(fs.readFileSync(path.join(releaseDir, 'releases.json'), 'utf8'));
+    const production = releaseIndex.sections?.production;
+    if (!production?.file || !Number.isInteger(production.versionCode)) return null;
+    return {
+      file: production.file,
+      version: production.version ?? null,
+      version_code: production.versionCode,
+      published_at: production.publishedAt ?? null
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function inboxState(store, nowDate) {

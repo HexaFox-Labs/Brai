@@ -12,7 +12,11 @@ Read-only questions, planning, investigation without project-file changes, and e
 
 Agents must not reuse an existing `codex/*` branch just because Codex Desktop selected it by default. A new Codex thread must start a new task branch before changing project files, regardless of which branch the UI selected. Direct follow-ups may continue the same branch only inside the same Codex thread while the branch is not accepted into `main`; explicit project-owner branch instructions do not override this thread boundary for project-file writes.
 
+Follow-up branches keep the exact task base recorded by the starter in `.bright-task/task.json`. While the branch is not accepted, agents must not update it from a later `origin/main` with fetch/pull/merge/rebase commands. Background merges into `main` are handled by the eventual PR/merge queue or by starting a new task after acceptance, not by repeatedly rebasing an in-review preview branch.
+
 A pushed preview-class `codex/*` branch allocates or reuses a preview slot through `deploy/scripts/preview-slots.sh`, deploys that slot, and reports the slot URL. If all slots `A` through `E` are occupied, the branch enters the preview queue until a slot is released. No push means no slot/deploy/queue.
+
+If a `codex/*` pull request is closed without merge, GitHub Actions releases that branch's preview slot through the same `release-preview-slot` job used for deleted branches and manual releases. This covers superseded preview branches: the accepted replacement branch releases its own slot through production promotion, and the abandoned branch releases its slot when its PR closes.
 
 If the preview branch changes the Android native boundary, deploy also builds a slot-specific APK and records the APK file plus Android `versionCode` in the preview slot registry/status page. Preview OTA manifests then require that exact `versionCode`, so stale slot APKs block with an APK update screen instead of silently running an incompatible web bundle.
 
@@ -30,10 +34,20 @@ scripts/bright-task-start.sh <task-slug>
 
 The starter fetches `origin/main`, refuses to reuse an existing remote `codex/<task-slug>`, creates a separate worktree under `.codex-worktrees/<task-slug>`, creates `codex/<task-slug>` with `--no-track`, writes ignored local task state under `.bright-task/` including the current Codex thread id, enables `.githooks`, and links existing ignored `node_modules` directories from the main checkout when present. In Codex Desktop run the starter with `sandbox_permissions=require_escalated` immediately because it updates Git worktree metadata. If that is unavailable, stop without project-file changes; do not create or switch to a manual fallback branch in the current checkout, `/srv/projects/bright-os-worktrees`, or `/tmp`. The main checkout and registered non-current worktrees are root-owned read-only because Codex internal file-change events can bypass lifecycle hooks; only ignored `.bright-task/` receipt files remain writable as local task state. After every accepted `main` push, GitHub Actions runs `/srv/opt/bright-os-main-sync.sh` on the VPS so `/srv/projects/bright-os` returns to a clean `origin/main` mirror for new threads and old registered worktrees become read-only.
 
+In Codex Desktop, staging from a task worktree can also need `sandbox_permissions=require_escalated`
+because the worktree index lock is stored under the main checkout's `.git/worktrees/` metadata.
+If an escalated command leaves the task worktree with unusable ownership, repair only that task
+worktree with:
+
+```bash
+scripts/bright-task-repair-permissions.sh <task-slug-or-worktree-path>
+```
+
 Repository Codex hooks are defined in `.codex/hooks.json`:
 
 - `PreToolUse` recursively inspects namespaced, custom, and nested tool calls such as `functions.apply_patch`, `custom_tool_call`, and `multi_tool_use.parallel`. Before a valid task state exists, only explicitly read-only shell commands and the official task starter are allowed; unknown shell commands are treated as write-like and blocked.
 - The local `.bright-task/` marker must come from `scripts/bright-task-start.sh` (`mode: new`) or an explicit same-thread `node scripts/bright-task.mjs follow-up` (`mode: follow-up`). Automatically created or manual markers are invalid for project-file writes.
+- The `.bright-task/task.json` `base` SHA is the frozen task base for follow-up, commit, push, and handoff checks. The guard blocks manual `origin/main` refresh commands in active `codex/*` task branches.
 - When Codex provides a thread id, the marker must match the current thread. A different or missing thread id blocks project-file writes, commits, and pushes; start a new task branch instead of continuing the auto-selected branch.
 - Manual creation or switching of `codex/*` branches through `git switch`, `git checkout`, `git branch`, or `git worktree` is blocked; use the task starter or same-thread follow-up marker instead.
 - If the current branch or its remote head is already included in `origin/main`, it is treated as accepted work and cannot receive more project-file changes. Start a new task branch even if Codex Desktop selected the old branch by default.
@@ -72,7 +86,7 @@ The verifier requires a clean tree, pushed `origin/<codex-branch>` at `HEAD`, su
 
 The final response format for preview-class work is the top-level handoff contract in `AGENTS.md`: after this command succeeds, the final implementation response starts with the command's `<slot emoji> Preview` header, then includes preview URL, branch, and commit before any summary. Do not print a preview emoji in intermediary updates, status replies, questions, acceptance monitoring, no-preview handoffs, or any reply where the slot or deployed commit is unverified. If the preview letter or URL is missing because every slot is occupied, the response must say the branch is queued and include queue position/source when available. If it is missing for any other reason, the response must say exactly which push, CI, or deploy step blocked it. Ordinary preview-class `codex/*` branch push/deploy is standing Bright OS CI/CD automation and must not be treated as an optional manual confirmation step.
 
-For `infra-docs` no-preview work, `node scripts/bright-task.mjs handoff` creates or reuses the PR through the agent's GitHub identity, then polls the CI auto-merge job for a bounded period. The CI job reuses that PR, labels it `bright-delivery:infra-docs`, enables auto-merge, and the handoff reports the branch, commit, `deliveryClass=infra-docs`, `no_preview_required`, `handoff=passed`, `autoMerge=enabled`, and the merged PR state instead of a preview slot URL. If CI is still running after the bounded wait, rerun the handoff after GitHub Actions advances.
+For `infra-docs` no-preview work, `node scripts/bright-task.mjs handoff` creates or reuses the PR through the agent's GitHub identity, then polls the CI auto-merge job for a bounded period. The CI job reuses that PR, labels it `bright-delivery:infra-docs`, and enables auto-merge without waiting for merge, so it cannot deadlock on required checks. Local handoff writes success only after the PR state is `MERGED` and the receipt includes the PR number, URL, merged timestamp, branch, commit, `deliveryClass=infra-docs`, `no_preview_required`, `handoff=passed`, and `autoMerge=enabled` when applicable. If CI is still running or the PR remains `OPEN`, `BEHIND`, `BLOCKED`, or `DIRTY`, rerun handoff after GitHub Actions or the merge queue advances.
 
 Preview acceptance flow:
 
@@ -154,6 +168,9 @@ Production and preview services run from the source checkout uploaded into
 `/srv/projects/bright-os-envs/<environment>/source/services/bright_os_api` as the configured service user/group.
 The limited `bright-deploy` user owns `/srv/projects/bright-os-envs`, publishes only the deployment
 artifacts above, and uses sudo only for Caddy validation, Caddy reload, and matching Bright OS API service restarts.
+The Bright OS runtime user also belongs to the `bright-deploy` group and API units run with
+`SupplementaryGroups=bright-deploy`, so SQLite files created by the runtime stay writable by deploy scripts
+without broadening the sudo boundary.
 
 Preview Caddy routes keep the app shell protected with the unified Caddy Basic Auth login, but
 `/mobile-update/*` stays public for Android OTA and `/api/*` is proxied to the matching Bright OS API without
