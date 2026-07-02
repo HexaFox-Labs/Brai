@@ -1,5 +1,5 @@
 - [x] 1.1 Read `AGENTS.md`, `docs/DEVELOPMENT_GUIDELINES.md`, and guidelines `03`, `04`, `06`, and `12` before implementation edits.
-- [x] 1.2 Start implementation from the official Bright task starter with slug `focus-action-intervals`.
+- [x] 1.2 Start implementation from the official Brai task starter with slug `focus-action-intervals`.
 - [x] 2.1 Add an idempotent API migration that creates `focus_session_intervals`, required indexes, and the active-interval guard where safe.
 - [x] 2.2 Rebuild `focus_sessions` without temporal columns and add `start_origin` plus `started_by_activity_id`.
 - [x] 2.3 Backfill current `focus_session_versions` rows into stable legacy intervals and drop `focus_session_versions` after successful migration.

@@ -45,9 +45,9 @@ signal_temporal_preview() {
   fi
 }
 
-REQUIRED_BRANCH_LIST="$(
+REQUIRED_PREVIEWS_JSON="$(
   cd "$ROOT"
-  BRAI_TARGET_BRANCH="$TARGET_BRANCH" "$NODE_BIN" "$SCRIPT_DIR/accepted-preview-branches.mjs" "$TARGET_COMMIT"
+  BRAI_TARGET_BRANCH="$TARGET_BRANCH" "$NODE_BIN" "$SCRIPT_DIR/accepted-preview-branches.mjs" --json "$TARGET_COMMIT"
 )"
 CLEANUP_BRANCH_LIST="$(
   cd "$ROOT"
@@ -55,13 +55,34 @@ CLEANUP_BRANCH_LIST="$(
 )"
 
 REQUIRED_BRANCHES=()
+declare -A REQUIRED_SHORT_CHANGES=()
+declare -A REQUIRED_DETAILED_CHANGES=()
+declare -A REQUIRED_REASONS=()
 declare -A SEEN=()
-while IFS= read -r branch; do
+while IFS=$'\t' read -r branch short_b64 detailed_b64 reason_b64; do
   if [[ -n "$branch" && -z "${SEEN[$branch]:-}" ]]; then
     REQUIRED_BRANCHES+=("$branch")
     SEEN[$branch]=required
+    REQUIRED_SHORT_CHANGES[$branch]="$(printf '%s' "$short_b64" | base64 -d)"
+    REQUIRED_DETAILED_CHANGES[$branch]="$(printf '%s' "$detailed_b64" | base64 -d)"
+    REQUIRED_REASONS[$branch]="$(printf '%s' "$reason_b64" | base64 -d)"
   fi
-done <<<"$REQUIRED_BRANCH_LIST"
+done < <(printf '%s' "$REQUIRED_PREVIEWS_JSON" | "$NODE_BIN" -e '
+let raw = "";
+process.stdin.on("data", (chunk) => raw += chunk);
+process.stdin.on("end", () => {
+  const previews = JSON.parse(raw || "[]");
+  for (const preview of previews) {
+    const notes = preview.releaseNotes;
+    console.log([
+      preview.branch,
+      Buffer.from(notes.short_changes, "utf8").toString("base64"),
+      Buffer.from(notes.detailed_changes, "utf8").toString("base64"),
+      Buffer.from(notes.reason, "utf8").toString("base64"),
+    ].join("\t"));
+  }
+});
+')
 
 CLEANUP_BRANCHES=()
 while IFS= read -r branch; do
@@ -87,6 +108,9 @@ for index in "${!REQUIRED_BRANCHES[@]}"; do
       BRAI_TARGET_ENVIRONMENT="$TARGET_ENVIRONMENT" \
       BRAI_TARGET_BRANCH="$TARGET_BRANCH" \
       BRAI_TARGET_COMMIT="$TARGET_COMMIT" \
+      BRAI_SOURCE_SHORT_CHANGES="${REQUIRED_SHORT_CHANGES[$branch]}" \
+      BRAI_SOURCE_DETAILED_CHANGES="${REQUIRED_DETAILED_CHANGES[$branch]}" \
+      BRAI_SOURCE_REASON="${REQUIRED_REASONS[$branch]}" \
       BRAI_RECORD_PRODUCTION_RELEASE="$RECORD_PRODUCTION_RELEASE" \
         "$SCRIPT_DIR/ci-ssh-promote-deployment.sh"; then
       signal_temporal_preview "$branch" accepted_preview_promoted

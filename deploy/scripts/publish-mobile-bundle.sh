@@ -69,7 +69,7 @@ if [[ ! "$TARGET_APK_VERSION" =~ ^[0-9]+$ || "$TARGET_APK_VERSION" -le 0 ]]; the
   exit 1
 fi
 
-TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/bright-mobile-bundle.XXXXXX")"
+TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/brai-mobile-bundle.XXXXXX")"
 cleanup() {
   rm -rf "$TMP_DIR"
 }

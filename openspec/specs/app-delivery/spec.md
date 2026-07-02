@@ -120,6 +120,8 @@ The public APK version SHALL be `vN`. The browser web and Android OTA version SH
 - **THEN** `build_versions` contains exactly one row with `version_type_id = apk` and `version = 1`
 - **AND** `version_types` does not require `build`, `release`, or `canon`
 
+Accepted preview promotion SHALL take `short_changes`, `detailed_changes`, and `reason` from explicit release-note metadata captured during preview handoff and carried through the acceptance PR. The workflow SHALL fail when this metadata is missing, non-Russian, or generic deployment text; it SHALL NOT derive visible version text from Git commit subjects, branch names, deployment records, or placeholder fallback strings.
+
 #### Scenario: Task branch is prepared
 - **WHEN** a `codex/*` task branch is created or updated before acceptance
 - **THEN** it does not write a `build_versions` row by itself

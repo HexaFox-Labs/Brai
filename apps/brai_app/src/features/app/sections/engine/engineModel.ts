@@ -107,7 +107,7 @@ export function engineSectionView({
   const isChecking = otaRefreshing || versionRefreshing || Boolean(otaState?.checkInProgress);
   const visibleState =
     !isChecking && otaState?.lastCheckStatus === "checking" ? { ...otaState, lastCheckStatus: "unknown" } : otaState;
-  const hasUpdate = apkUpdateAvailable || compareBrightVersions(latestVersion, installedVersion) > 0 || hasReadyOtaUpdate(visibleState);
+  const hasUpdate = apkUpdateAvailable || compareBraiVersions(latestVersion, installedVersion) > 0 || hasReadyOtaUpdate(visibleState);
   const androidUpdateStage = androidStage(visibleState, hasUpdate);
   const apkReleaseUrl = otaState?.targetApkReleaseUrl || appVersionState?.target_apk?.release_url || "/releases/";
   const updateStatus = engineStatusView({
@@ -140,9 +140,9 @@ export function engineSectionView({
 /**
  * Compares Brai OTA X.Y.Z versions.
  */
-export function compareBrightVersions(left: string, right: string): number {
-  const leftParts = brightVersionParts(left);
-  const rightParts = brightVersionParts(right);
+export function compareBraiVersions(left: string, right: string): number {
+  const leftParts = otaVersionParts(left);
+  const rightParts = otaVersionParts(right);
   if (!leftParts || !rightParts) return 0;
   for (let index = 0; index < leftParts.length; index += 1) {
     if (leftParts[index] !== rightParts[index]) return leftParts[index] - rightParts[index];
@@ -259,11 +259,11 @@ function latestKnownVersion(installedVersion: string, ...versions: Array<string 
   return versions.reduce<string>((latest, version) => {
     const normalized = otaVersion(version);
     if (!normalized) return latest;
-    return compareBrightVersions(normalized, latest) > 0 ? normalized : latest;
+    return compareBraiVersions(normalized, latest) > 0 ? normalized : latest;
   }, installedVersion);
 }
 
-function brightVersionParts(value: string | null | undefined): [number, number, number] | null {
+function otaVersionParts(value: string | null | undefined): [number, number, number] | null {
   const match = value?.match(/^(\d+)\.(\d+)\.(\d+)/);
   if (!match) return null;
   return [Number(match[1]), Number(match[2]), Number(match[3])];

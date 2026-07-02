@@ -5,8 +5,11 @@ import { fileURLToPath } from "node:url";
 export const INFRA_DOCS_LABEL = "brai-delivery:infra-docs";
 
 if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
-  const recentMerged = process.argv[2] === "--recent-merged";
-  const commit = recentMerged ? null : process.argv[2] || process.env.BRAI_TARGET_COMMIT || process.env.GITHUB_SHA;
+  const args = process.argv.slice(2);
+  const json = args.includes("--json");
+  const filtered = args.filter((arg) => arg !== "--json");
+  const recentMerged = filtered[0] === "--recent-merged";
+  const commit = recentMerged ? null : filtered[0] || process.env.BRAI_TARGET_COMMIT || process.env.GITHUB_SHA;
   const targetBranch = process.env.BRAI_TARGET_BRANCH || "main";
   const pulls = process.env.BRAI_ACCEPTED_PREVIEW_PRS_JSON
     ? JSON.parse(process.env.BRAI_ACCEPTED_PREVIEW_PRS_JSON)
@@ -14,23 +17,56 @@ if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
       ? await fetchRecentMergedPulls(targetBranch)
       : await fetchAssociatedPulls(commit);
 
-  for (const branch of acceptedPreviewBranches(pulls, targetBranch)) console.log(branch);
+  if (json) {
+    console.log(JSON.stringify(acceptedPreviewReleaseNotes(pulls, targetBranch), null, 2));
+  } else {
+    for (const branch of acceptedPreviewBranches(pulls, targetBranch)) console.log(branch);
+  }
 }
 
 export function acceptedPreviewBranches(pulls, targetBranch = "main") {
+  return acceptedPreviewPulls(pulls, targetBranch).map(({ branch }) => branch);
+}
+
+export function acceptedPreviewReleaseNotes(pulls, targetBranch = "main") {
+  return acceptedPreviewPulls(pulls, targetBranch).map(({ branch, pull }) => ({
+    branch,
+    releaseNotes: requiredReleaseNotesFromPull(pull, branch),
+  }));
+}
+
+function acceptedPreviewPulls(pulls, targetBranch = "main") {
   if (!Array.isArray(pulls)) throw new Error("GitHub pull request lookup did not return an array");
 
   const seen = new Set();
-  const branches = [];
+  const accepted = [];
   for (const pull of pulls) {
     const base = pull?.base?.ref ?? pull?.baseRefName ?? pull?.base_ref;
     const head = pull?.head?.ref ?? pull?.headRefName ?? pull?.head_ref;
     const merged = Boolean(pull?.merged_at ?? pull?.mergedAt) || pull?.merged === true || pull?.state === "MERGED";
     if (base !== targetBranch || !merged || !head?.startsWith("codex/") || hasLabel(pull, INFRA_DOCS_LABEL) || seen.has(head)) continue;
     seen.add(head);
-    branches.push(head);
+    accepted.push({ branch: head, pull });
   }
-  return branches;
+  return accepted;
+}
+
+export function requiredReleaseNotesFromPull(pull, branch = pull?.head?.ref ?? pull?.headRefName ?? pull?.head_ref ?? "(unknown)") {
+  const body = String(pull?.body ?? "");
+  const match = body.match(/<!--\s*brai-release-notes-v1\s*([\s\S]*?)\s*-->/);
+  if (!match) throw new Error(`Accepted preview PR for ${branch} has no brai-release-notes-v1 block`);
+  const notes = JSON.parse(match[1]);
+  for (const field of ["short_changes", "detailed_changes", "reason"]) {
+    const text = String(notes[field] ?? "").trim();
+    if (!text) throw new Error(`Accepted preview PR for ${branch} is missing ${field}`);
+    if (!/[А-Яа-яЁё]/.test(text)) throw new Error(`Accepted preview PR for ${branch} has non-Russian ${field}`);
+    notes[field] = text;
+  }
+  return {
+    short_changes: notes.short_changes,
+    detailed_changes: notes.detailed_changes,
+    reason: notes.reason,
+  };
 }
 
 function hasLabel(pull, labelName) {

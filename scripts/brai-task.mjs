@@ -19,6 +19,7 @@ const ZERO_SHA = "0000000000000000000000000000000000000000";
 const PREVIEW_SLOT_EMOJI = { A: "🅰️", B: "🅱️", C: "🅲", D: "🅳", E: "🅴" };
 const DELIVERY_RECEIPT_VERSION = "brai-delivery-handoff-v1";
 const ACCEPTANCE_RECEIPT_VERSION = "brai-acceptance-v1";
+const RELEASE_NOTES_VERSION = "brai-release-notes-v1";
 const DEFAULT_INFRA_DOCS_HANDOFF_WAIT_MS = 180000;
 const DEFAULT_INFRA_DOCS_HANDOFF_POLL_MS = 10000;
 const DELIVERY_CLASS = {
@@ -59,6 +60,7 @@ export {
   validateTaskMarker,
   validateTaskThread,
   validateDeliveryReceipt,
+  validateReleaseNotes,
   validatePushUpdate,
   validatePreviewReceipt,
 };
@@ -96,6 +98,9 @@ function runCli([command, ...args]) {
       case "preview":
         previewHandoff(args[0]);
         break;
+      case "release-notes":
+        writeReleaseNotesCli(args);
+        break;
       case "require-delivery":
         requireDeliveryVerification(args[0], args[1]);
         break;
@@ -106,7 +111,7 @@ function runCli([command, ...args]) {
         doctor(args.includes("--strict"));
         break;
       default:
-        throw new Error("usage: brai-task.mjs start <slug>|follow-up [branch]|acceptance-reconcile [branch]|pre-tool-use|pre-commit|pre-push <remote>|stop|classify [--base <ref>] [--head <ref>] [--github-output]|handoff [branch]|preview [branch]|require-delivery [branch] [sha]|require-preview [branch] [sha]|doctor [--strict]");
+        throw new Error("usage: brai-task.mjs start <slug>|follow-up [branch]|acceptance-reconcile [branch]|pre-tool-use|pre-commit|pre-push <remote>|stop|classify [--base <ref>] [--head <ref>] [--github-output]|handoff [branch]|preview [branch]|release-notes --short <text> --details <text> --reason <text>|require-delivery [branch] [sha]|require-preview [branch] [sha]|doctor [--strict]");
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -360,7 +365,16 @@ function previewHandoff(branchArg) {
   const run = findSuccessfulDeliveryRun(branch, head, ["public-guard", "checks", "temporal-worker-check", "deploy-preview"]);
   const slot = readPreviewSlot(branch, head);
   const url = previewUrlForSlot(slot);
-  const receipt = { branch, commit: head, slot, url, runId: run.databaseId, verifiedAt: new Date().toISOString(), verifiedBy: "brai-task-preview-v1" };
+  const receipt = {
+    branch,
+    commit: head,
+    slot,
+    url,
+    runId: run.databaseId,
+    releaseNotes: readReleaseNotes(),
+    verifiedAt: new Date().toISOString(),
+    verifiedBy: "brai-task-preview-v1",
+  };
   writePreviewReceipt(receipt);
 
   console.log(`${PREVIEW_SLOT_EMOJI[slot]} Preview`);
@@ -584,8 +598,82 @@ function validatePreviewReceipt(receipt, branch, head) {
   if (!/^[A-E]$/.test(receipt.slot ?? "")) return { ok: false, message: "Preview receipt has no valid slot." };
   if (!receipt.url || !String(receipt.url).startsWith("https://")) return { ok: false, message: "Preview receipt has no valid URL." };
   if (!receipt.runId) return { ok: false, message: "Preview receipt has no GitHub Actions run id." };
+  const notes = validateReleaseNotes(receipt.releaseNotes);
+  if (!notes.ok) return { ok: false, message: notes.message };
   if (!receipt.verifiedAt) return { ok: false, message: "Preview receipt has no verification timestamp." };
   return { ok: true };
+}
+
+function writeReleaseNotesCli(args) {
+  const values = {};
+  for (let index = 0; index < args.length; index += 2) {
+    const key = args[index];
+    if (!key?.startsWith("--")) throw new Error(`invalid release-notes argument: ${key}`);
+    values[key.slice(2)] = args[index + 1] ?? "";
+  }
+  const notes = requireReleaseNotes({
+    receiptType: RELEASE_NOTES_VERSION,
+    short_changes: values.short,
+    detailed_changes: values.details,
+    reason: values.reason,
+  }, "release-notes arguments");
+  writeReleaseNotes(notes);
+  console.log("Wrote .brai-task/release-notes.json");
+}
+
+function readReleaseNotes() {
+  const fromEnv = releaseNotesFromEnv();
+  if (fromEnv) return fromEnv;
+  const root = git("rev-parse", "--show-toplevel");
+  const file = path.join(root, ".brai-task", "release-notes.json");
+  return requireReleaseNotes(readJson(file), file);
+}
+
+function releaseNotesFromEnv() {
+  const values = {
+    receiptType: RELEASE_NOTES_VERSION,
+    short_changes: process.env.BRAI_RELEASE_SHORT_CHANGES,
+    detailed_changes: process.env.BRAI_RELEASE_DETAILED_CHANGES,
+    reason: process.env.BRAI_RELEASE_REASON,
+  };
+  if (!values.short_changes && !values.detailed_changes && !values.reason) return null;
+  return requireReleaseNotes(values, "BRAI_RELEASE_*");
+}
+
+function validateReleaseNotes(notes) {
+  try {
+    requireReleaseNotes(notes, "release notes");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: error.message };
+  }
+}
+
+function requireReleaseNotes(notes, source) {
+  if (!notes || typeof notes !== "object") {
+    throw new Error(`${source} missing. Run: node scripts/brai-task.mjs release-notes --short "..." --details "..." --reason "..."`);
+  }
+  const normalized = { receiptType: RELEASE_NOTES_VERSION };
+  for (const field of ["short_changes", "detailed_changes", "reason"]) {
+    const text = String(notes[field] ?? "").trim();
+    if (!text) throw new Error(`${source}: ${field} is required.`);
+    if (!/[А-Яа-яЁё]/.test(text)) throw new Error(`${source}: ${field} must be Russian human-readable text.`);
+    if (isGenericReleaseNote(text)) throw new Error(`${source}: ${field} is generic deployment text, not release notes.`);
+    normalized[field] = text;
+  }
+  return normalized;
+}
+
+function isGenericReleaseNote(text) {
+  const oneLine = text.replace(/\s+/g, " ");
+  return /^(Принята сборка|Сборка принята|Деплой ветки|Автоматическая доставка ветки|Нужно перенести принятую preview-сборку)/i.test(oneLine);
+}
+
+function writeReleaseNotes(notes) {
+  const root = git("rev-parse", "--show-toplevel");
+  const dir = path.join(root, ".brai-task");
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "release-notes.json"), `${JSON.stringify(notes, null, 2)}\n`);
 }
 
 function validateHandoffReceipt({ classification, previewReceipt, deliveryReceipt, branch, head }) {

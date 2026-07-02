@@ -1513,6 +1513,28 @@ export const migrationMethods = {
   }
 ,
 
+  repairVersionLedgerReleaseNotes() {
+    if (!this.tableExists('build_versions')) return;
+    const update = this.db.prepare(`
+      UPDATE build_versions
+      SET short_changes = ?,
+          detailed_changes = ?,
+          reason = ?
+      WHERE version_type_id = 'build'
+        AND version = ?
+        AND (
+          short_changes LIKE 'Принята сборка %'
+          OR detailed_changes LIKE 'Сборка принята%'
+          OR reason = 'Автоматическая доставка ветки'
+          OR reason LIKE 'Нужно зафиксировать принятую сборку%'
+        )
+    `);
+    for (const row of VERSION_LEDGER_REPAIRS) {
+      update.run(row.short, row.details, row.reason, row.version);
+    }
+  }
+,
+
   ensureDeploymentSchema() {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS deployment_records (
@@ -1606,6 +1628,63 @@ export const migrationMethods = {
   }
 
 };
+
+const VERSION_LEDGER_REPAIRS = [
+  {
+    version: 53,
+    short: 'Очищена защита журнала версий.',
+    details: 'Workflow журнала версий отделяет audit metadata от видимых описаний и не смешивает технические branch/commit-данные с release notes.',
+    reason: 'Нужно сохранить понятные описания принятых сборок без технического шума.'
+  },
+  {
+    version: 54,
+    short: 'Выровнены действия в заголовке фокуса.',
+    details: 'Кнопки и элементы управления в заголовке фокуса приведены к согласованному расположению.',
+    reason: 'Нужно убрать визуальный перекос в рабочем экране фокуса.'
+  },
+  {
+    version: 55,
+    short: 'Закреплены русские описания журнала версий.',
+    details: 'Правила доставки требуют русские человекочитаемые short changes, detailed changes и reason для строк build_versions.',
+    reason: 'Нужно, чтобы публичный журнал версий был понятен владельцу проекта.'
+  },
+  {
+    version: 56,
+    short: 'Уплотнено меню боковой панели.',
+    details: 'Desktop rail и mobile menu стали компактнее, а статусы и навигация занимают меньше места.',
+    reason: 'Нужно сделать рабочую навигацию спокойнее и плотнее.'
+  },
+  {
+    version: 57,
+    short: 'Защищено создание каталога production-базы.',
+    details: 'Promotion создаёт родительский каталог целевой SQLite-базы перед открытием файла.',
+    reason: 'Нужно не ронять promotion, когда каталог production SQLite ещё не создан.'
+  },
+  {
+    version: 58,
+    short: 'Стабилизирован тест возврата фокуса.',
+    details: 'Component test возврата фокуса обновлён под стабильное состояние интерфейса.',
+    reason: 'Нужно убрать нестабильность проверки фокусного workflow.'
+  },
+  {
+    version: 59,
+    short: 'Агентские задачи перенесены в Activities.',
+    details: 'Технические operation-задачи Codex теперь живут в общей таблице activities с типом operation, автором и причиной.',
+    reason: 'Нужно вести агентские операционные задачи в основном рабочем журнале Brai.'
+  },
+  {
+    version: 60,
+    short: 'Исправлен запуск checkout после переименования в Brai.',
+    details: 'Системные service paths, Ansible values и sync-local-main-checkout обновлены после переименования проекта.',
+    reason: 'Нужно, чтобы серверные сервисы запускались из актуального Brai checkout.'
+  },
+  {
+    version: 61,
+    short: 'Исправлены текстовые поля operation-задач.',
+    details: 'Миграция operation activities восстанавливает title, description_md и reason для задач Codex.',
+    reason: 'Нужно показывать в Activities нормальные тексты operation-задач вместо потерянных или пустых полей.'
+  }
+];
 
 const AGENT_TASK_ACTIVITIES = [
   {

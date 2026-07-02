@@ -7,7 +7,7 @@ import path from 'node:path';
 import { BraiStore } from '../src/store.js';
 
 function tempStore() {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bright-version-ledger-'));
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'brai-version-ledger-'));
   const dbPath = path.join(tmp, 'store.sqlite');
   const store = new BraiStore(dbPath);
   return { tmp, dbPath, store };
@@ -21,6 +21,7 @@ test('accepted preview version recording is APK-only no-op', () => {
       sourceCommit: 'abc123',
       sourceShortChanges: 'Исправлены описания журнала версий.',
       sourceDetails: 'Строки сборок теперь хранят человекочитаемые release notes.',
+      sourceReason: 'Нужно сохранить понятные описания принятой сборки.',
       targetBranch: 'main',
       targetCommit: 'def456',
       releasedAtUtc: '2026-06-24T22:10:00.000Z'
@@ -65,7 +66,7 @@ test('release and canon version creation are disabled', () => {
 });
 
 test('accepted preview promotion records deployment but no build, release, or canon rows', () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bright-promote-apk-only-'));
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'brai-promote-apk-only-'));
   const sourceDb = path.join(tmp, 'source', 'source.sqlite');
   const targetDb = path.join(tmp, 'target', 'nested', 'target.sqlite');
 
@@ -101,6 +102,8 @@ test('accepted preview promotion records deployment but no build, release, or ca
       'Принята APK-only доставка.',
       '--source-details',
       'Promotion переносит deployment metadata без build/release/canon ledger.',
+      '--source-reason',
+      'Нужно не писать build/release/canon строки при accepted deploy.',
       '--target-environment',
       'prod',
       '--target-branch',
