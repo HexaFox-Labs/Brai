@@ -144,7 +144,7 @@ if [[ "$ENVIRONMENT" != "prod" || "${BRAI_RECORD_PROD_BRANCH_DEPLOYMENT:-false}"
     if [[ "$ENVIRONMENT" != preview-* ]]; then
       exit 1
     fi
-    echo "Warning: preview deployment metadata was not recorded; acceptance will use branch and commit fallback metadata." >&2
+    echo "Warning: preview deployment metadata was not recorded; production promotion still requires preview handoff release notes and will not use deployment fallback metadata." >&2
   fi
 fi
 

@@ -67,21 +67,16 @@ export const deploymentMethods = {
   }) {
     const existing = this.findBuildVersionByTargetCommit({ targetBranch, targetCommit, versionTypeId: 'build' });
     const version = existing?.version ?? this.nextVersion('build');
-    const fallbackShortChanges = 'Принята сборка Brai.';
-    const fallbackDetailedChanges = 'Сборка принята; технические branch/commit-данные сохранены отдельно.';
-    const fallbackReason = 'Нужно зафиксировать принятую сборку без смешивания release notes с техническими метаданными.';
-    const shortChanges = usefulChanges(sourceShortChanges) || fallbackShortChanges;
-    const detailedChanges = usefulChanges(sourceDetails) || (shortChanges === fallbackShortChanges ? fallbackDetailedChanges : shortChanges);
+    const shortChanges = requiredReleaseText(sourceShortChanges, 'sourceShortChanges');
+    const detailedChanges = requiredReleaseText(sourceDetails, 'sourceDetails');
+    const reason = requiredReleaseText(sourceReason, 'sourceReason');
     this.upsertBuildVersion({
       versionTypeId: 'build',
       version,
       includedInVersionId: null,
       shortChanges,
       detailedChanges,
-      reason: usefulReason(sourceReason)
-        || (shortChanges === fallbackShortChanges ? fallbackReason : '')
-        || reasonFromChanges(detailedChanges, shortChanges)
-        || 'Нужно зафиксировать принятую сборку.',
+      reason,
       releasedAtUtc,
       sourceBranch,
       sourceCommit,
@@ -140,18 +135,14 @@ export const deploymentMethods = {
       .all();
     if (builds.length === 0) throw new Error('cannot create release without unlinked builds');
     const version = this.nextVersion('release');
-    const sourceChanges = usefulChanges(sourceDetails);
 
     this.upsertBuildVersion({
       versionTypeId: 'release',
       version,
       includedInVersionId: null,
-      shortChanges: usefulChanges(sourceShortChanges) || `Release ${version}.`,
-      detailedChanges: [
-        `Included builds: ${builds.map((row) => `build ${row.version}: ${row.short_changes}`).join('; ')}.`,
-        sourceChanges,
-      ].filter(Boolean).join(' '),
-      reason: usefulReason(sourceReason) || 'Needed to group accepted builds into a manual release.',
+      shortChanges: requiredReleaseText(sourceShortChanges, 'sourceShortChanges'),
+      detailedChanges: requiredReleaseText(sourceDetails, 'sourceDetails'),
+      reason: requiredReleaseText(sourceReason, 'sourceReason'),
       releasedAtUtc,
       sourceBranch,
       sourceCommit,
@@ -190,17 +181,13 @@ export const deploymentMethods = {
       .all();
     if (releases.length === 0) throw new Error('cannot create canon without unlinked releases');
     const version = this.nextVersion('canon');
-    const sourceChanges = usefulChanges(sourceDetails);
     this.upsertBuildVersion({
       versionTypeId: 'canon',
       version,
       includedInVersionId: null,
-      shortChanges: usefulChanges(sourceShortChanges) || `Canon ${version}.`,
-      detailedChanges: [
-        `Included releases: ${releases.map((row) => `release ${row.version}: ${row.short_changes}`).join('; ')}.`,
-        sourceChanges,
-      ].filter(Boolean).join(' '),
-      reason: usefulReason(sourceReason) || 'Needed to group releases into a manual canon.',
+      shortChanges: requiredReleaseText(sourceShortChanges, 'sourceShortChanges'),
+      detailedChanges: requiredReleaseText(sourceDetails, 'sourceDetails'),
+      reason: requiredReleaseText(sourceReason, 'sourceReason'),
       releasedAtUtc,
       sourceBranch,
       sourceCommit,
@@ -387,39 +374,17 @@ export const deploymentMethods = {
   },
 };
 
-function usefulChanges(value) {
+function requiredReleaseText(value, field) {
   const text = String(value ?? '').trim();
-  if (!text) return '';
-  const oneLine = text.replace(/\s+/g, ' ');
-  if (oneLine === 'Branch deployment') return '';
-  if (/^Automated deployment from \S+@\S+ to \S+\.?$/i.test(oneLine)) return '';
-  if (/^Automated dev deployment from \S+@\S+\.?$/i.test(oneLine)) return '';
-  if (/^Accepted preview branch \S+@\S+\.?$/i.test(oneLine)) return '';
-  if (/^Accepted dev build (?:\d|0\.)/i.test(oneLine)) return '';
-  if (/^Accepted codex\/\S+\.?$/i.test(oneLine)) return '';
-  if (/^Accepted \S+@\S+ without preview deployment metadata\.?$/i.test(oneLine)) return '';
-  if (/^Accepted preview changes without authored release notes\.?$/i.test(oneLine)) return '';
-  if (/^No authored preview release notes were available; audit metadata is stored separately\.?$/i.test(oneLine)) return '';
-  if (!/[А-Яа-яЁё]/.test(oneLine)) return '';
+  if (!text) throw new Error(`accepted build ${field} is required`);
+  if (!/[А-Яа-яЁё]/.test(text)) throw new Error(`accepted build ${field} must be Russian human-readable text`);
+  if (isGenericReleaseText(text)) throw new Error(`accepted build ${field} must not be generic deployment text`);
   return text;
 }
 
-function usefulReason(value) {
-  const text = usefulChanges(value);
-  if (!text) return '';
-  const oneLine = text.replace(/\s+/g, ' ');
-  if (/^Accepted branch promotion\.?$/i.test(oneLine)) return '';
-  if (/^Promote preview\b/i.test(oneLine)) return '';
-  if (/^Promote dev to production/i.test(oneLine)) return '';
-  if (/^Automated branch delivery\.?$/i.test(oneLine)) return '';
-  if (/^Automated dev deployment\.?$/i.test(oneLine)) return '';
-  return text;
-}
-
-function reasonFromChanges(detailedChanges, shortChanges) {
-  const text = usefulChanges(detailedChanges) || usefulChanges(shortChanges);
-  if (!text) return '';
-  return `Нужно: ${text.replace(/\.$/, '')}.`;
+function isGenericReleaseText(value) {
+  const oneLine = value.replace(/\s+/g, ' ');
+  return /^(Принята сборка|Сборка принята|Деплой ветки|Автоматическая доставка ветки|Нужно перенести принятую preview-сборку)/i.test(oneLine);
 }
 
 function formatBuildVersionRow(row) {

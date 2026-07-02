@@ -10,6 +10,9 @@ Brai version rows use four `version_type_id` values: `apk`, `build`, `release`, 
 - APK rows are created only by explicit APK ledger recording for an intentional public APK release; routine production/native rebuilds must not increment `apk`.
 - Visible `build_versions.short_changes`, `build_versions.detailed_changes`, and `build_versions.reason` text is written in Russian.
 - Branch names, commits, domains, and deploy metadata belong in `build_version_refs` or `deployment_records`, not visible release-note text.
+- Accepted preview promotion uses explicit release notes captured before handoff:
+  `node scripts/brai-task.mjs release-notes --short "..." --details "..." --reason "..."`.
+  Missing, non-Russian, or generic release-note metadata blocks handoff/promotion; Git commit subjects and placeholder text are not fallbacks.
 
 Build and publish a release APK only when native Android code, Capacitor config, permissions, signing, manifest values, application id, SDK versions, icons, splash assets, native plugins, or native compatibility boundaries change.
 

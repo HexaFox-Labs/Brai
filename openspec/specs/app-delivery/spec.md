@@ -115,6 +115,8 @@ The public app version SHALL be assembled as `canon.release.build.apk` from the 
 
 `reason` SHALL be written in Russian and describe the human reason for the change: the problem, risk, or product/workflow need that made the change necessary. Branch names, commit SHAs, target commits, domains, and similar audit metadata SHALL NOT be stored in `reason`; it belongs in `build_version_refs` or deployment records.
 
+Accepted preview promotion SHALL take `short_changes`, `detailed_changes`, and `reason` from explicit release-note metadata captured during preview handoff and carried through the acceptance PR. The workflow SHALL fail when this metadata is missing, non-Russian, or generic deployment text; it SHALL NOT derive visible version text from Git commit subjects, branch names, deployment records, or placeholder fallback strings.
+
 #### Scenario: Task branch is prepared
 - **WHEN** a `codex/*` task branch is created or updated before acceptance
 - **THEN** it does not write a `build_versions` row by itself

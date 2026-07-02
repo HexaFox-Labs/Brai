@@ -31,6 +31,7 @@ import {
   validateDeliveryReceipt,
   validatePreviewReceipt,
   validatePushUpdate,
+  validateReleaseNotes,
 } from "./brai-task.mjs";
 import { acceptedPreviewBranches } from "../deploy/scripts/accepted-preview-branches.mjs";
 import { requiresNativeApkChange } from "../deploy/scripts/detect-native-apk-change.mjs";
@@ -722,18 +723,28 @@ test("hook input parser is tolerant", () => {
 });
 
 test("preview receipts must match exact branch and head", () => {
+  const releaseNotes = {
+    receiptType: "brai-release-notes-v1",
+    short_changes: "Исправлен рабочий процесс версий.",
+    detailed_changes: "Release notes передаются через preview handoff и acceptance PR.",
+    reason: "Нужно не терять описания принятых сборок.",
+  };
   const receipt = {
     branch: "codex/foo",
     commit: "1111111111111111111111111111111111111111",
     slot: "A",
     url: "https://a.test.brightos.world",
     runId: 123,
+    releaseNotes,
     verifiedAt: "2026-06-26T00:00:00.000Z",
   };
   assert.deepEqual(validatePreviewReceipt(receipt, "codex/foo", receipt.commit), { ok: true });
   assert.match(validatePreviewReceipt(null, "codex/foo", receipt.commit).message, /missing/);
   assert.match(validatePreviewReceipt({ ...receipt, commit: "2222" }, "codex/foo", receipt.commit).message, /2222/);
   assert.match(validatePreviewReceipt({ ...receipt, runId: "" }, "codex/foo", receipt.commit).message, /run id/);
+  assert.match(validatePreviewReceipt({ ...receipt, releaseNotes: null }, "codex/foo", receipt.commit).message, /release notes/);
+  assert.deepEqual(validateReleaseNotes(releaseNotes), { ok: true });
+  assert.match(validateReleaseNotes({ ...releaseNotes, short_changes: "Принята сборка Brai." }).message, /generic/);
 });
 
 test("delivery receipts must match exact branch, head, and class", () => {
@@ -813,13 +824,13 @@ test("task state blocks local implementation work without exact preview receipt"
     const head = git(["rev-parse", "HEAD"], repo).stdout.trim();
     fs.writeFileSync(
       path.join(repo, ".brai-task", "preview-handoff.json"),
-      `${JSON.stringify({ branch: "codex/foo", commit: base, slot: "A", url: "https://a.test.brightos.world", runId: 123, verifiedAt: "2026-06-26T00:00:00.000Z" })}\n`,
+      `${JSON.stringify({ branch: "codex/foo", commit: base, slot: "A", url: "https://a.test.brightos.world", runId: 123, releaseNotes: { short_changes: "Исправлен тест.", detailed_changes: "Детали теста.", reason: "Нужно проверить receipt." }, verifiedAt: "2026-06-26T00:00:00.000Z" })}\n`,
     );
     assert.equal(deriveTaskState().ok, false);
 
     fs.writeFileSync(
       path.join(repo, ".brai-task", "preview-handoff.json"),
-      `${JSON.stringify({ branch: "codex/foo", commit: head, slot: "A", url: "https://a.test.brightos.world", runId: 123, verifiedAt: "2026-06-26T00:00:00.000Z" })}\n`,
+      `${JSON.stringify({ branch: "codex/foo", commit: head, slot: "A", url: "https://a.test.brightos.world", runId: 123, releaseNotes: { short_changes: "Исправлен тест.", detailed_changes: "Детали теста.", reason: "Нужно проверить receipt." }, verifiedAt: "2026-06-26T00:00:00.000Z" })}\n`,
     );
     assert.equal(deriveTaskState().ok, true);
 

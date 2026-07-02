@@ -99,6 +99,49 @@ fs.writeFileSync(path.join(dir, "acceptance.json"), `${JSON.stringify({
 ' "$ROOT" "$BRANCH" "$HEAD_SHA" "$BASE_BRANCH" "$pr_number" "$pr_url" "$MERGE_METHOD" "$status" "${DELIVERY_CLASS:-}" "$accepted_at"
 }
 
+build_acceptance_pr_body() {
+  if [[ "${DELIVERY_CLASS:-}" == "infra-docs" ]]; then
+    cat <<BODY
+Accepted infra/docs branch ${BRANCH}.
+
+This PR was opened by deploy/scripts/accept-preview.sh after CI classified the branch as infra/docs delivery.
+BODY
+    return
+  fi
+  run_brai_node -e '
+const fs = require("node:fs");
+const path = require("node:path");
+const [root, branch, commit] = process.argv.slice(1);
+const receiptPath = path.join(root, ".brai-task", "preview-handoff.json");
+const receipt = JSON.parse(fs.readFileSync(receiptPath, "utf8"));
+if (receipt.branch !== branch || receipt.commit !== commit) {
+  throw new Error(`Preview receipt mismatch for ${branch}@${commit}`);
+}
+const notes = receipt.releaseNotes || {};
+for (const field of ["short_changes", "detailed_changes", "reason"]) {
+  const text = String(notes[field] || "").trim();
+  if (!text) throw new Error(`Preview release notes missing ${field}`);
+  if (!/[А-Яа-яЁё]/.test(text)) throw new Error(`Preview release notes ${field} must be Russian`);
+}
+const payload = JSON.stringify({
+  receiptType: "brai-release-notes-v1",
+  short_changes: notes.short_changes.trim(),
+  detailed_changes: notes.detailed_changes.trim(),
+  reason: notes.reason.trim(),
+});
+console.log(`Accepted preview branch ${branch}.
+
+Release notes:
+- Short: ${notes.short_changes.trim()}
+- Details: ${notes.detailed_changes.trim()}
+- Reason: ${notes.reason.trim()}
+
+<!-- brai-release-notes-v1
+${payload}
+-->`);
+' "$ROOT" "$BRANCH" "$HEAD_SHA"
+}
+
 mark_reconcile_required() {
   local pr_number="$1"
   local pr_url="$2"
@@ -158,26 +201,18 @@ if [[ -n "$MERGED_PR_NUMBER" ]]; then
 fi
 
 PR_NUMBER="$(gh pr list --base "$BASE_BRANCH" --head "$BRANCH" --state open --json number --jq ".[0].number // \"\"")"
+PR_BODY="$(build_acceptance_pr_body)"
+
 if [[ -z "$PR_NUMBER" ]]; then
   if [[ "$DELIVERY_CLASS" == "infra-docs" ]]; then
     PR_TITLE="Accept infra/docs ${BRANCH#codex/}"
-    PR_BODY="$(cat <<BODY
-Accepted infra/docs branch ${BRANCH}.
-
-This PR was opened by deploy/scripts/accept-preview.sh after CI classified the branch as infra/docs delivery.
-BODY
-)"
   else
     PR_TITLE="Accept ${BRANCH#codex/}"
-    PR_BODY="$(cat <<BODY
-Accepted preview branch ${BRANCH}.
-
-This PR was opened by deploy/scripts/accept-preview.sh after the project owner accepted the preview.
-BODY
-)"
   fi
   gh pr create --base "$BASE_BRANCH" --head "$BRANCH" --title "$PR_TITLE" --body "$PR_BODY" >/dev/null
   PR_NUMBER="$(gh pr view "$BRANCH" --json number --jq ".number")"
+else
+  gh pr edit "$PR_NUMBER" --body "$PR_BODY" >/dev/null
 fi
 
 if [[ "$DELIVERY_CLASS" == "infra-docs" ]]; then

@@ -25,6 +25,7 @@ test('version endpoint returns current build ledger counters', async () => {
       sourceCommit: 'engine-source',
       sourceShortChanges: 'Добавлена страница Engine.',
       sourceDetails: 'Engine читает текущие данные версии.',
+      sourceReason: 'Нужно показывать текущую версию в Engine.',
       targetBranch: 'main',
       targetCommit: 'engine-main',
       releasedAtUtc: '2026-06-29T12:05:00.000Z'
@@ -34,6 +35,7 @@ test('version endpoint returns current build ledger counters', async () => {
       sourceCommit: 'release-one',
       sourceShortChanges: 'Первый релиз.',
       sourceDetails: 'Детали релиза.',
+      sourceReason: 'Нужно сгруппировать принятые сборки в релиз.',
       targetBranch: 'main',
       targetCommit: 'release-one',
       releasedAtUtc: '2026-06-29T12:10:00.000Z'
@@ -43,6 +45,7 @@ test('version endpoint returns current build ledger counters', async () => {
       sourceCommit: 'engine-next-source',
       sourceShortChanges: 'Опубликована следующая сборка.',
       sourceDetails: 'Детали следующей сборки.',
+      sourceReason: 'Нужно проверить отображение следующей сборки.',
       targetBranch: 'main',
       targetCommit: 'engine-next-main',
       releasedAtUtc: '2026-06-29T12:15:00.000Z'
