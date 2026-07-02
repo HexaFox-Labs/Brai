@@ -8,6 +8,9 @@ set -euo pipefail
 : "${BRAI_TARGET_ENVIRONMENT:?BRAI_TARGET_ENVIRONMENT is required}"
 : "${BRAI_TARGET_BRANCH:?BRAI_TARGET_BRANCH is required}"
 : "${BRAI_TARGET_COMMIT:?BRAI_TARGET_COMMIT is required}"
+: "${BRAI_SOURCE_SHORT_CHANGES:?BRAI_SOURCE_SHORT_CHANGES is required}"
+: "${BRAI_SOURCE_DETAILED_CHANGES:?BRAI_SOURCE_DETAILED_CHANGES is required}"
+: "${BRAI_SOURCE_REASON:?BRAI_SOURCE_REASON is required}"
 
 DEPLOY_REPO="${BRAI_DEPLOY_REPO:-/srv/projects/brai}"
 SSH_PORT="${BRAI_DEPLOY_SSH_PORT:-22}"
@@ -20,59 +23,22 @@ trap cleanup EXIT
 printf '%s\n' "$BRAI_DEPLOY_SSH_KEY" >"$KEY_FILE"
 chmod 600 "$KEY_FILE"
 
-SOURCE_SHORT_CHANGES="${BRAI_SOURCE_SHORT_CHANGES:-}"
-SOURCE_DETAILED_CHANGES="${BRAI_SOURCE_DETAILED_CHANGES:-}"
-if [[ "$BRAI_SOURCE_BRANCH" == codex/* && ( -z "$SOURCE_SHORT_CHANGES" || -z "$SOURCE_DETAILED_CHANGES" ) ]]; then
-  NOTES_COMMIT=""
-  if git fetch --depth=20 origin "$BRAI_SOURCE_BRANCH" >/dev/null 2>&1; then
-    NOTES_COMMIT="$(git rev-parse FETCH_HEAD 2>/dev/null || true)"
-  fi
-  if [[ -n "$NOTES_COMMIT" ]]; then
-    for _ in 1 2 3 4 5; do
-      GIT_SUBJECT="$(git log -1 --format=%s "$NOTES_COMMIT" 2>/dev/null || true)"
-      if [[ "$GIT_SUBJECT" == Merge\ branch\ *\ into\ codex/* || "$GIT_SUBJECT" == Merge\ remote-tracking\ branch\ *\ into\ codex/* ]]; then
-        PARENT_COMMIT="$(git rev-parse "$NOTES_COMMIT^1" 2>/dev/null || true)"
-        if [[ -n "$PARENT_COMMIT" ]]; then
-          NOTES_COMMIT="$PARENT_COMMIT"
-          continue
-        fi
-      fi
-      break
-    done
-    GIT_BODY="$(git log -1 --format=%b "$NOTES_COMMIT" 2>/dev/null || true)"
-    if [[ "$GIT_SUBJECT" == Merge\ pull\ request* && -n "$GIT_BODY" ]]; then
-      while IFS= read -r line; do
-        if [[ -n "${line//[[:space:]]/}" ]]; then
-          GIT_SUBJECT="$line"
-        fi
-      done <<<"$GIT_BODY"
-      GIT_BODY=""
-    fi
-    SOURCE_SHORT_CHANGES="${SOURCE_SHORT_CHANGES:-$GIT_SUBJECT}"
-    if [[ -z "$SOURCE_DETAILED_CHANGES" ]]; then
-      if [[ -n "$GIT_BODY" ]]; then
-        SOURCE_DETAILED_CHANGES="$GIT_SUBJECT"$'\n\n'"$GIT_BODY"
-      else
-        SOURCE_DETAILED_CHANGES="$GIT_SUBJECT"
-      fi
-    fi
-  fi
-fi
-
-SOURCE_SHORT_CHANGES_B64="$(printf '%s' "$SOURCE_SHORT_CHANGES" | base64 -w0)"
-SOURCE_DETAILED_CHANGES_B64="$(printf '%s' "$SOURCE_DETAILED_CHANGES" | base64 -w0)"
+SOURCE_SHORT_CHANGES_B64="$(printf '%s' "$BRAI_SOURCE_SHORT_CHANGES" | base64 -w0)"
+SOURCE_DETAILED_CHANGES_B64="$(printf '%s' "$BRAI_SOURCE_DETAILED_CHANGES" | base64 -w0)"
+SOURCE_REASON_B64="$(printf '%s' "$BRAI_SOURCE_REASON" | base64 -w0)"
 
 ssh -i "$KEY_FILE" -p "$SSH_PORT" -o StrictHostKeyChecking=accept-new "$BRAI_DEPLOY_USER@$BRAI_DEPLOY_HOST" \
-  bash -s -- "$DEPLOY_REPO" "$BRAI_SOURCE_BRANCH" "$BRAI_TARGET_ENVIRONMENT" "$BRAI_TARGET_BRANCH" "$BRAI_TARGET_COMMIT" "${SOURCE_SHORT_CHANGES_B64:-.}" "${SOURCE_DETAILED_CHANGES_B64:-.}" "${BRAI_RECORD_PRODUCTION_RELEASE:-false}" <<'REMOTE'
+  bash -s -- "$DEPLOY_REPO" "$BRAI_SOURCE_BRANCH" "$BRAI_TARGET_ENVIRONMENT" "$BRAI_TARGET_BRANCH" "$BRAI_TARGET_COMMIT" "$SOURCE_SHORT_CHANGES_B64" "$SOURCE_DETAILED_CHANGES_B64" "$SOURCE_REASON_B64" "${BRAI_RECORD_PRODUCTION_RELEASE:-false}" <<'REMOTE'
 set -euo pipefail
 DEPLOY_REPO="$1"
 BRAI_SOURCE_BRANCH="$2"
 BRAI_TARGET_ENVIRONMENT="$3"
 BRAI_TARGET_BRANCH="$4"
 BRAI_TARGET_COMMIT="$5"
-BRAI_SOURCE_SHORT_CHANGES="$([[ "$6" == "." ]] || printf '%s' "$6" | base64 -d)"
-BRAI_SOURCE_DETAILED_CHANGES="$([[ "$7" == "." ]] || printf '%s' "$7" | base64 -d)"
-BRAI_RECORD_PRODUCTION_RELEASE="$8"
+BRAI_SOURCE_SHORT_CHANGES="$(printf '%s' "$6" | base64 -d)"
+BRAI_SOURCE_DETAILED_CHANGES="$(printf '%s' "$7" | base64 -d)"
+BRAI_SOURCE_REASON="$(printf '%s' "$8" | base64 -d)"
+BRAI_RECORD_PRODUCTION_RELEASE="$9"
 ENVS_ROOT="${BRAI_ENVS_ROOT:-/srv/projects/brai-envs}"
 NODE_PREFIX="${BRAI_NODE_PREFIX:-/srv/opt/node-v22.16.0/bin}"
 if [[ -d "$NODE_PREFIX" ]]; then
@@ -104,15 +70,13 @@ if [[ "$BRAI_TARGET_ENVIRONMENT" == "prod" ]]; then
 fi
 
 cd "$RUN_ROOT"
-if [[ -d "$DEPLOY_REPO/.git" ]]; then
-  export BRAI_GIT_NOTES_ROOT="$DEPLOY_REPO"
-fi
 BRAI_SOURCE_BRANCH="$BRAI_SOURCE_BRANCH" \
 BRAI_TARGET_ENVIRONMENT="$BRAI_TARGET_ENVIRONMENT" \
 BRAI_TARGET_BRANCH="$BRAI_TARGET_BRANCH" \
 BRAI_TARGET_COMMIT="$BRAI_TARGET_COMMIT" \
 BRAI_SOURCE_SHORT_CHANGES="$BRAI_SOURCE_SHORT_CHANGES" \
 BRAI_SOURCE_DETAILED_CHANGES="$BRAI_SOURCE_DETAILED_CHANGES" \
+BRAI_SOURCE_REASON="$BRAI_SOURCE_REASON" \
 BRAI_RECORD_PRODUCTION_RELEASE="$BRAI_RECORD_PRODUCTION_RELEASE" \
   deploy/scripts/promote-accepted-deployment.sh
 REMOTE

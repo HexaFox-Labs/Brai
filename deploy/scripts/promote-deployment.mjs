@@ -18,11 +18,8 @@ let source = null;
 
 try {
   source = openSourceStore(args, targetEnvironment);
-  const fallbackRecord = fallbackSourceRecord(args, sourceBranch, targetEnvironment);
-  const sourceRecord = normalizeSourceRecord(
-    source?.listDeploymentRecords().find((record) => record.branch === sourceBranch) ?? fallbackRecord,
-    fallbackRecord,
-  );
+  const deploymentRecord = source?.listDeploymentRecords().find((record) => record.branch === sourceBranch) ?? null;
+  const sourceRecord = explicitSourceRecord(args, sourceBranch, deploymentRecord);
   if (!sourceRecord) throw new Error(`no deployment metadata for ${sourceBranch}`);
 
   if (!ledgerOnly) {
@@ -72,58 +69,27 @@ function openSourceStore(values, targetEnvironment) {
   try {
     return new BraiStore(sourceDb);
   } catch (error) {
-    if (canUseSourceFallback(values, targetEnvironment)) {
-      console.error(`Warning: preview deployment metadata is unavailable; using branch and commit fallback. ${error.message}`);
+    if (canUseExplicitSourceRecord(values, targetEnvironment)) {
+      console.error(`Warning: preview deployment metadata is unavailable; using explicit accepted release notes. ${error.message}`);
       return null;
     }
     throw error;
   }
 }
 
-function fallbackSourceRecord(values, sourceBranch, targetEnvironment) {
-  if (!canUseSourceFallback(values, targetEnvironment)) return null;
+function explicitSourceRecord(values, sourceBranch, deploymentRecord) {
+  if (!canUseExplicitSourceRecord(values, values["target-environment"])) return null;
   return {
     environment: "preview",
     slot: values["source-slot"] || null,
     branch: sourceBranch,
     commit_sha: values["source-commit"],
-    web_ota_version: values["web-ota-version"] || null,
-    apk_version: values["apk-version"] || null,
-    short_changes: values["source-short-changes"] || 'Принята сборка Brai.',
-    reason: values["source-reason"] || values.reason || '',
-    detailed_changes:
-      values["source-details"] || 'Сборка принята; технические branch/commit-данные сохранены отдельно.',
+    web_ota_version: values["web-ota-version"] || deploymentRecord?.web_ota_version || null,
+    apk_version: values["apk-version"] || deploymentRecord?.apk_version || null,
+    short_changes: required(values, "source-short-changes"),
+    reason: required(values, "source-reason"),
+    detailed_changes: required(values, "source-details"),
   };
-}
-
-function normalizeSourceRecord(record, fallbackRecord) {
-  if (!record) return null;
-  const shortChanges = usefulChanges(record.short_changes) || usefulChanges(fallbackRecord?.short_changes);
-  const detailedChanges = usefulChanges(record.detailed_changes) || usefulChanges(fallbackRecord?.detailed_changes) || shortChanges;
-  return {
-    ...record,
-    short_changes: shortChanges || 'Принята сборка Brai.',
-    detailed_changes: detailedChanges || shortChanges || 'Сборка принята; технические branch/commit-данные сохранены отдельно.',
-  };
-}
-
-function usefulChanges(value) {
-  const text = String(value ?? '').trim();
-  if (!text) return '';
-  const oneLine = text.replace(/\s+/g, ' ');
-  if (oneLine === 'Branch deployment') return '';
-  if (/^Merge branch .+ into codex\/\S+$/i.test(oneLine)) return '';
-  if (/^Merge remote-tracking branch .+ into codex\/\S+$/i.test(oneLine)) return '';
-  if (/^Automated deployment from \S+@\S+ to \S+\.?$/i.test(oneLine)) return '';
-  if (/^Automated dev deployment from \S+@\S+\.?$/i.test(oneLine)) return '';
-  if (/^Accepted preview branch \S+@\S+\.?$/i.test(oneLine)) return '';
-  if (/^Accepted dev build (?:\d|0\.)/i.test(oneLine)) return '';
-  if (/^Accepted codex\/\S+\.?$/i.test(oneLine)) return '';
-  if (/^Accepted \S+@\S+ without preview deployment metadata\.?$/i.test(oneLine)) return '';
-  if (/^Accepted preview changes without authored release notes\.?$/i.test(oneLine)) return '';
-  if (/^No authored preview release notes were available; audit metadata is stored separately\.?$/i.test(oneLine)) return '';
-  if (!/[А-Яа-яЁё]/.test(oneLine)) return '';
-  return text;
 }
 
 function recordAcceptedBuildVersion(
@@ -145,8 +111,14 @@ function recordAcceptedBuildVersion(
   });
 }
 
-function canUseSourceFallback(values, targetEnvironment) {
-  return Boolean(values["source-commit"] && (targetEnvironment === "dev" || (targetEnvironment === "prod" && values["source-branch"]?.startsWith("codex/"))));
+function canUseExplicitSourceRecord(values, targetEnvironment) {
+  return Boolean(
+    values["source-commit"] &&
+    values["source-short-changes"] &&
+    values["source-details"] &&
+    values["source-reason"] &&
+    (targetEnvironment === "dev" || (targetEnvironment === "prod" && values["source-branch"]?.startsWith("codex/")))
+  );
 }
 
 function recordReleaseVersion(

@@ -9,6 +9,9 @@ SOURCE_BRANCH="${BRAI_SOURCE_BRANCH:?BRAI_SOURCE_BRANCH is required}"
 TARGET_ENVIRONMENT="${BRAI_TARGET_ENVIRONMENT:?BRAI_TARGET_ENVIRONMENT is required}"
 TARGET_BRANCH="${BRAI_TARGET_BRANCH:?BRAI_TARGET_BRANCH is required}"
 TARGET_COMMIT="${BRAI_TARGET_COMMIT:?BRAI_TARGET_COMMIT is required}"
+SOURCE_SHORT_CHANGES="${BRAI_SOURCE_SHORT_CHANGES:?BRAI_SOURCE_SHORT_CHANGES is required}"
+SOURCE_DETAILS="${BRAI_SOURCE_DETAILED_CHANGES:?BRAI_SOURCE_DETAILED_CHANGES is required}"
+SOURCE_REASON="${BRAI_SOURCE_REASON:?BRAI_SOURCE_REASON is required}"
 
 if [[ "$TARGET_ENVIRONMENT" == "prod" && "$SOURCE_BRANCH" == codex/* ]]; then
   if ! SLOT="$("$NODE_BIN" -e '
@@ -37,69 +40,6 @@ else
   exit 1
 fi
 
-SOURCE_SHORT_CHANGES="${BRAI_SOURCE_SHORT_CHANGES:-}"
-SOURCE_DETAILS="${BRAI_SOURCE_DETAILED_CHANGES:-}"
-NOTES_ROOT="${BRAI_GIT_NOTES_ROOT:-}"
-if [[ ! -d "$NOTES_ROOT/.git" ]]; then
-  NOTES_ROOT=""
-fi
-if [[ -z "$NOTES_ROOT" && -n "${SLOT:-}" ]]; then
-  PREVIEW_SOURCE_ROOT="$ENVS_ROOT/preview-${SLOT,,}/source"
-  if [[ -d "$PREVIEW_SOURCE_ROOT/.git" ]]; then
-    NOTES_ROOT="$PREVIEW_SOURCE_ROOT"
-  fi
-fi
-if [[ -z "$NOTES_ROOT" && -d "$ROOT/.git" ]]; then
-  NOTES_ROOT="$ROOT"
-fi
-
-if [[ -n "$SOURCE_COMMIT" && -n "$NOTES_ROOT" && ( -z "$SOURCE_SHORT_CHANGES" || -z "$SOURCE_DETAILS" ) ]]; then
-  if ! git -C "$NOTES_ROOT" cat-file -e "$SOURCE_COMMIT^{commit}" 2>/dev/null; then
-    git -C "$NOTES_ROOT" fetch --depth=1 origin "$SOURCE_BRANCH" >/dev/null 2>&1 \
-      || git -C "$NOTES_ROOT" fetch --depth=1 origin "$SOURCE_COMMIT" >/dev/null 2>&1 \
-      || true
-  fi
-  if [[ -n "${SLOT:-}" ]]; then
-    PREVIEW_SOURCE_ROOT="$ENVS_ROOT/preview-${SLOT,,}/source"
-    if [[ -d "$PREVIEW_SOURCE_ROOT/.git" ]]; then
-      NOTES_ROOT="$PREVIEW_SOURCE_ROOT"
-    fi
-  fi
-  NOTES_COMMIT="$SOURCE_COMMIT"
-  for _ in 1 2 3 4 5; do
-    GIT_SHORT_CHANGES="$(git -C "$NOTES_ROOT" log -1 --format=%s "$NOTES_COMMIT" 2>/dev/null || true)"
-    if [[ -z "$GIT_SHORT_CHANGES" ]]; then
-      break
-    fi
-    SOURCE_SHORT_CHANGES="${SOURCE_SHORT_CHANGES:-$GIT_SHORT_CHANGES}"
-    if [[ "$SOURCE_SHORT_CHANGES" == Merge\ branch\ *\ into\ codex/* || "$SOURCE_SHORT_CHANGES" == Merge\ remote-tracking\ branch\ *\ into\ codex/* ]]; then
-      PARENT_COMMIT="$(git -C "$NOTES_ROOT" rev-parse "$NOTES_COMMIT^1" 2>/dev/null || true)"
-      if [[ -n "$PARENT_COMMIT" ]]; then
-        NOTES_COMMIT="$PARENT_COMMIT"
-        SOURCE_SHORT_CHANGES=""
-        continue
-      fi
-    fi
-    break
-  done
-  SOURCE_BODY="$(git -C "$NOTES_ROOT" log -1 --format=%b "$NOTES_COMMIT" 2>/dev/null || true)"
-  if [[ "$SOURCE_SHORT_CHANGES" == Merge\ pull\ request* && -n "$SOURCE_BODY" ]]; then
-    while IFS= read -r line; do
-      if [[ -n "${line//[[:space:]]/}" ]]; then
-        SOURCE_SHORT_CHANGES="$line"
-      fi
-    done <<<"$SOURCE_BODY"
-    SOURCE_BODY=""
-  fi
-  if [[ -z "$SOURCE_DETAILS" ]]; then
-    if [[ -n "$SOURCE_BODY" ]]; then
-      SOURCE_DETAILS="$SOURCE_SHORT_CHANGES"$'\n\n'"$SOURCE_BODY"
-    else
-      SOURCE_DETAILS="$SOURCE_SHORT_CHANGES"
-    fi
-  fi
-fi
-
 "$NODE_BIN" "$SCRIPT_DIR/promote-deployment.mjs" \
   --source-db "$SOURCE_DB" \
   --target-db "$TARGET_DB" \
@@ -110,7 +50,8 @@ fi
   --target-domain "$TARGET_DOMAIN" \
   --source-commit "$SOURCE_COMMIT" \
   --source-slot "${SLOT:-}" \
-  --source-short-changes "${SOURCE_SHORT_CHANGES:-Принята сборка Brai.}" \
-  --source-details "${SOURCE_DETAILS:-Сборка принята; технические branch/commit-данные сохранены отдельно.}" \
-  --reason "${BRAI_PROMOTE_REASON:-Нужно перенести принятую preview-сборку в production.}" \
+  --source-short-changes "$SOURCE_SHORT_CHANGES" \
+  --source-details "$SOURCE_DETAILS" \
+  --source-reason "$SOURCE_REASON" \
+  --reason "$SOURCE_REASON" \
   --record-production-release "${BRAI_RECORD_PRODUCTION_RELEASE:-false}"

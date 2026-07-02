@@ -7,7 +7,7 @@ import path from 'node:path';
 import { BraiStore } from '../src/store.js';
 
 function tempStore() {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bright-version-ledger-'));
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'brai-version-ledger-'));
   const store = new BraiStore(path.join(tmp, 'store.sqlite'));
   return { tmp, store };
 }
@@ -20,6 +20,7 @@ test('accepted preview promotion records one build counter idempotently', () => 
       sourceCommit: 'abc123',
       sourceShortChanges: 'Исправлены описания журнала версий.',
       sourceDetails: 'Строки сборок теперь хранят человекочитаемые release notes.',
+      sourceReason: 'Нужно сохранить понятные описания принятой сборки.',
       targetBranch: 'main',
       targetCommit: 'def456',
       releasedAtUtc: '2026-06-24T22:10:00.000Z'
@@ -63,6 +64,7 @@ test('manual release links unlinked builds and current apk', () => {
       sourceCommit: 'one',
       sourceShortChanges: 'Первая сборка.',
       sourceDetails: 'Детали первой сборки.',
+      sourceReason: 'Нужно принять первую сборку.',
       targetBranch: 'main',
       targetCommit: 'main-one',
       releasedAtUtc: '2026-06-24T22:10:00.000Z'
@@ -72,6 +74,7 @@ test('manual release links unlinked builds and current apk', () => {
       sourceCommit: 'two',
       sourceShortChanges: 'Вторая сборка.',
       sourceDetails: 'Детали второй сборки.',
+      sourceReason: 'Нужно принять вторую сборку.',
       targetBranch: 'main',
       targetCommit: 'main-two',
       releasedAtUtc: '2026-06-24T22:20:00.000Z'
@@ -82,6 +85,7 @@ test('manual release links unlinked builds and current apk', () => {
       sourceCommit: 'release-one',
       sourceShortChanges: 'Релиз собрал принятые сборки.',
       sourceDetails: 'Ручной релиз.',
+      sourceReason: 'Нужно сгруппировать принятые сборки.',
       targetBranch: 'main',
       targetCommit: 'release-one',
       releasedAtUtc: '2026-06-24T23:00:00.000Z'
@@ -116,6 +120,7 @@ test('manual canon links unlinked releases', () => {
       sourceCommit: 'one',
       sourceShortChanges: 'Первая сборка.',
       sourceDetails: 'Детали первой сборки.',
+      sourceReason: 'Нужно принять первую сборку.',
       targetBranch: 'main',
       targetCommit: 'main-one',
       releasedAtUtc: '2026-06-24T22:10:00.000Z'
@@ -125,6 +130,7 @@ test('manual canon links unlinked releases', () => {
       sourceCommit: 'release-one',
       sourceShortChanges: 'Первый релиз.',
       sourceDetails: 'Первый ручной релиз.',
+      sourceReason: 'Нужно сгруппировать первую сборку.',
       targetBranch: 'main',
       targetCommit: 'release-one',
       releasedAtUtc: '2026-06-24T23:00:00.000Z'
@@ -134,6 +140,7 @@ test('manual canon links unlinked releases', () => {
       sourceCommit: 'canon-one',
       sourceShortChanges: 'Первый канон.',
       sourceDetails: 'Первый ручной канон.',
+      sourceReason: 'Нужно зафиксировать первый канон.',
       targetBranch: 'main',
       targetCommit: 'canon-one',
       releasedAtUtc: '2026-06-25T00:00:00.000Z'
@@ -184,26 +191,21 @@ test('accepted build recording does not create release automatically', () => {
   }
 });
 
-test('ascii commit titles are not promoted as public release notes', () => {
+test('accepted build recording requires Russian release notes', () => {
   const { tmp, store } = tempStore();
   try {
-    store.recordAcceptedBuildVersion({
-      sourceBranch: 'codex/noisy-title',
-      sourceCommit: 'abc',
-      sourceShortChanges: 'Fix production OTA bundle version regression',
-      sourceDetails: 'Fix production OTA bundle version regression',
-      targetBranch: 'main',
-      targetCommit: 'def',
-      releasedAtUtc: '2026-06-27T00:00:00.000Z'
-    });
-    const accepted = store.db
-      .prepare("SELECT short_changes, detailed_changes, reason FROM build_versions WHERE version_type_id = 'build' AND version = 2")
-      .get();
-    assert.deepEqual(accepted, {
-      short_changes: 'Принята сборка Brai.',
-      detailed_changes: 'Сборка принята; технические branch/commit-данные сохранены отдельно.',
-      reason: 'Нужно зафиксировать принятую сборку без смешивания release notes с техническими метаданными.'
-    });
+    assert.throws(() => {
+      store.recordAcceptedBuildVersion({
+        sourceBranch: 'codex/noisy-title',
+        sourceCommit: 'abc',
+        sourceShortChanges: 'Fix production OTA bundle version regression',
+        sourceDetails: 'Fix production OTA bundle version regression',
+        sourceReason: 'Needed for test',
+        targetBranch: 'main',
+        targetCommit: 'def',
+        releasedAtUtc: '2026-06-27T00:00:00.000Z'
+      });
+    }, /must be Russian/);
   } finally {
     store.close();
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -211,7 +213,7 @@ test('ascii commit titles are not promoted as public release notes', () => {
 });
 
 test('accepted preview promotion creates missing target database directory', () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bright-promote-missing-target-dir-'));
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'brai-promote-missing-target-dir-'));
   const sourceDb = path.join(tmp, 'missing', 'source.sqlite');
   const targetDb = path.join(tmp, 'target', 'nested', 'target.sqlite');
 
@@ -231,6 +233,8 @@ test('accepted preview promotion creates missing target database directory', () 
       'Создана директория production-базы.',
       '--source-details',
       'Promotion создаёт родительскую директорию целевой SQLite-базы перед открытием.',
+      '--source-reason',
+      'Нужно не ронять promotion, когда каталог целевой базы ещё не создан.',
       '--target-environment',
       'prod',
       '--target-branch',
