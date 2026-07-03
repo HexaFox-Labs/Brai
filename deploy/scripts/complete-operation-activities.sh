@@ -8,7 +8,7 @@ SERVICE_USER="${BRAI_SQLITE_SERVICE_USER:-brai}"
 DEPLOY_USER="${BRAI_DEPLOY_USER:-brai-deploy}"
 DEPLOY_GROUP="${BRAI_DEPLOY_GROUP:-brai-deploy}"
 DEPLOY_HOST="${BRAI_DEPLOY_HOST:-localhost}"
-DEPLOY_REPO="${BRAI_DEPLOY_REPO:-/srv/projects/brai}"
+DEPLOY_REPO="${BRAI_DEPLOY_REPO:-/srv/projects/brai-envs/prod/source}"
 SSH_PORT="${BRAI_DEPLOY_SSH_PORT:-22}"
 SSH_KEY_FILE="${BRAI_DEPLOY_SSH_KEY_FILE:-${HOME:-}/.ssh/brai_deploy_ed25519}"
 PROD_DB="/srv/projects/brai/data/brai.sqlite"
@@ -21,8 +21,8 @@ Usage:
   $0 --local <operation-activity-id>...
 
 Completes operation activities in live SQLite after creating a backup.
-Default mode uses the host deploy SSH boundary; --local is for the host-side
-script invocation or tests with BRAI_DB outside $PROD_DB.
+Default mode uses the host deploy SSH boundary and the deploy-owned prod source;
+--local is for the host-side script invocation or tests with BRAI_DB outside $PROD_DB.
 USAGE
 }
 

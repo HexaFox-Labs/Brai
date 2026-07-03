@@ -191,7 +191,9 @@ same narrow maintenance boundary.
 
 Use `deploy/scripts/complete-operation-activities.sh <operation:agent-task:id>...` to
 mark Codex operation activities as `Done`. The default mode SSHes through
-`brai-deploy@localhost`, validates that every supplied id is an undeleted
+`brai-deploy@localhost` and executes the helper from deploy-owned
+`/srv/projects/brai-envs/prod/source`, not the locked live checkout. It validates
+that every supplied id is an undeleted
 `activity_type_id='operation'` row authored by `Codex`, backs up before any write,
 updates only `New` rows, and prints the verified rows. Reruns over already `Done` rows
 are read-only. Read-only SQLite checks from the Codex execution namespace are fine, but

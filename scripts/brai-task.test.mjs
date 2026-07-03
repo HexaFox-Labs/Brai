@@ -398,6 +398,7 @@ test("delivery classifier separates infra-docs from runtime preview", () => {
 test("operation activity completion helper has a narrow shell contract", () => {
   const helper = fs.readFileSync(path.resolve(import.meta.dirname, "../deploy/scripts/complete-operation-activities.sh"), "utf8");
   assert.match(helper, /set -euo pipefail/);
+  assert.match(helper, /DEPLOY_REPO="\$\{BRAI_DEPLOY_REPO:-\/srv\/projects\/brai-envs\/prod\/source\}"/);
   assert.match(helper, /\^operation:agent-task:/);
   assert.match(helper, /activity_type_id = 'operation'/);
   assert.match(helper, /author = 'Codex'/);
