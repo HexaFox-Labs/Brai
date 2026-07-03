@@ -182,7 +182,8 @@ the live checkout `/srv/projects/brai` is only the locked main mirror and public
 Production SQLite maintenance goes through `deploy/scripts/production-sqlite-maintenance.sh`.
 It defaults to `/srv/projects/brai/data/brai.sqlite`, uses backups under
 `/srv/projects/brai/data/backups`, and uses `/srv/opt/android-sdk/platform-tools/sqlite3`.
-Run `check` for read-only inspection. Run write commands such as `backup` and `exec-sql`
+Run `check` for read-only inspection. Run `repair-permissions` as root when a validator
+finds owner/mode drift on the DB, WAL, SHM, or backup paths. Run write commands such as `backup` and `exec-sql`
 as the `brai` service user; the wrapper rejects `root`, `mark`, and other users.
 `check` is a validator: wrong owner, group, or mode is a failing result, not just diagnostic output.
 Ansible keeps `data`, `data/backups`, `brai.sqlite`, and existing WAL/SHM sidecars owned
@@ -192,7 +193,8 @@ same narrow maintenance boundary.
 Use `deploy/scripts/complete-operation-activities.sh <operation:agent-task:id>...` to
 mark Codex operation activities as `Done`. The default mode SSHes through
 `brai-deploy@localhost` and executes the helper from deploy-owned
-`/srv/projects/brai-envs/prod/source`, not the locked live checkout. It validates
+`/srv/projects/brai-envs/prod/source`, then re-enters as the `brai` service user
+for the SQLite write so WAL/SHM ownership stays `brai:brai-deploy`. It validates
 that every supplied id is an undeleted
 `activity_type_id='operation'` row authored by `Codex`, backs up before any write,
 updates only `New` rows, and prints the verified rows. Reruns over already `Done` rows

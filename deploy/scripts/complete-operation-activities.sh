@@ -85,11 +85,12 @@ complete_remote() {
   local key_file
   key_file="$(ssh_key)"
   ssh -i "$key_file" -p "$SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$DEPLOY_USER@$DEPLOY_HOST" \
-    bash -s -- "$DEPLOY_REPO" "$@" <<'REMOTE'
+    bash -s -- "$DEPLOY_REPO" "$SERVICE_USER" "$@" <<'REMOTE'
 set -euo pipefail
 DEPLOY_REPO="$1"
-shift
-exec "$DEPLOY_REPO/deploy/scripts/complete-operation-activities.sh" --local "$@"
+SERVICE_USER="$2"
+shift 2
+exec sudo -n -u "$SERVICE_USER" "$DEPLOY_REPO/deploy/scripts/complete-operation-activities.sh" --local "$@"
 REMOTE
 }
 
@@ -107,12 +108,12 @@ require_sqlite() {
 require_writer() {
   local user
   user="$(id -un)"
-  if [[ "$DB_PATH" == "$PROD_DB" && "$user" != "$SERVICE_USER" && "$user" != "$DEPLOY_USER" ]]; then
+  if [[ "$DB_PATH" == "$PROD_DB" && "$user" != "$SERVICE_USER" ]]; then
     echo "Live SQLite writes must run in host service/deploy context, not $user." >&2
-    echo "Use remote mode or SSH to $DEPLOY_USER@$DEPLOY_HOST; do not write from Codex namespace." >&2
+    echo "Use remote mode; it SSHes to $DEPLOY_USER@$DEPLOY_HOST and re-enters as $SERVICE_USER." >&2
     exit 2
   fi
-  if [[ "$user" == "root" || ("$DB_PATH" == "$PROD_DB" && "$user" == "mark") ]]; then
+  if [[ "$user" == "root" || "$user" == "$DEPLOY_USER" || ("$DB_PATH" == "$PROD_DB" && "$user" == "mark") ]]; then
     echo "Refusing live SQLite write as $user." >&2
     exit 2
   fi

@@ -399,6 +399,8 @@ test("operation activity completion helper has a narrow shell contract", () => {
   const helper = fs.readFileSync(path.resolve(import.meta.dirname, "../deploy/scripts/complete-operation-activities.sh"), "utf8");
   assert.match(helper, /set -euo pipefail/);
   assert.match(helper, /DEPLOY_REPO="\$\{BRAI_DEPLOY_REPO:-\/srv\/projects\/brai-envs\/prod\/source\}"/);
+  assert.match(helper, /sudo -n -u "\$SERVICE_USER"/);
+  assert.match(helper, /Refusing live SQLite write as \$user/);
   assert.match(helper, /\^operation:agent-task:/);
   assert.match(helper, /activity_type_id = 'operation'/);
   assert.match(helper, /author = 'Codex'/);
@@ -408,6 +410,15 @@ test("operation activity completion helper has a narrow shell contract", () => {
   assert.match(helper, /BEGIN IMMEDIATE/);
   assert.match(helper, /completed_at_utc = COALESCE/);
   assert.doesNotMatch(helper, /activity_type_id = 'action'/);
+});
+
+test("production SQLite maintenance has an explicit permission repair command", () => {
+  const script = fs.readFileSync(path.resolve(import.meta.dirname, "../deploy/scripts/production-sqlite-maintenance.sh"), "utf8");
+  assert.match(script, /repair-permissions/);
+  assert.match(script, /SQLite permission repair must run as root/);
+  assert.match(script, /chown "\$SERVICE_USER:\$SERVICE_GROUP" "\$path"/);
+  assert.match(script, /chmod 0664 "\$path"/);
+  assert.match(script, /check\n\}/);
 });
 
 test("operation activity completion helper backs up and verifies exact rows", { skip: !sqliteCli() }, () => {
