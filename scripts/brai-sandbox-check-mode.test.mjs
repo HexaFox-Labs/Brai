@@ -38,6 +38,12 @@ test("sandbox helper marks host access checks as requiring escalation", () => {
   );
 });
 
+test("sandbox helper marks handoff commands as requiring escalation", () => {
+  assert.equal(sandboxCheckMode(["scripts/brai-preview-handoff.sh"]).mode, "require_escalated");
+  assert.equal(sandboxCheckMode(["node", "scripts/brai-task.mjs", "handoff"]).mode, "require_escalated");
+  assert.equal(sandboxCheckMode(["node", "scripts/brai-task.mjs", "preview", "codex/foo"]).mode, "require_escalated");
+});
+
 test("sandbox helper marks browser and Android commands", () => {
   assert.equal(sandboxCheckMode(["npm", "run", "app:e2e"]).mode, "require_escalated");
   assert.equal(sandboxCheckMode(["agent-browser", "open", "https://brightos.world"]).mode, "agent_browser");
