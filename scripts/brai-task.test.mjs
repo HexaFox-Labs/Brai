@@ -35,6 +35,7 @@ import {
   workspacePreflight,
 } from "./brai-task.mjs";
 import { acceptedPreviewBranches } from "../deploy/scripts/accepted-preview-branches.mjs";
+import { classifyDeployDelivery } from "../deploy/scripts/classify-delivery.mjs";
 import { requiresNativeApkChange } from "../deploy/scripts/detect-native-apk-change.mjs";
 
 test("valid codex task branch names are strict", () => {
@@ -290,6 +291,7 @@ test("delivery classifier separates infra-docs from runtime preview", () => {
   assert.equal(deliveryClassForFile("deploy/scripts/preview-slots.mjs"), "infra");
   assert.equal(deliveryClassForFile("deploy/scripts/preview-slots.sh"), "infra");
   assert.equal(deliveryClassForFile("deploy/scripts/production-sqlite-maintenance.sh"), "infra");
+  assert.equal(deliveryClassForFile("deploy/scripts/complete-operation-activities.sh"), "infra");
   assert.equal(deliveryClassForFile("deploy/scripts/sync-local-main-checkout.sh"), "infra");
   assert.equal(deliveryClassForFile("deploy/scripts/sync-occupied-preview-ota-manifests.sh"), "infra");
   assert.equal(deliveryClassForFile("deploy/scripts/ci-ssh-sync-main-checkout.sh"), "infra");
@@ -301,6 +303,16 @@ test("delivery classifier separates infra-docs from runtime preview", () => {
 
   assert.equal(classifyDelivery(["docs/foo.md"]).deliveryClass, "infra-docs");
   assert.equal(classifyDelivery([".github/workflows/brai-delivery.yml"]).deliveryClass, "infra-docs");
+  assert.equal(classifyDelivery(["deploy/scripts/complete-operation-activities.sh"]).deliveryClass, "infra-docs");
+  assert.deepEqual(classifyDeployDelivery(["deploy/scripts/complete-operation-activities.sh"], {
+    eventName: "push",
+    ref: "refs/heads/codex/operation-done-helper",
+  }), {
+    delivery_class: "infra-docs",
+    requires_preview: false,
+    requires_dev_deploy: false,
+    auto_merge: true,
+  });
   assert.equal(classifyDelivery(["apps/brai_app/vitest.config.mts"]).deliveryClass, "technical-no-preview");
   assert.equal(classifyDelivery(["services/brai_api/test/api.auth-migrations.test.js"]).deliveryClass, "technical-no-preview");
   assert.equal(
@@ -355,6 +367,121 @@ test("delivery classifier separates infra-docs from runtime preview", () => {
   assert.equal(classifyDelivery(["package.json"]).fallback, "unknown_path");
   assert.equal(classifyDelivery(["deploy/web/index.html"]).deliveryClass, "blocked");
 });
+
+test("operation activity completion helper has a narrow shell contract", () => {
+  const helper = fs.readFileSync(path.resolve(import.meta.dirname, "../deploy/scripts/complete-operation-activities.sh"), "utf8");
+  assert.match(helper, /set -euo pipefail/);
+  assert.match(helper, /\^operation:agent-task:/);
+  assert.match(helper, /activity_type_id = 'operation'/);
+  assert.match(helper, /author = 'Codex'/);
+  assert.match(helper, /deleted_at_utc IS NULL/);
+  assert.match(helper, /status IN \('New', 'Done'\)/);
+  assert.match(helper, /\.backup/);
+  assert.match(helper, /BEGIN IMMEDIATE/);
+  assert.match(helper, /completed_at_utc = COALESCE/);
+  assert.doesNotMatch(helper, /activity_type_id = 'action'/);
+});
+
+test("operation activity completion helper backs up and verifies exact rows", { skip: !sqliteCli() }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "brai-complete-operation-"));
+  const db = path.join(root, "brai.sqlite");
+  const backups = path.join(root, "backups");
+  const sqlite = sqliteCli();
+  try {
+    fs.mkdirSync(backups);
+    spawnSync(sqlite, [db, `
+      CREATE TABLE activities (
+        id TEXT PRIMARY KEY,
+        activity_type_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        author TEXT NOT NULL,
+        status TEXT NOT NULL,
+        updated_at_utc TEXT NOT NULL,
+        completed_at_utc TEXT,
+        deleted_at_utc TEXT
+      );
+      INSERT INTO activities VALUES
+        ('operation:agent-task:test-one', 'operation', 'One', 'Codex', 'New', '2026-07-03T00:00:00.000Z', NULL, NULL),
+        ('operation:agent-task:test-two', 'operation', 'Two', 'Codex', 'New', '2026-07-03T00:00:00.000Z', NULL, NULL),
+        ('action-1', 'action', 'Action', 'User', 'New', '2026-07-03T00:00:00.000Z', NULL, NULL);
+    `], { stdio: "inherit" });
+
+    const result = spawnSync("bash", [
+      "deploy/scripts/complete-operation-activities.sh",
+      "--local",
+      "operation:agent-task:test-one",
+      "operation:agent-task:test-two",
+    ], {
+      cwd: path.resolve(import.meta.dirname, ".."),
+      env: {
+        ...process.env,
+        BRAI_DB: db,
+        BRAI_SQLITE_BACKUP_DIR: backups,
+        BRAI_SQLITE_BIN: sqlite,
+      },
+      encoding: "utf8",
+    });
+
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /backup=.*brai-before-complete-operation-activities-/);
+    assert.match(result.stdout, /updated=2/);
+    assert.match(result.stdout, /operation:agent-task:test-one/);
+    assert.match(result.stdout, /operation:agent-task:test-two/);
+    const rows = spawnSync(sqlite, [db, "SELECT id || ':' || status FROM activities ORDER BY id;"], { encoding: "utf8" });
+    assert.equal(rows.status, 0, rows.stderr);
+    assert.deepEqual(rows.stdout.trim().split("\n"), [
+      "action-1:New",
+      "operation:agent-task:test-one:Done",
+      "operation:agent-task:test-two:Done",
+    ]);
+    assert.equal(fs.readdirSync(backups).filter((name) => name.endsWith(".sqlite")).length, 1);
+
+    const rerun = spawnSync("bash", [
+      "deploy/scripts/complete-operation-activities.sh",
+      "--local",
+      "operation:agent-task:test-one",
+      "operation:agent-task:test-two",
+    ], {
+      cwd: path.resolve(import.meta.dirname, ".."),
+      env: {
+        ...process.env,
+        BRAI_DB: db,
+        BRAI_SQLITE_BACKUP_DIR: backups,
+        BRAI_SQLITE_BIN: sqlite,
+      },
+      encoding: "utf8",
+    });
+
+    assert.equal(rerun.status, 0, rerun.stderr || rerun.stdout);
+    assert.match(rerun.stdout, /backup=not_needed/);
+    assert.match(rerun.stdout, /updated=0/);
+    assert.equal(fs.readdirSync(backups).filter((name) => name.endsWith(".sqlite")).length, 1);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("operation activity completion helper rejects unsafe ids", () => {
+  const result = spawnSync("bash", [
+    "deploy/scripts/complete-operation-activities.sh",
+    "--local",
+    "action-1",
+  ], {
+    cwd: path.resolve(import.meta.dirname, ".."),
+    encoding: "utf8",
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Invalid operation activity id/);
+});
+
+function sqliteCli() {
+  const candidates = [
+    process.env.BRAI_TEST_SQLITE_BIN,
+    "/srv/opt/android-sdk/platform-tools/sqlite3",
+    "/usr/bin/sqlite3",
+  ].filter(Boolean);
+  return candidates.find((candidate) => fs.existsSync(candidate) && fs.statSync(candidate).mode & 0o111) ?? "";
+}
 
 test("native APK detector ignores OTA web-layer changes", () => {
   assert.equal(requiresNativeApkChange(["apps/brai_app/android/app/build.gradle"]), true);

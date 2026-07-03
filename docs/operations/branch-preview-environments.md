@@ -171,6 +171,15 @@ Ansible keeps `data`, `data/backups`, `brai.sqlite`, and existing WAL/SHM sideca
 by `brai:brai-deploy` with group-write modes so the runtime and deploy scripts share the
 same narrow maintenance boundary.
 
+Use `deploy/scripts/complete-operation-activities.sh <operation:agent-task:id>...` to
+mark Codex operation activities as `Done`. The default mode SSHes through
+`brai-deploy@localhost`, validates that every supplied id is an undeleted
+`activity_type_id='operation'` row authored by `Codex`, backs up before any write,
+updates only `New` rows, and prints the verified rows. Reruns over already `Done` rows
+are read-only. Read-only SQLite checks from the Codex execution namespace are fine, but
+live SQLite writes must use the host deploy context; remapped `nobody:nogroup` ownership
+in the Codex namespace is not authoritative for runtime write permissions.
+
 ## Server Setup
 
 Run Ansible as `root` or another server admin account with full `become`, not as the limited CI deploy user. The playbook creates `brai-deploy`; add the CI public SSH key to that user outside source.
