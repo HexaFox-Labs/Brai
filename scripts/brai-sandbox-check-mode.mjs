@@ -69,6 +69,13 @@ export function sandboxCheckMode(command, env = process.env) {
     };
   }
 
+  if (/\bscripts\/brai-preview-handoff\.sh\b/.test(text) || /\bnode scripts\/brai-task\.mjs (handoff|preview)\b/.test(text)) {
+    return {
+      mode: "require_escalated",
+      reason: "Brai handoff verifies Git metadata and GitHub delivery state; sandboxed Git/network state is not authoritative.",
+    };
+  }
+
   if (/\bdeploy\/scripts\/production-sqlite-maintenance\.sh\b/.test(text)) {
     const dbPath = env.BRAI_DB?.trim();
     if (dbPath && dbPath !== "/srv/projects/brai/data/brai.sqlite") {
