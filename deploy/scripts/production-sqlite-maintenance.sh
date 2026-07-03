@@ -11,6 +11,7 @@ usage() {
   cat >&2 <<USAGE
 Usage:
   $0 check
+  $0 repair-permissions
   $0 backup
   $0 exec-sql '<sql>'
   echo '<sql>' | $0 exec-sql
@@ -96,6 +97,24 @@ check() {
   "$SQLITE_BIN" "file:$DB_PATH?mode=ro" 'PRAGMA journal_mode;'
 }
 
+repair_permissions() {
+  local user
+  user="$(id -un)"
+  if [[ "$user" != "root" ]]; then
+    echo "SQLite permission repair must run as root, not $user" >&2
+    exit 2
+  fi
+  install -d -m 2775 -o "$SERVICE_USER" -g "$SERVICE_GROUP" "$(dirname "$DB_PATH")" "$BACKUP_DIR"
+  local path
+  for path in "$DB_PATH" "$DB_PATH-wal" "$DB_PATH-shm"; do
+    if [[ -e "$path" ]]; then
+      chown "$SERVICE_USER:$SERVICE_GROUP" "$path"
+      chmod 0664 "$path"
+    fi
+  done
+  check
+}
+
 backup() {
   require_writer
   require_sqlite
@@ -132,6 +151,9 @@ command="${1:-}"
 case "$command" in
   check)
     check
+    ;;
+  repair-permissions)
+    repair_permissions
     ;;
   backup)
     backup
