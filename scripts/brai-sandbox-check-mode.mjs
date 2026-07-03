@@ -62,6 +62,20 @@ export function sandboxCheckMode(command, env = process.env) {
     };
   }
 
+  if (/\bdeploy\/scripts\/complete-operation-activities\.sh\b/.test(text)) {
+    const dbPath = env.BRAI_DB?.trim();
+    if (dbPath && dbPath !== "/srv/projects/brai/data/brai.sqlite") {
+      return {
+        mode: "sandbox",
+        reason: "complete-operation-activities uses a non-production BRAI_DB path.",
+      };
+    }
+    return {
+      mode: "require_escalated",
+      reason: "complete-operation-activities enters the host deploy boundary and may write live SQLite.",
+    };
+  }
+
   if (/\bdeploy\/scripts\/classify-delivery\.mjs\b/.test(text)) {
     const explicitFiles = command.includes("--file") || Boolean(env.BRAI_CHANGED_FILES?.trim());
     return explicitFiles

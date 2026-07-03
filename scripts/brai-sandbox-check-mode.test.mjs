@@ -17,6 +17,16 @@ test("sandbox helper handles classify-delivery explicit files", () => {
   );
 });
 
+test("sandbox helper marks live operation completion as requiring escalation", () => {
+  assert.equal(sandboxCheckMode(["deploy/scripts/complete-operation-activities.sh", "operation:agent-task:x"]).mode, "require_escalated");
+  assert.equal(
+    sandboxCheckMode(["deploy/scripts/complete-operation-activities.sh", "--local", "operation:agent-task:x"], {
+      BRAI_DB: "/tmp/brai-test.sqlite",
+    }).mode,
+    "sandbox",
+  );
+});
+
 test("sandbox helper marks browser and Android commands", () => {
   assert.equal(sandboxCheckMode(["npm", "run", "app:e2e"]).mode, "require_escalated");
   assert.equal(sandboxCheckMode(["agent-browser", "open", "https://brightos.world"]).mode, "agent_browser");
