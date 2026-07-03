@@ -5,8 +5,8 @@ import { Resend } from 'resend';
 
 const DEFAULT_FROM = 'Brai <auth@mail.brightos.world>';
 const OTP_EXPIRES_IN_SECONDS = 5 * 60;
-const LOGO_DATA_URI = [
-  'data:image/png;base64,',
+const LOGO_CONTENT_ID = 'brai-logo';
+const LOGO_ATTACHMENT_CONTENT = [
   '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',
@@ -98,6 +98,14 @@ export function renderOtpEmail({ otp }) {
       '',
       'Brai · brightos.world'
     ].join('\n'),
+    attachments: [
+      {
+        content: LOGO_ATTACHMENT_CONTENT,
+        filename: 'brai-logo.png',
+        contentId: LOGO_CONTENT_ID,
+        contentType: 'image/png'
+      }
+    ],
     html: `<!doctype html>
 <html lang="ru">
   <head>
@@ -121,7 +129,7 @@ export function renderOtpEmail({ otp }) {
           <table role="presentation" class="email-card" width="100%" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;border-collapse:separate;background:#ffffff;border:1px solid #e4e4e7;border-radius:8px;box-shadow:0 18px 44px rgba(24,24,27,0.08);overflow:hidden;">
             <tr>
               <td class="card-pad" style="padding:40px 44px 34px;text-align:center;">
-                <img src="${LOGO_DATA_URI}" width="150" height="80" alt="Brai" style="display:block;width:150px;height:auto;margin:0 auto 28px;border:0;">
+                <img src="cid:${LOGO_CONTENT_ID}" width="150" height="80" alt="Brai" style="display:block;width:150px;height:auto;margin:0 auto 28px;border:0;">
                 <h1 style="margin:0;color:#18181b;font-size:24px;line-height:1.25;font-weight:700;">Ваш одноразовый код</h1>
                 <p style="margin:14px 0 0;color:#52525b;font-size:16px;line-height:1.55;">Введите этот код в Brai, чтобы завершить вход.</p>
                 <div class="otp-code" style="margin:30px 0 24px;color:#18181b;font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:48px;line-height:1.1;font-weight:800;letter-spacing:6px;white-space:nowrap;">${safeOtp}</div>
