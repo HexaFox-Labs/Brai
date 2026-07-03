@@ -152,6 +152,66 @@ test('accepted preview promotion records deployment and required build ledger ro
   }
 });
 
+test('accepted preview promotion uses release-note reason when source reason is generic', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'brai-promote-reason-fallback-'));
+  const sourceDb = path.join(tmp, 'source.sqlite');
+  const targetDb = path.join(tmp, 'target.sqlite');
+
+  try {
+    const repoRoot = path.resolve(import.meta.dirname, '../../..');
+    const source = new BraiStore(sourceDb);
+    source.recordDeployment({
+      environment: 'preview-a',
+      slot: 'A',
+      branch: 'codex/reason-fallback',
+      commit: 'abc-reason',
+      domain: 'a.test.brightos.world',
+      webOtaVersion: '0.0.42',
+      shortChanges: 'Исправлена причина версии.',
+      detailedChanges: 'Promotion не должен брать generic reason из deployment metadata.',
+      reason: 'Автоматическая доставка ветки',
+      deployedAtUtc: '2026-07-03T07:10:00.000Z'
+    });
+    source.close();
+
+    execFileSync(process.execPath, [
+      path.join(repoRoot, 'deploy/scripts/promote-deployment.mjs'),
+      '--source-db',
+      sourceDb,
+      '--target-db',
+      targetDb,
+      '--source-branch',
+      'codex/reason-fallback',
+      '--source-commit',
+      'abc-reason',
+      '--source-short-changes',
+      'Исправлена причина версии.',
+      '--source-details',
+      'Promotion не должен брать generic reason из deployment metadata.',
+      '--source-reason',
+      'Нужно сохранить authored reason из release notes.',
+      '--target-environment',
+      'prod',
+      '--target-branch',
+      'main',
+      '--target-commit',
+      'merge-reason',
+      '--target-domain',
+      'app.brightos.world',
+    ], { cwd: repoRoot });
+
+    const promoted = new BraiStore(targetDb);
+    try {
+      const build = promoted.db.prepare("SELECT reason FROM build_versions WHERE version_type_id = 'build' AND version = 2").get();
+      assert.equal(build.reason, 'Нужно сохранить authored reason из release notes.');
+    } finally {
+      promoted.close();
+    }
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('accepted promotion rejects missing authored source notes before deployment record', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bright-promote-release-disabled-'));
   const targetDb = path.join(tmp, 'target.sqlite');

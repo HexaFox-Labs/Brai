@@ -116,6 +116,7 @@ function usefulChanges(value) {
   if (/^Accepted \S+@\S+ without preview deployment metadata\.?$/i.test(oneLine)) return '';
   if (/^Accepted preview changes without authored release notes\.?$/i.test(oneLine)) return '';
   if (/^No authored preview release notes were available; audit metadata is stored separately\.?$/i.test(oneLine)) return '';
+  if (oneLine === 'Автоматическая доставка ветки') return '';
   if (!/[А-Яа-яЁё]/.test(oneLine)) return '';
   return text;
 }
