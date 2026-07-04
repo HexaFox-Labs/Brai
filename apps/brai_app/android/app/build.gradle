@@ -1,5 +1,6 @@
 apply plugin: 'com.android.application'
 apply plugin: 'org.jetbrains.kotlin.android'
+apply plugin: 'org.jetbrains.kotlin.plugin.compose'
 
 def androidKeystorePath = System.getenv('BRAI_ANDROID_KEYSTORE_PATH')
 def androidStorePassword = System.getenv('BRAI_ANDROID_STORE_PASSWORD')
@@ -41,6 +42,7 @@ android {
     }
     buildFeatures {
         buildConfig true
+        compose true
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_21
@@ -191,6 +193,7 @@ dependencies {
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation "androidx.glance:glance-appwidget:1.2.0-rc01"
     implementation project(':capacitor-android')
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"

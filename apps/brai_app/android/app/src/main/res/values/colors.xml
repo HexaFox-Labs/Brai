@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="brai_widget_background">#101314</color>
+    <color name="brai_widget_text">#F4F7F6</color>
+    <color name="brai_widget_muted">#AEB8B5</color>
+</resources>

@@ -71,6 +71,18 @@
             android:name=".airwhisper.RecordingService"
             android:exported="false"
             android:foregroundServiceType="microphone|dataSync" />
+
+        <receiver
+            android:name=".widget.BraiActionsWidgetReceiver"
+            android:exported="true"
+            android:label="${braiAppLabel} Actions">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/brai_actions_widget" />
+        </receiver>
     </application>
 
     <!-- Permissions -->
