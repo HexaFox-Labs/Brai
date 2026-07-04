@@ -11,12 +11,14 @@ import { ACTION_DELETE_COLLAPSE_MS } from "../sections/actions/constants";
 export function createBraiActionCommands({
   actions,
   flushActionPending,
+  publishActionsSnapshot,
   setActionPendingCount,
   setActions,
   setSyncStatus,
 }: {
   actions: ActivitiesState;
   flushActionPending: () => Promise<void>;
+  publishActionsSnapshot?: (nextActions: ActivitiesState) => void;
   setActionPendingCount: Dispatch<SetStateAction<number>>;
   setActions: Dispatch<SetStateAction<ActivitiesState>>;
   setSyncStatus: Dispatch<SetStateAction<SyncStatus>>;
@@ -24,7 +26,9 @@ export function createBraiActionCommands({
   async function queueActionEvent(event: Parameters<typeof enqueueActivityEvent>[0]) {
     await enqueueActivityEvent(event);
     const queued = await pendingActivityEvents();
-    setActions(projectActivitiesState(actions, queued));
+    const projected = projectActivitiesState(actions, queued);
+    setActions(projected);
+    publishActionsSnapshot?.(projected);
     setActionPendingCount(queued.length);
     setSyncStatus("pending_sync");
     await flushActionPending();
@@ -80,7 +84,9 @@ export function createBraiActionCommands({
     if (!changed) return;
 
     const queued = await pendingActivityEvents();
-    setActions(projectActivitiesState(actions, queued));
+    const projected = projectActivitiesState(actions, queued);
+    setActions(projected);
+    publishActionsSnapshot?.(projected);
     setActionPendingCount(queued.length);
     setSyncStatus("pending_sync");
     await flushActionPending();

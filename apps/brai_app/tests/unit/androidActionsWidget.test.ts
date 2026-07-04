@@ -51,8 +51,27 @@ describe("Android Actions widget bridge", () => {
     expect(plugin.saveSnapshot).toHaveBeenCalledWith({
       viewId: "today",
       serverRevision: 7,
+      snapshotVersion: expect.any(Number),
       actions: [{ id: "a2", title: "Второе", status: "Done" }],
     });
+  });
+
+  it("versions snapshots from action freshness so older state cannot overwrite newer widget data", async () => {
+    vi.stubGlobal("Capacitor", {
+      isNativePlatform: () => true,
+      getPlatform: () => "android",
+    });
+    const { saveAndroidActionsWidgetSnapshot } = await import("@/shared/platform/androidActionsWidget");
+
+    await saveAndroidActionsWidgetSnapshot(state());
+    await saveAndroidActionsWidgetSnapshot({
+      ...state(),
+      actions: [action("a1", "Первое", "Done", "2026-07-04T12:01:00.000Z")],
+    });
+
+    const first = plugin.saveSnapshot.mock.calls[0][0].snapshotVersion;
+    const second = plugin.saveSnapshot.mock.calls[1][0].snapshotVersion;
+    expect(second).toBeGreaterThan(first);
   });
 
   it("reads and acknowledges widget status changes", async () => {
@@ -91,7 +110,7 @@ function state(): ActivitiesState {
   };
 }
 
-function action(id: string, title: string, status: "New" | "Done") {
+function action(id: string, title: string, status: "New" | "Done", updatedAtUtc = "2026-07-04T10:00:00.000Z") {
   return {
     id,
     activity_type_id: "action" as const,
@@ -99,8 +118,8 @@ function action(id: string, title: string, status: "New" | "Done") {
     description_md: "",
     status,
     created_at_utc: "2026-07-04T10:00:00.000Z",
-    updated_at_utc: "2026-07-04T10:00:00.000Z",
-    completed_at_utc: status === "Done" ? "2026-07-04T10:30:00.000Z" : null,
+    updated_at_utc: updatedAtUtc,
+    completed_at_utc: status === "Done" ? updatedAtUtc : null,
     sort_order: null,
     deleted_at_utc: null,
     restored_at_utc: null,

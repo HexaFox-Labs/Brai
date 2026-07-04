@@ -25,6 +25,7 @@ data class WidgetActionStatusChange(
 data class WidgetActionsSnapshot(
     val viewId: String,
     val serverRevision: Long,
+    val snapshotVersion: Long,
     val actions: List<WidgetActionItem>,
     val hasSnapshot: Boolean
 )
@@ -33,77 +34,95 @@ class BraiActionsWidgetStore(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     fun loadSnapshot(viewId: String = DEFAULT_ACTIONS_WIDGET_VIEW_ID): WidgetActionsSnapshot {
-        val normalizedViewId = normalizeViewId(viewId)
-        val raw = prefs.getString(snapshotKey(normalizedViewId), null) ?: return WidgetActionsSnapshot(
-            viewId = normalizedViewId,
-            serverRevision = 0L,
-            actions = emptyList(),
-            hasSnapshot = false
-        )
-        return applyPending(parseSnapshot(raw, normalizedViewId))
+        return synchronized(LOCK) {
+            val normalizedViewId = normalizeViewId(viewId)
+            val raw = prefs.getString(snapshotKey(normalizedViewId), null) ?: return@synchronized WidgetActionsSnapshot(
+                viewId = normalizedViewId,
+                serverRevision = 0L,
+                snapshotVersion = 0L,
+                actions = emptyList(),
+                hasSnapshot = false
+            )
+            applyPending(parseSnapshot(raw, normalizedViewId))
+        }
     }
 
-    fun saveSnapshot(viewId: String, serverRevision: Long, actions: List<WidgetActionItem>) {
-        val snapshot = WidgetActionsSnapshot(
-            viewId = normalizeViewId(viewId),
-            serverRevision = serverRevision,
-            actions = actions,
-            hasSnapshot = true
-        )
-        writeSnapshot(applyPending(snapshot))
+    fun saveSnapshot(viewId: String, serverRevision: Long, snapshotVersion: Long, actions: List<WidgetActionItem>) {
+        synchronized(LOCK) {
+            val normalizedViewId = normalizeViewId(viewId)
+            val currentRaw = prefs.getString(snapshotKey(normalizedViewId), null)
+            val currentVersion = currentRaw?.let { parseSnapshot(it, normalizedViewId).snapshotVersion } ?: 0L
+            if (snapshotVersion < currentVersion) return
+            val snapshot = WidgetActionsSnapshot(
+                viewId = normalizedViewId,
+                serverRevision = serverRevision,
+                snapshotVersion = snapshotVersion,
+                actions = actions,
+                hasSnapshot = true
+            )
+            writeSnapshot(applyPending(snapshot))
+        }
     }
 
     fun enqueueStatusChange(viewId: String, actionId: String, status: String, baseServerRevision: Long) {
-        if (actionId.isBlank() || !isStatus(status)) return
-        val pending = pendingStatusChanges().toMutableList()
-        pending.add(
-            WidgetActionStatusChange(
-                id = UUID.randomUUID().toString(),
-                actionId = actionId,
-                status = status,
-                baseServerRevision = baseServerRevision,
-                occurredAtUtc = Instant.now().toString()
+        synchronized(LOCK) {
+            if (actionId.isBlank() || !isStatus(status)) return
+            val pending = pendingStatusChanges().toMutableList()
+            pending.add(
+                WidgetActionStatusChange(
+                    id = UUID.randomUUID().toString(),
+                    actionId = actionId,
+                    status = status,
+                    baseServerRevision = baseServerRevision,
+                    occurredAtUtc = Instant.now().toString()
+                )
             )
-        )
-        writePendingStatusChanges(pending)
+            writePendingStatusChanges(pending)
 
-        val snapshot = loadSnapshot(viewId)
-        if (!snapshot.hasSnapshot) return
-        writeSnapshot(snapshot.copy(actions = snapshot.actions.map { action ->
-            if (action.id == actionId) action.copy(status = status) else action
-        }))
+            val snapshot = loadSnapshot(viewId)
+            if (!snapshot.hasSnapshot) return
+            writeSnapshot(snapshot.copy(actions = snapshot.actions.map { action ->
+                if (action.id == actionId) action.copy(status = status) else action
+            }))
+        }
     }
 
     fun pendingStatusChanges(): List<WidgetActionStatusChange> {
-        val raw = prefs.getString(KEY_PENDING_STATUS_CHANGES, null) ?: return emptyList()
-        val array = runCatching { JSONArray(raw) }.getOrNull() ?: return emptyList()
-        return buildList {
-            for (index in 0 until array.length()) {
-                val item = array.optJSONObject(index) ?: continue
-                val id = item.optString("id").trim()
-                val actionId = item.optString("actionId").trim()
-                val status = item.optString("status").trim()
-                if (id.isBlank() || actionId.isBlank() || !isStatus(status)) continue
-                add(
-                    WidgetActionStatusChange(
-                        id = id,
-                        actionId = actionId,
-                        status = status,
-                        baseServerRevision = item.optLong("baseServerRevision", 0L),
-                        occurredAtUtc = item.optString("occurredAtUtc").ifBlank { Instant.now().toString() }
+        return synchronized(LOCK) {
+            val raw = prefs.getString(KEY_PENDING_STATUS_CHANGES, null) ?: return@synchronized emptyList()
+            val array = runCatching { JSONArray(raw) }.getOrNull() ?: return@synchronized emptyList()
+            buildList {
+                for (index in 0 until array.length()) {
+                    val item = array.optJSONObject(index) ?: continue
+                    val id = item.optString("id").trim()
+                    val actionId = item.optString("actionId").trim()
+                    val status = item.optString("status").trim()
+                    if (id.isBlank() || actionId.isBlank() || !isStatus(status)) continue
+                    add(
+                        WidgetActionStatusChange(
+                            id = id,
+                            actionId = actionId,
+                            status = status,
+                            baseServerRevision = item.optLong("baseServerRevision", 0L),
+                            occurredAtUtc = item.optString("occurredAtUtc").ifBlank { Instant.now().toString() }
+                        )
                     )
-                )
+                }
             }
         }
     }
 
     fun acknowledgeStatusChanges(ids: Set<String>) {
-        if (ids.isEmpty()) return
-        writePendingStatusChanges(pendingStatusChanges().filterNot { ids.contains(it.id) })
+        synchronized(LOCK) {
+            if (ids.isEmpty()) return
+            writePendingStatusChanges(pendingStatusChanges().filterNot { ids.contains(it.id) })
+        }
     }
 
     fun clear() {
-        prefs.edit().clear().apply()
+        synchronized(LOCK) {
+            prefs.edit().clear().commit()
+        }
     }
 
     private fun applyPending(snapshot: WidgetActionsSnapshot): WidgetActionsSnapshot {
@@ -119,6 +138,7 @@ class BraiActionsWidgetStore(context: Context) {
         prefs.edit().putString(snapshotKey(snapshot.viewId), JSONObject()
             .put("viewId", snapshot.viewId)
             .put("serverRevision", snapshot.serverRevision)
+            .put("snapshotVersion", snapshot.snapshotVersion)
             .put("updatedAtUtc", Instant.now().toString())
             .put("actions", JSONArray().also { array ->
                 snapshot.actions.forEach { action ->
@@ -129,13 +149,14 @@ class BraiActionsWidgetStore(context: Context) {
                         .put("status", action.status))
                 }
             })
-            .toString()).apply()
+            .toString()).commit()
     }
 
     private fun parseSnapshot(raw: String, fallbackViewId: String): WidgetActionsSnapshot {
         val json = runCatching { JSONObject(raw) }.getOrNull() ?: return WidgetActionsSnapshot(
             viewId = fallbackViewId,
             serverRevision = 0L,
+            snapshotVersion = 0L,
             actions = emptyList(),
             hasSnapshot = false
         )
@@ -154,6 +175,7 @@ class BraiActionsWidgetStore(context: Context) {
         return WidgetActionsSnapshot(
             viewId = normalizeViewId(json.optString("viewId", fallbackViewId)),
             serverRevision = json.optLong("serverRevision", 0L),
+            snapshotVersion = json.optLong("snapshotVersion", 0L),
             actions = actions,
             hasSnapshot = true
         )
@@ -169,7 +191,7 @@ class BraiActionsWidgetStore(context: Context) {
                     .put("baseServerRevision", change.baseServerRevision)
                     .put("occurredAtUtc", change.occurredAtUtc))
             }
-        }.toString()).apply()
+        }.toString()).commit()
     }
 
     private fun snapshotKey(viewId: String): String = "$KEY_SNAPSHOT_PREFIX${normalizeViewId(viewId)}"
@@ -182,5 +204,6 @@ class BraiActionsWidgetStore(context: Context) {
         private const val PREFS = "brai_actions_widget"
         private const val KEY_SNAPSHOT_PREFIX = "snapshot:"
         private const val KEY_PENDING_STATUS_CHANGES = "pending_status_changes"
+        private val LOCK = Any()
     }
 }

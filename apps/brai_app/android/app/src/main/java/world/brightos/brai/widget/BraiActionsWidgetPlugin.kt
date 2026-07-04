@@ -17,6 +17,7 @@ class BraiActionsWidgetPlugin : Plugin() {
     fun saveSnapshot(call: PluginCall) {
         val viewId = call.getString("viewId", DEFAULT_ACTIONS_WIDGET_VIEW_ID) ?: DEFAULT_ACTIONS_WIDGET_VIEW_ID
         val serverRevision = call.getLong("serverRevision", 0L) ?: 0L
+        val snapshotVersion = call.getLong("snapshotVersion", 0L) ?: 0L
         val actionsArray = call.getArray("actions", JSArray()) ?: JSArray()
         val actions = buildList {
             for (index in 0 until actionsArray.length()) {
@@ -29,7 +30,7 @@ class BraiActionsWidgetPlugin : Plugin() {
                 }
             }
         }
-        BraiActionsWidgetStore(context).saveSnapshot(viewId, serverRevision, actions)
+        BraiActionsWidgetStore(context).saveSnapshot(viewId, serverRevision, snapshotVersion, actions)
         updateWidgets()
         call.resolve()
     }

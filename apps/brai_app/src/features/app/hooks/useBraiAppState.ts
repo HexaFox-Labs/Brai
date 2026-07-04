@@ -359,11 +359,15 @@ export function useBraiAppState(initialSection: SectionId) {
         enqueued = true;
       }
 
+      const queued = await pendingActionEvents();
+      const canonical = await loadActionsState();
+      const projected = projectActionsState(canonical ?? currentActions, queued);
+      actionsRef.current = projected;
+      setActions(projected);
+      await publishAndroidActionsSnapshot(projected);
       await acknowledgeAndroidActionsWidgetStatusChanges(acknowledgedIds);
       if (!enqueued) return;
 
-      const queued = await pendingActionEvents();
-      setActions((current) => projectActionsState(current, queued));
       setActionPendingCount(queued.length);
       setSyncStatus("pending_sync");
       await flushActionPending();
@@ -617,6 +621,14 @@ export function useBraiAppState(initialSection: SectionId) {
     setSyncStatus(typeof navigator !== "undefined" && navigator.onLine ? "sync_failed" : "offline");
   }
 
+  async function publishAndroidActionsSnapshot(nextActions: ActionsState) {
+    if (!localSnapshotReady || syncStatus === "auth_required") return;
+    await saveAndroidActionsWidgetSnapshot(nextActions, {
+      viewId: DEFAULT_ACTIONS_WIDGET_VIEW_ID,
+      actions: nextActions.actions,
+    });
+  }
+
   useEffect(() => {
     apiRef.current = api;
     refreshAllRef.current = refreshAll;
@@ -859,6 +871,9 @@ export function useBraiAppState(initialSection: SectionId) {
   const actionCommands = createBraiActionCommands({
     actions,
     flushActionPending,
+    publishActionsSnapshot: (nextActions) => {
+      void publishAndroidActionsSnapshot(nextActions).catch(handleError);
+    },
     setActionPendingCount,
     setActions,
     setSyncStatus,

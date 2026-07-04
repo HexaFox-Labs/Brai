@@ -16,6 +16,7 @@ type BraiActionsWidgetPlugin = {
   saveSnapshot(options: {
     viewId: string;
     serverRevision: number;
+    snapshotVersion: number;
     actions: Array<Pick<ActivityItem, "id" | "title" | "status">>;
   }): Promise<void>;
   pendingStatusChanges(): Promise<{ changes: AndroidActionsWidgetStatusChange[] }>;
@@ -33,11 +34,13 @@ export async function saveAndroidActionsWidgetSnapshot(
   options: { viewId?: string; actions?: ActivityItem[] } = {},
 ): Promise<void> {
   if (!isAndroidShell()) return;
+  const actions = options.actions ?? state.actions;
   try {
     await BraiActionsWidget.saveSnapshot({
       viewId: options.viewId ?? DEFAULT_ACTIONS_WIDGET_VIEW_ID,
       serverRevision: state.server_revision,
-      actions: (options.actions ?? state.actions).map((action) => ({
+      snapshotVersion: snapshotVersionFor(state, actions),
+      actions: actions.map((action) => ({
         id: action.id,
         title: action.title,
         status: action.status,
@@ -78,4 +81,19 @@ export async function clearAndroidActionsWidgetData(): Promise<void> {
 
 function isAndroidShell(): boolean {
   return isNativeShell() && platformName() === "android";
+}
+
+function snapshotVersionFor(state: ActivitiesState, actions: ActivityItem[]): number {
+  let version = Math.max(0, state.server_revision, Date.parse(state.server_time_utc) || 0);
+  for (const action of [...actions, ...state.archived_actions]) {
+    version = Math.max(
+      version,
+      Date.parse(action.created_at_utc) || 0,
+      Date.parse(action.updated_at_utc) || 0,
+      Date.parse(action.completed_at_utc ?? "") || 0,
+      Date.parse(action.restored_at_utc ?? "") || 0,
+      Date.parse(action.deleted_at_utc ?? "") || 0,
+    );
+  }
+  return version;
 }
