@@ -74,7 +74,7 @@ describe("Android Actions widget bridge", () => {
     expect(second).toBeGreaterThan(first);
   });
 
-  it("uses an explicit snapshot version when the app serializes widget publishes", async () => {
+  it("uses an explicit snapshot version from the app state owner", async () => {
     vi.stubGlobal("Capacitor", {
       isNativePlatform: () => true,
       getPlatform: () => "android",
@@ -96,6 +96,7 @@ describe("Android Actions widget bridge", () => {
     plugin.pendingStatusChanges.mockResolvedValue({
       changes: [
         { id: "change-1", actionId: "a1", status: "Done", baseServerRevision: 7, occurredAtUtc: "2026-07-04T12:00:00.000Z" },
+        { id: "change-2", actionId: "a2", status: "New", baseServerRevision: 7, occurredAtUtc: "2026-07-04T12:01:00.000Z" },
         { id: "bad", actionId: "a2", status: "Broken", baseServerRevision: 7, occurredAtUtc: "2026-07-04T12:00:00.000Z" },
       ],
     });
@@ -105,10 +106,11 @@ describe("Android Actions widget bridge", () => {
 
     await expect(pendingAndroidActionsWidgetStatusChanges()).resolves.toEqual([
       { id: "change-1", actionId: "a1", status: "Done", baseServerRevision: 7, occurredAtUtc: "2026-07-04T12:00:00.000Z" },
+      { id: "change-2", actionId: "a2", status: "New", baseServerRevision: 7, occurredAtUtc: "2026-07-04T12:01:00.000Z" },
     ]);
-    await acknowledgeAndroidActionsWidgetStatusChanges(["change-1"]);
+    await acknowledgeAndroidActionsWidgetStatusChanges(["change-1", "change-2"]);
 
-    expect(plugin.acknowledgeStatusChanges).toHaveBeenCalledWith({ ids: ["change-1"] });
+    expect(plugin.acknowledgeStatusChanges).toHaveBeenCalledWith({ ids: ["change-1", "change-2"] });
   });
 });
 

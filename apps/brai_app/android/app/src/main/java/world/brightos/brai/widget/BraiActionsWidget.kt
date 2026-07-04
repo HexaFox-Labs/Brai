@@ -26,6 +26,7 @@ import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import world.brightos.brai.R
@@ -53,7 +54,7 @@ class ToggleBraiActionCallback : ActionCallback {
                 baseServerRevision = revision
             )
         }
-        BraiActionsWidget.updateEveryInstance(context, glanceId)
+        BraiActionsWidget.updateEveryInstanceNowAndSoon(context, glanceId)
     }
 }
 
@@ -73,6 +74,12 @@ object BraiActionsWidget : GlanceAppWidget() {
             .getGlanceIds(BraiActionsWidget::class.java)
             .filter { glanceId -> glanceId != first }
             .forEach { glanceId -> update(context, glanceId) }
+    }
+
+    suspend fun updateEveryInstanceNowAndSoon(context: Context, first: GlanceId? = null) {
+        updateEveryInstance(context, first)
+        delay(350)
+        updateEveryInstance(context)
     }
 }
 

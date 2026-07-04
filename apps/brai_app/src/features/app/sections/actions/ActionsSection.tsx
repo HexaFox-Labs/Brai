@@ -156,10 +156,10 @@ export function ActionsSection({
   async function submitMobile(title: string, descriptionMd: string) {
     if (mobileCreateSubmitInFlightRef.current) return;
     mobileCreateSubmitInFlightRef.current = true;
+    onMobileCreateDraftChange({ title: "", descriptionMd: "" });
+    closeMobileCreate();
     try {
       await onCreate(title, descriptionMd);
-      onMobileCreateDraftChange({ title: "", descriptionMd: "" });
-      closeMobileCreate();
     } finally {
       mobileCreateSubmitInFlightRef.current = false;
     }

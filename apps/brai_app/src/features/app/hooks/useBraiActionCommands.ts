@@ -138,16 +138,18 @@ export function createBraiActionCommands({
 
   async function delayActionProjection() {
     const queued = await pendingActivityEvents();
+    const projectedNow = projectActivitiesState(currentActions(), queued);
     setActionPendingCount(queued.length);
     setSyncStatus("pending_sync");
+    void publishActionsSnapshot?.(projectedNow).catch(() => undefined);
     window.setTimeout(() => {
       let projected = currentActions();
       setActions((current) => {
         projected = projectActivitiesState(current, queued);
         return projected;
       });
-      void publishActionsSnapshot?.(projected);
-      void flushActionPending();
+      void publishActionsSnapshot?.(projected).catch(() => undefined);
+      void flushActionPending().catch(() => undefined);
     }, ACTION_DELETE_COLLAPSE_MS);
   }
 

@@ -64,7 +64,6 @@ export function useBraiAppState(initialSection: SectionId) {
   const activeRef = useRef(false);
   const androidStopInFlightRef = useRef(false);
   const androidWidgetStatusInFlightRef = useRef(false);
-  const androidActionsPublishTailRef = useRef<Promise<void>>(Promise.resolve());
   const androidActionsSnapshotVersionRef = useRef(0);
   const actionFlushInFlightRef = useRef(false);
   const actionFlushQueuedRef = useRef(false);
@@ -356,12 +355,22 @@ export function useBraiAppState(initialSection: SectionId) {
       const accepted =
         response.state.server_revision >= actionsRevisionRef.current && (await saveActionsState(response.state));
       const remaining = await pendingActionEvents();
-      const currentState = accepted ? response.state : (await loadActionsState()) ?? response.state;
-      if (currentState.server_revision >= actionsRevisionRef.current) {
-        actionsRevisionRef.current = currentState.server_revision;
-        const projected = projectActionsState(currentState, remaining);
-        setActionsSnapshot(projected);
-        await publishAndroidActionsSnapshot(projected);
+      let projected: ActionsState | null = null;
+      if (accepted) {
+        actionsRevisionRef.current = response.state.server_revision;
+        projected = projectActionsState(response.state, remaining);
+      } else {
+        const cachedState = await loadActionsState();
+        if (cachedState && cachedState.server_revision > actionsRevisionRef.current) {
+          actionsRevisionRef.current = cachedState.server_revision;
+          projected = projectActionsState(cachedState, remaining);
+        } else {
+          projected = projectActionsState(actionsRef.current, remaining);
+        }
+      }
+      if (projected) {
+        setActionsAndRef(projected);
+        void publishAndroidActionsSnapshot(projected).catch(() => undefined);
       }
       setActionPendingCount(remaining.length);
       const [timerQueued, inboxQueued] = await Promise.all([pendingEvents(), pendingInboxEvents()]);
@@ -666,15 +675,11 @@ export function useBraiAppState(initialSection: SectionId) {
     // Native widget taps bump the stored version by +1; JS advances in wider steps to avoid equal-version drops.
     const snapshotVersion = Math.max(Date.now() * 1000, androidActionsSnapshotVersionRef.current + 1000);
     androidActionsSnapshotVersionRef.current = snapshotVersion;
-    const task = androidActionsPublishTailRef.current.catch(() => undefined).then(() =>
-      saveAndroidActionsWidgetSnapshot(nextActions, {
-        viewId: DEFAULT_ACTIONS_WIDGET_VIEW_ID,
-        actions: nextActions.actions,
-        snapshotVersion,
-      }),
-    );
-    androidActionsPublishTailRef.current = task;
-    return task;
+    return saveAndroidActionsWidgetSnapshot(nextActions, {
+      viewId: DEFAULT_ACTIONS_WIDGET_VIEW_ID,
+      actions: nextActions.actions,
+      snapshotVersion,
+    });
   }, [localSnapshotReady, syncStatus]);
 
   useEffect(() => {

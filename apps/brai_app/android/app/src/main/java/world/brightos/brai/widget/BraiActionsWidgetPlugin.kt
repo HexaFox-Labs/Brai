@@ -37,7 +37,7 @@ class BraiActionsWidgetPlugin : Plugin() {
                 withContext(Dispatchers.IO) {
                     BraiActionsWidgetStore(context).saveSnapshot(viewId, serverRevision, snapshotVersion, actions)
                 }
-                BraiActionsWidget.updateEveryInstance(context)
+                BraiActionsWidget.updateEveryInstanceNowAndSoon(context)
                 call.resolve()
             } catch (error: Exception) {
                 call.reject("widget_update_failed", error)
@@ -82,7 +82,7 @@ class BraiActionsWidgetPlugin : Plugin() {
                 withContext(Dispatchers.IO) {
                     BraiActionsWidgetStore(context).clear()
                 }
-                BraiActionsWidget.updateEveryInstance(context)
+                BraiActionsWidget.updateEveryInstanceNowAndSoon(context)
                 call.resolve()
             } catch (error: Exception) {
                 call.reject("widget_clear_failed", error)

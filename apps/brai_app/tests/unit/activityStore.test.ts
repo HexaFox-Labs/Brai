@@ -188,6 +188,14 @@ describe("action store", () => {
     expect((await loadActivitiesState())?.actions[0].title).toBe("Фокус");
     expect(await getMeta<number>("lastActionServerRevision")).toBe(5);
   });
+
+  it("does not overwrite cached actions with equal-revision stale server snapshots", async () => {
+    expect(await saveActivitiesState(state(5, "Фокус", "новое описание"))).toBe(true);
+    expect(await saveActivitiesState(state(5, "Фокус", ""))).toBe(false);
+
+    expect((await loadActivitiesState())?.actions[0].description_md).toBe("новое описание");
+    expect(await getMeta<number>("lastActionServerRevision")).toBe(5);
+  });
 });
 
 function state(serverRevision: number, title: string, descriptionMd = ""): ActivitiesState {
