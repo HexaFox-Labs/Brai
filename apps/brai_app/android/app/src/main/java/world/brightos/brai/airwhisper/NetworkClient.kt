@@ -25,6 +25,17 @@ data class AccessResponse(
     val displayName: String
 )
 
+data class BraiActionItem(
+    val id: String,
+    val title: String,
+    val status: String
+)
+
+data class BraiActionsResponse(
+    val serverRevision: Long,
+    val actions: List<BraiActionItem>
+)
+
 class ServerResponseException(
     val statusCode: Int,
     val code: String,
@@ -150,6 +161,53 @@ class NetworkClient(context: Context) {
         if (attachments.length() > 0) body.put("attachments", attachments)
         val bytes = body.toString().toByteArray(Charsets.UTF_8)
         connection.outputStream.use { it.write(bytes) }
+        readJson(connection)
+    }
+
+    fun actions(): BraiActionsResponse {
+        val json = readJson(openAuthenticatedConnection("/v1/brai-cmd/activities", "GET"))
+        val items = json.optJSONArray("activities") ?: JSONArray()
+        val actions = buildList {
+            for (index in 0 until items.length()) {
+                val item = items.optJSONObject(index) ?: continue
+                val id = item.optString("id").trim()
+                val title = item.optString("title").trim()
+                val status = item.optString("status").trim()
+                if (id.isNotBlank() && title.isNotBlank()) add(BraiActionItem(id, title, status))
+            }
+        }
+        return BraiActionsResponse(
+            serverRevision = json.optLong("server_revision", 0L),
+            actions = actions
+        )
+    }
+
+    fun setActionStatus(actionId: String, status: String, baseServerRevision: Long) {
+        val sequence = config.nextWidgetActionSequence()
+        val eventId = "${config.installId}:widget-action:$sequence"
+        val now = java.time.Instant.now().toString()
+        val event = JSONObject()
+            .put("event_id", eventId)
+            .put("client_sequence", sequence)
+            .put("change_type", "set_status")
+            .put("activity_id", actionId)
+            .put("occurred_at_utc", now)
+            .put("base_server_revision", baseServerRevision)
+            .put("payload_version", 1)
+            .put("payload", JSONObject().put("status", status))
+        val body = JSONObject()
+            .put("device", JSONObject()
+                .put("device_id", config.installId)
+                .put("platform", "android")
+                .put("display_name", "${BuildConfig.BRAI_APP_LABEL} Widget"))
+            .put("events", JSONArray().put(event))
+            .toString()
+            .toByteArray(Charsets.UTF_8)
+        val connection = openAuthenticatedConnection("/v1/brai-cmd/activities/events/sync", "POST").apply {
+            doOutput = true
+            setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        }
+        connection.outputStream.use { it.write(body) }
         readJson(connection)
     }
 

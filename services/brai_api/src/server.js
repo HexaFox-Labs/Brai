@@ -271,6 +271,44 @@ export function createBraiServer({
         return;
       }
 
+      if (url.pathname === '/v1/brai-cmd/activities') {
+        if (req.method !== 'GET') {
+          sendJson(req, res, 405, { error: 'method_not_allowed' });
+          return;
+        }
+        requireAirWhisperAccess(req, store);
+        const ownerUserId = store.primaryUserId();
+        const state = await withUserScope(ownerUserId, () => activitiesState(store, now()));
+        sendJson(req, res, 200, state);
+        return;
+      }
+
+      if (url.pathname === '/v1/brai-cmd/activities/events/sync') {
+        if (req.method !== 'POST') {
+          sendJson(req, res, 405, { error: 'method_not_allowed' });
+          return;
+        }
+        requireAirWhisperAccess(req, store);
+        const requestNow = now();
+        const body = await readJson(req, { limit: 256 * 1024 });
+        const ownerUserId = store.primaryUserId();
+        const result = await withUserScope(ownerUserId, () => store.syncActivityEvents({
+          device: body.device,
+          events: body.events,
+          lastKnownServerTimeUtc: body.last_known_server_time_utc,
+          nowIso: requestNow.toISOString()
+        }));
+        const state = await withUserScope(ownerUserId, () => activitiesState(store, requestNow));
+        const responseBody = { ...result, state };
+        broadcast(sockets, {
+          type: 'activities_synced',
+          activities_state: state,
+          actions_state: actionsCompatState(state)
+        }, ownerUserId);
+        sendJson(req, res, 200, responseBody);
+        return;
+      }
+
       if (isAirWhisperPublicRoute(url.pathname)) {
         await handleAirWhisperPublicRoute({ req, res, url, store, runtime: airWhisperRuntime, sendJson });
         return;

@@ -116,6 +116,13 @@ class ConfigStore(context: Context) {
             .apply()
     }
 
+    fun nextWidgetActionSequence(): Long {
+        val next = (prefs.getLong(AppConstants.KEY_WIDGET_ACTION_SEQUENCE, 0L) + 1L)
+            .coerceAtLeast(System.currentTimeMillis())
+        prefs.edit().putLong(AppConstants.KEY_WIDGET_ACTION_SEQUENCE, next).apply()
+        return next
+    }
+
     companion object {
         private const val LEGACY_AUTH_TOKEN_PLACEHOLDER = "replace-with-local-token"
 
