@@ -167,14 +167,14 @@ if [[ "$ENVIRONMENT" != "prod" ]]; then
   fi
 fi
 
-if [[ "$ENVIRONMENT" == preview-* ]]; then
-  echo "Marking preview slot ready..."
-  "$SCRIPT_DIR/preview-slots.sh" ready "$BRANCH" "$COMMIT" >/dev/null
-fi
-
 if command -v systemctl >/dev/null 2>&1 && [[ "${BRAI_RESTART_SERVICE:-true}" != "false" ]]; then
   echo "Restarting $SERVICE_NAME..."
   "${BRAI_SUDO:-sudo}" systemctl restart "$SERVICE_NAME"
+fi
+
+if [[ "$ENVIRONMENT" == preview-* ]]; then
+  echo "Marking preview slot ready..."
+  "$SCRIPT_DIR/preview-slots.sh" ready "$BRANCH" "$COMMIT" >/dev/null
 fi
 
 echo "Deployed $BRANCH@$COMMIT to $ENVIRONMENT ($DOMAIN) with bundle $BUNDLE_VERSION."

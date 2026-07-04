@@ -65,6 +65,48 @@ test('version endpoint returns build ledger, APK line, and release-index OTA tar
   }
 });
 
+test('version endpoint returns preview APK release metadata from release index', async () => {
+  const fixture = await createFixture(['2026-06-29T12:00:00.000Z'], {
+    releaseFiles: {
+      'releases.json': JSON.stringify({
+        schemaVersion: 2,
+        sections: {
+          production: {
+            file: 'brai-v2-preview7.apk',
+            apkVersion: 2,
+            versionCode: 20007,
+            releaseKey: 'a',
+            apkBuildKind: 'preview',
+            previewIteration: 7,
+            publishedAt: '2026-07-04T20:23:42Z',
+            capabilities: ['AccessibilityService']
+          }
+        }
+      })
+    }
+  });
+
+  try {
+    const response = await request(fixture.url, '/v1/version');
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body.target_apk, {
+      file: 'brai-v2-preview7.apk',
+      version: 2,
+      version_code: 20007,
+      release_key: 'a',
+      apk_build_kind: 'preview',
+      preview_iteration: 7,
+      release_url: '/releases/',
+      published_at: '2026-07-04T20:23:42Z',
+      capabilities: ['AccessibilityService']
+    });
+    assert.deepEqual(response.body.apk_release, response.body.target_apk);
+  } finally {
+    await fixture.close();
+  }
+});
+
 test('version endpoint requires auth', async () => {
   const fixture = await createFixture(['2026-06-29T12:00:00.000Z']);
 

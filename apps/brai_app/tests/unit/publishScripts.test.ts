@@ -242,6 +242,15 @@ describe("mobile OTA publish scripts", () => {
     expect(buildApk).toContain('/srv/opt/android-build-env/build-android.sh "$ROOT/apps/brai_app/android" "$GRADLE_TASK"');
   });
 
+  it("marks preview ready only after the service restart succeeds", async () => {
+    const deployBranch = await readFile(path.join(workspaceRoot, "deploy/scripts/deploy-branch.sh"), "utf8");
+    const restartIndex = deployBranch.indexOf('"${BRAI_SUDO:-sudo}" systemctl restart "$SERVICE_NAME"');
+    const readyIndex = deployBranch.indexOf('"$SCRIPT_DIR/preview-slots.sh" ready "$BRANCH" "$COMMIT"');
+
+    expect(restartIndex).toBeGreaterThan(0);
+    expect(readyIndex).toBeGreaterThan(restartIndex);
+  });
+
   it("resolves OTA app versions from the build ledger before deployed files", async () => {
     const root = await fixtureRoot("brai-apk-version-resolve-");
     await writeStaticExport(root, "stale-public-version");
