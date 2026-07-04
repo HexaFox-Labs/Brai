@@ -29,9 +29,6 @@ import androidx.glance.unit.ColorProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import world.brightos.brai.R
-import world.brightos.brai.airwhisper.BraiActionItem
-import world.brightos.brai.airwhisper.NetworkClient
-import world.brightos.brai.airwhisper.ServerResponseException
 
 class BraiActionsWidgetReceiver : GlanceAppWidgetReceiver() {
     override val glanceAppWidget: GlanceAppWidget = BraiActionsWidget
@@ -43,10 +40,13 @@ class ToggleBraiActionCallback : ActionCallback {
         val nextStatus = parameters[NextStatusKey]?.trim().orEmpty()
         val revision = parameters[RevisionKey]?.toLongOrNull() ?: 0L
         if (actionId.isBlank() || nextStatus !in setOf("New", "Done")) return
-        runCatching {
-            withContext(Dispatchers.IO) {
-                NetworkClient(context).setActionStatus(actionId, nextStatus, revision)
-            }
+        withContext(Dispatchers.IO) {
+            BraiActionsWidgetStore(context).enqueueStatusChange(
+                viewId = DEFAULT_ACTIONS_WIDGET_VIEW_ID,
+                actionId = actionId,
+                status = nextStatus,
+                baseServerRevision = revision
+            )
         }
         BraiActionsWidget.updateAll(context)
     }
@@ -125,25 +125,17 @@ private fun BraiActionsWidgetContent(state: WidgetState) {
 }
 
 private fun loadWidgetState(context: Context): WidgetState =
-    runCatching {
-        val response = NetworkClient(context).actions()
-        WidgetState(response.serverRevision, response.actions, null)
-    }.getOrElse { error ->
-        WidgetState(0L, emptyList(), widgetError(error))
-    }
-
-private fun widgetError(error: Throwable): String =
-    if (error is ServerResponseException && error.statusCode == 401) {
-        "Откройте Brai Cmd"
-    } else if (error is IllegalArgumentException) {
-        "Откройте Brai Cmd"
-    } else {
-        "Не удалось загрузить"
+    BraiActionsWidgetStore(context).loadSnapshot(DEFAULT_ACTIONS_WIDGET_VIEW_ID).let { snapshot ->
+        WidgetState(
+            serverRevision = snapshot.serverRevision,
+            actions = snapshot.actions,
+            message = if (snapshot.hasSnapshot) null else "Откройте Brai"
+        )
     }
 
 private data class WidgetState(
     val serverRevision: Long,
-    val actions: List<BraiActionItem>,
+    val actions: List<WidgetActionItem>,
     val message: String?
 )
 

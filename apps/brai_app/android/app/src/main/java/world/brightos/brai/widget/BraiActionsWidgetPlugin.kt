@@ -1,0 +1,79 @@
+package world.brightos.brai.widget
+
+import androidx.glance.appwidget.updateAll
+import com.getcapacitor.JSArray
+import com.getcapacitor.JSObject
+import com.getcapacitor.Plugin
+import com.getcapacitor.PluginCall
+import com.getcapacitor.PluginMethod
+import com.getcapacitor.annotation.CapacitorPlugin
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+
+@CapacitorPlugin(name = "BraiActionsWidget")
+class BraiActionsWidgetPlugin : Plugin() {
+    @PluginMethod
+    fun saveSnapshot(call: PluginCall) {
+        val viewId = call.getString("viewId", DEFAULT_ACTIONS_WIDGET_VIEW_ID) ?: DEFAULT_ACTIONS_WIDGET_VIEW_ID
+        val serverRevision = call.getLong("serverRevision", 0L) ?: 0L
+        val actionsArray = call.getArray("actions", JSArray()) ?: JSArray()
+        val actions = buildList {
+            for (index in 0 until actionsArray.length()) {
+                val item = actionsArray.optJSONObject(index) ?: continue
+                val id = item.optString("id").trim()
+                val title = item.optString("title").trim()
+                val status = item.optString("status").trim()
+                if (id.isNotBlank() && title.isNotBlank() && (status == "New" || status == "Done")) {
+                    add(WidgetActionItem(id = id, title = title, status = status))
+                }
+            }
+        }
+        BraiActionsWidgetStore(context).saveSnapshot(viewId, serverRevision, actions)
+        updateWidgets()
+        call.resolve()
+    }
+
+    @PluginMethod
+    fun pendingStatusChanges(call: PluginCall) {
+        val result = JSObject()
+        val array = JSArray()
+        BraiActionsWidgetStore(context).pendingStatusChanges().forEach { change ->
+            array.put(JSObject()
+                .put("id", change.id)
+                .put("actionId", change.actionId)
+                .put("status", change.status)
+                .put("baseServerRevision", change.baseServerRevision)
+                .put("occurredAtUtc", change.occurredAtUtc))
+        }
+        result.put("changes", array)
+        call.resolve(result)
+    }
+
+    @PluginMethod
+    fun acknowledgeStatusChanges(call: PluginCall) {
+        val ids = (call.getArray("ids", JSArray()) ?: JSArray()).let { array ->
+            buildSet {
+                for (index in 0 until array.length()) {
+                    val id = array.optString(index).trim()
+                    if (id.isNotBlank()) add(id)
+                }
+            }
+        }
+        BraiActionsWidgetStore(context).acknowledgeStatusChanges(ids)
+        call.resolve()
+    }
+
+    @PluginMethod
+    fun clear(call: PluginCall) {
+        BraiActionsWidgetStore(context).clear()
+        updateWidgets()
+        call.resolve()
+    }
+
+    private fun updateWidgets() {
+        CoroutineScope(Dispatchers.Main).launch {
+            BraiActionsWidget.updateAll(context)
+        }
+    }
+}

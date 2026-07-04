@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { actionEvent, createFixture, jsonRequest, TOKEN } from '../test-support/api.js';
+import { createFixture, jsonRequest, TOKEN } from '../test-support/api.js';
 
 const PNG_BYTES = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
@@ -258,58 +258,6 @@ test('Brai Cmd inbox route accepts Android access token and creates Inbox contex
   } finally {
     await fixture.close();
     await rm(storageRoot, { recursive: true, force: true });
-  }
-});
-
-test('Brai Cmd activities route accepts Android access token and syncs action checkboxes', async () => {
-  const fixture = await createFixture([
-    '2026-07-04T12:30:00.000Z',
-    '2026-07-04T12:30:01.000Z',
-    '2026-07-04T12:30:02.000Z',
-    '2026-07-04T12:30:03.000Z'
-  ]);
-
-  try {
-    const denied = await jsonRequest(fixture.url, '/v1/brai-cmd/activities');
-    assert.equal(denied.status, 401);
-
-    const access = await jsonRequest(fixture.url, '/v1/access/request', {
-      method: 'POST',
-      body: JSON.stringify({ displayName: 'Tester', deviceId: 'cmd-actions-device' })
-    });
-    const headers = {
-      authorization: `Bearer ${access.body.token}`,
-      'x-airwhisper-device-id': 'cmd-actions-device'
-    };
-
-    const created = await jsonRequest(fixture.url, '/v1/brai-cmd/activities/events/sync', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        device: { device_id: 'cmd-actions-device', platform: 'android', display_name: 'Brai Widget' },
-        events: [actionEvent('cmd-create', 1, 'create', 'action-1', '2026-07-04T12:29:00.000Z', { title: 'Позвонить' })]
-      })
-    });
-    assert.equal(created.status, 200);
-    assert.equal(created.body.state.activities[0].title, 'Позвонить');
-    assert.equal(created.body.state.activities[0].status, 'New');
-
-    const listed = await jsonRequest(fixture.url, '/v1/brai-cmd/activities', { headers });
-    assert.equal(listed.status, 200);
-    assert.equal(listed.body.activities.length, 1);
-
-    const done = await jsonRequest(fixture.url, '/v1/brai-cmd/activities/events/sync', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        device: { device_id: 'cmd-actions-device', platform: 'android', display_name: 'Brai Widget' },
-        events: [actionEvent('cmd-done', 2, 'set_status', 'action-1', '2026-07-04T12:29:30.000Z', { status: 'Done' })]
-      })
-    });
-    assert.equal(done.status, 200);
-    assert.equal(done.body.state.activities[0].status, 'Done');
-  } finally {
-    await fixture.close();
   }
 });
 

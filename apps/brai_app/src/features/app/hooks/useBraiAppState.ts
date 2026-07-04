@@ -3,9 +3,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BraiApi } from "@/shared/api/braiApi";
 import { defaultApiBase } from "@/shared/config/runtime";
+import {
+  acknowledgeAndroidActionsWidgetStatusChanges,
+  clearAndroidActionsWidgetData,
+  DEFAULT_ACTIONS_WIDGET_VIEW_ID,
+  pendingAndroidActionsWidgetStatusChanges,
+  saveAndroidActionsWidgetSnapshot,
+} from "@/shared/platform/androidActionsWidget";
 import { consumeAndroidTimerStopRequest, startAndroidTimerNotification, stopAndroidTimerNotification } from "@/shared/platform/androidTimerNotification";
 import { isNativeShell } from "@/shared/platform/platform";
-import { acknowledgeActionEvents, loadActionsState, markActionAttempt, markActionFailure, pendingActionEvents, projectActionsState, saveActionsState } from "@/shared/storage/activityStore";
+import { acknowledgeActionEvents, enqueueActivityEvent, loadActionsState, markActionAttempt, markActionFailure, pendingActionEvents, projectActionsState, saveActionsState } from "@/shared/storage/activityStore";
 import { ensureClientMeta, ensureClientUser } from "@/shared/storage/db";
 import { acknowledgeInboxEvents, loadInboxState, markInboxAttempt, markInboxFailure, pendingInboxEvents, projectInboxState, saveInboxState } from "@/shared/storage/inboxStore";
 import { getBraiLocalStorageItem, setBraiLocalStorageItem } from "@/shared/storage/localStorageKeys";
@@ -47,16 +54,19 @@ export function useBraiAppState(initialSection: SectionId) {
   const applyServerStateRef = useRef<(state: TimerState) => Promise<void>>(async () => undefined);
   const applyActivitiesStateRef = useRef<(state: ActionsState) => Promise<void>>(async () => undefined);
   const applyInboxStateRef = useRef<(state: InboxState) => Promise<void>>(async () => undefined);
+  const consumeAndroidActionsWidgetStatusChangesRef = useRef<() => Promise<void>>(async () => undefined);
   const timerRevisionRef = useRef(0);
   const actionsRevisionRef = useRef(0);
   const inboxRevisionRef = useRef(0);
   const historyGoalRevisionRef = useRef(0);
   const activeRef = useRef(false);
   const androidStopInFlightRef = useRef(false);
+  const androidWidgetStatusInFlightRef = useRef(false);
   const timerFlushTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stopTimerRef = useRef<() => Promise<void>>(async () => undefined);
   const [timer, setTimer] = useState<TimerState>(() => emptyTimerState());
   const [actions, setActions] = useState<ActionsState>(() => emptyActionsState());
+  const actionsRef = useRef<ActionsState>(actions);
   const [inbox, setInbox] = useState<InboxState>(() => emptyInboxState());
   const [history, setHistory] = useState<HistoryData>(() => emptyHistory());
   const [goal, setGoal] = useState<GoalData>(() => emptyGoal());
@@ -321,6 +331,47 @@ export function useBraiAppState(initialSection: SectionId) {
     }
   }
 
+  async function consumeAndroidActionsWidgetStatusChanges() {
+    if (androidWidgetStatusInFlightRef.current) return;
+    androidWidgetStatusInFlightRef.current = true;
+    try {
+      const changes = await pendingAndroidActionsWidgetStatusChanges();
+      if (changes.length === 0) return;
+
+      const currentActions = actionsRef.current;
+      const statusById = new Map(currentActions.actions.map((action) => [action.id, action.status]));
+      const acknowledgedIds: string[] = [];
+      let enqueued = false;
+      for (const change of changes) {
+        const currentStatus = statusById.get(change.actionId);
+        if (!currentStatus || currentStatus === change.status) {
+          acknowledgedIds.push(change.id);
+          continue;
+        }
+        await enqueueActivityEvent({
+          type: "set_status",
+          actionId: change.actionId,
+          payload: { status: change.status },
+          baseServerRevision: currentActions.server_revision,
+        });
+        statusById.set(change.actionId, change.status);
+        acknowledgedIds.push(change.id);
+        enqueued = true;
+      }
+
+      await acknowledgeAndroidActionsWidgetStatusChanges(acknowledgedIds);
+      if (!enqueued) return;
+
+      const queued = await pendingActionEvents();
+      setActions((current) => projectActionsState(current, queued));
+      setActionPendingCount(queued.length);
+      setSyncStatus("pending_sync");
+      await flushActionPending();
+    } finally {
+      androidWidgetStatusInFlightRef.current = false;
+    }
+  }
+
   async function refreshInboxAndFlush(sourceApi = apiRef.current) {
     try {
       const nextInbox = await sourceApi.inbox();
@@ -573,6 +624,8 @@ export function useBraiAppState(initialSection: SectionId) {
     applyServerStateRef.current = applyServerState;
     applyActivitiesStateRef.current = applyActivitiesState;
     applyInboxStateRef.current = applyInboxState;
+    consumeAndroidActionsWidgetStatusChangesRef.current = consumeAndroidActionsWidgetStatusChanges;
+    actionsRef.current = actions;
   });
 
   useEffect(() => {
@@ -639,6 +692,38 @@ export function useBraiAppState(initialSection: SectionId) {
     applyActivitiesStateRef,
     applyInboxStateRef,
   });
+
+  useEffect(() => {
+    if (!localSnapshotReady) return;
+    if (syncStatus === "auth_required") {
+      void clearAndroidActionsWidgetData();
+      return;
+    }
+    void saveAndroidActionsWidgetSnapshot(actions, {
+      viewId: DEFAULT_ACTIONS_WIDGET_VIEW_ID,
+      actions: actions.actions,
+    });
+  }, [actions, localSnapshotReady, syncStatus]);
+
+  useEffect(() => {
+    if (!localSnapshotReady || syncStatus === "auth_required") return undefined;
+    let cancelled = false;
+    const consume = () => {
+      if (!cancelled) void consumeAndroidActionsWidgetStatusChangesRef.current().catch(handleError);
+    };
+    consume();
+    const interval = window.setInterval(consume, 1000);
+    window.addEventListener("focus", consume);
+    window.addEventListener("pageshow", consume);
+    document.addEventListener("visibilitychange", consume);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", consume);
+      window.removeEventListener("pageshow", consume);
+      document.removeEventListener("visibilitychange", consume);
+    };
+  }, [localSnapshotReady, syncStatus]);
 
   const active = timer.active_session != null;
   const activeStartedAtUtc = timer.active_session?.started_at_utc ?? null;
