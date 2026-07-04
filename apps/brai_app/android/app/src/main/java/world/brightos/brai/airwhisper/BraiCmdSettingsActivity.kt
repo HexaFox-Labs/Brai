@@ -26,7 +26,7 @@ import android.widget.Switch
 import android.widget.TextView
 import world.brightos.brai.capabilities.BraiAccessibilityService
 
-class AirWhisperSettingsActivity : Activity() {
+class BraiCmdSettingsActivity : Activity() {
     private lateinit var ui: MainUi
     private lateinit var config: ConfigStore
     private lateinit var overallStatus: TextView
@@ -86,20 +86,20 @@ class AirWhisperSettingsActivity : Activity() {
         }
 
         root.addView(TextView(this).apply {
-            text = "AirWhisper"
+            text = "Brai Cmd"
             textSize = 28f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(COLOR_TEXT)
         })
         root.addView(TextView(this).apply {
-            text = "Bright OS - операционная система жизни"
+            text = "Команды поверх приложений"
             textSize = 14f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(COLOR_ACCENT_TEXT)
             setPadding(0, ui.dp(3), 0, ui.dp(4))
         })
         root.addView(TextView(this).apply {
-            text = "Командный центр поверх приложений"
+            text = "Диктовка, контекст экрана и отправка команд."
             textSize = 14f
             setTextColor(COLOR_MUTED)
             setPadding(0, 0, 0, ui.dp(12))
@@ -327,7 +327,7 @@ class AirWhisperSettingsActivity : Activity() {
         val card = ui.panel()
         card.addView(ui.settingsSliderRow(
             title = "Основная иконка: непрозрачность",
-            subtitle = "Кнопка AirWhisper у поля ввода.",
+            subtitle = "Кнопка Brai Cmd у поля ввода.",
             value = config.mainIconOpacityPercent,
             min = AppConstants.MIN_ICON_OPACITY_PERCENT,
             max = AppConstants.MAX_ICON_OPACITY_PERCENT

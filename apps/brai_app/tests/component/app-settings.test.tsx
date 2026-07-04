@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { openEngineFromProfile, openSettingsFromProfile, otaPlugin, setupBraiAppTest, stubAndroidCapacitor, testVersionState } from "./app-test-support";
+import { cmdPlugin, openEngineFromProfile, openProfileMenuItem, openSettingsFromProfile, otaPlugin, setupBraiAppTest, stubAndroidCapacitor, testVersionState } from "./app-test-support";
 import { BraiApp } from "@/features/app/BraiApp";
 
 describe("BraiApp settings", () => {
@@ -37,6 +37,26 @@ describe("BraiApp settings", () => {
     await openEngineFromProfile();
 
     expect(screen.getByRole("heading", { name: "Engine" })).toBeInTheDocument();
+  });
+
+  it("opens the Brai Cmd web description outside Android", async () => {
+    render(<BraiApp />);
+
+    await openProfileMenuItem("Brai Cmd");
+
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Brai Cmd" })).toBeInTheDocument());
+    expect(screen.getByText(/работает только в Android-приложении Brai/)).toBeInTheDocument();
+    expect(cmdPlugin.openSettings).not.toHaveBeenCalled();
+  });
+
+  it("opens native Brai Cmd settings inside Android", async () => {
+    stubAndroidCapacitor();
+    render(<BraiApp />);
+
+    await openProfileMenuItem("Brai Cmd");
+
+    await waitFor(() => expect(cmdPlugin.openSettings).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText(/работает только в Android-приложении Brai/)).not.toBeInTheDocument();
   });
 
   it("marks Engine when a newer ledger version is available", async () => {

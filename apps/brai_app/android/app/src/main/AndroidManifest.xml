@@ -25,9 +25,9 @@
         </activity>
 
         <activity
-            android:name=".airwhisper.AirWhisperSettingsActivity"
+            android:name=".airwhisper.BraiCmdSettingsActivity"
             android:exported="false"
-            android:label="AirWhisper"
+            android:label="Brai Cmd"
             android:theme="@style/AppTheme.NoActionBar" />
 
         <provider

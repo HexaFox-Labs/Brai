@@ -153,7 +153,7 @@ class OverlayController(private val service: BraiAccessibilityService) {
             return
         }
         val view = button ?: AirButtonView(service).also {
-            it.contentDescription = "Микрофон AirWhisper"
+            it.contentDescription = "Микрофон Brai Cmd"
             it.setOnTouchListener { _, event -> handleTouch(event) }
             it.setRecorderState(recording.mainButtonState(AirWhisperBus.latest))
             button = it
@@ -302,7 +302,7 @@ class OverlayController(private val service: BraiAccessibilityService) {
         val buttonX = currentButtonX()
         val buttonY = currentButtonY()
         val view = screenshotButton ?: ScreenshotButtonView(service).also {
-            it.contentDescription = "Команда со скриншотом AirWhisper"
+            it.contentDescription = "Команда со скриншотом Brai Cmd"
             it.setOnTouchListener { _, event -> handleScreenshotTouch(event) }
             it.setRecorderState(recording.screenshotButtonState(AirWhisperBus.latest))
             screenshotButton = it
@@ -407,7 +407,7 @@ class OverlayController(private val service: BraiAccessibilityService) {
     private fun showCancelButton() {
         val anchor = cancelAnchor()
         val view = cancelButton ?: CancelButtonView(service).also {
-            it.contentDescription = "Отменить запись AirWhisper"
+            it.contentDescription = "Отменить запись Brai Cmd"
             it.setOnClickListener { recording.cancelActiveRecording() }
             cancelButton = it
         }

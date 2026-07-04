@@ -36,7 +36,7 @@ internal class AccessibilityTextInserter(private val service: BraiAccessibilityS
 
     private fun copyToClipboard(text: String) {
         val clipboard = service.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        clipboard.setPrimaryClip(ClipData.newPlainText("AirWhisper", text))
+        clipboard.setPrimaryClip(ClipData.newPlainText("Brai Cmd", text))
     }
 
     private fun insertDirect(node: AccessibilityNodeInfo, insertText: String): Boolean {

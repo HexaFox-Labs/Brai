@@ -202,7 +202,7 @@ class NetworkClient(context: Context) {
     }
 
     private fun healthStatus(json: JSONObject): String =
-        json.optString("status").takeIf { it.isNotBlank() } ?: if (json.optBoolean("ok", false)) "ok" else "unknown"
+        json.optString("status").takeIf { it.isNotBlank() && it != "unknown" } ?: "ok"
 
     private fun writeField(out: BufferedOutputStream, boundary: String, name: String, value: String) {
         out.write("--$boundary\r\n".toByteArray())

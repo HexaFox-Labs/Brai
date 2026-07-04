@@ -86,13 +86,13 @@ internal class OverlayRecordingCoordinator(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
             service.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED
         ) {
-            AirWhisperBus.post(RecorderState.Error("Откройте AirWhisper и разрешите доступ к микрофону"))
+            AirWhisperBus.post(RecorderState.Error("Откройте Brai Cmd и разрешите доступ к микрофону"))
             return
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             service.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
-            AirWhisperBus.post(RecorderState.Error("Откройте AirWhisper и разрешите уведомления"))
+            AirWhisperBus.post(RecorderState.Error("Откройте Brai Cmd и разрешите уведомления"))
             return
         }
         if (useScreenshot && !config.receiverReady()) {
@@ -101,7 +101,7 @@ internal class OverlayRecordingCoordinator(
             return
         }
         if (config.authToken.isBlank()) {
-            AirWhisperBus.post(RecorderState.Error("Откройте AirWhisper и получите доступ"))
+            AirWhisperBus.post(RecorderState.Error("Откройте Brai Cmd и получите доступ"))
             return
         }
         activeButton = if (useScreenshot) RecordingButton.Screenshot else RecordingButton.Main

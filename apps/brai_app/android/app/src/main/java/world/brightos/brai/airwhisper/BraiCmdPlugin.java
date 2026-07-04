@@ -25,13 +25,13 @@ import java.util.List;
 import world.brightos.brai.capabilities.BraiAccessibilityService;
 
 @CapacitorPlugin(
-    name = "BraiAirWhisper",
+    name = "BraiCmd",
     permissions = {
         @Permission(alias = "microphone", strings = { Manifest.permission.RECORD_AUDIO }),
         @Permission(alias = "notifications", strings = { Manifest.permission.POST_NOTIFICATIONS })
     }
 )
-public final class BraiAirWhisperPlugin extends Plugin {
+public final class BraiCmdPlugin extends Plugin {
     @PluginMethod
     public void getState(PluginCall call) {
         call.resolve(stateJson());
@@ -39,7 +39,7 @@ public final class BraiAirWhisperPlugin extends Plugin {
 
     @PluginMethod
     public void openSettings(PluginCall call) {
-        Intent intent = new Intent(getContext(), AirWhisperSettingsActivity.class)
+        Intent intent = new Intent(getContext(), BraiCmdSettingsActivity.class)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         if (getActivity() != null) {
             getActivity().startActivity(intent);
@@ -92,7 +92,7 @@ public final class BraiAirWhisperPlugin extends Plugin {
     private JSObject stateJson() {
         JSObject state = new JSObject();
         state.put("native", true);
-        state.put("settingsDeclared", hasActivity(AirWhisperSettingsActivity.class));
+        state.put("settingsDeclared", hasActivity(BraiCmdSettingsActivity.class));
         state.put("accessibilityServiceDeclared", hasService(BraiAccessibilityService.class));
         state.put("recordingServiceDeclared", hasService(RecordingService.class));
         state.put("accessibilityServiceEnabled", isAccessibilityServiceEnabled());

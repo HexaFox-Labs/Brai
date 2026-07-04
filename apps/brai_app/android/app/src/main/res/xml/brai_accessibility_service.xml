@@ -8,4 +8,4 @@
     android:canTakeScreenshot="true"
     android:description="@string/brai_accessibility_service_description"
     android:notificationTimeout="80"
-    android:settingsActivity="world.brightos.brai.airwhisper.AirWhisperSettingsActivity" />
+    android:settingsActivity="world.brightos.brai.airwhisper.BraiCmdSettingsActivity" />

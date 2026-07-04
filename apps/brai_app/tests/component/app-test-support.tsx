@@ -8,10 +8,14 @@ const otaPlugin = vi.hoisted(() => ({
   markReady: vi.fn(),
 }));
 
-export { otaPlugin };
+const cmdPlugin = vi.hoisted(() => ({
+  openSettings: vi.fn(),
+}));
+
+export { cmdPlugin, otaPlugin };
 
 vi.mock("@capacitor/core", () => ({
-  registerPlugin: vi.fn(() => otaPlugin),
+  registerPlugin: vi.fn((name: string) => (name === "BraiCmd" ? cmdPlugin : otaPlugin)),
 }));
 
 function matchesMediaQuery(query: string): boolean {
@@ -29,6 +33,8 @@ export function setupBraiAppTest() {
     otaPlugin.getState.mockReset();
     otaPlugin.checkForUpdates.mockReset();
     otaPlugin.markReady.mockReset();
+    cmdPlugin.openSettings.mockReset();
+    cmdPlugin.openSettings.mockResolvedValue({});
     otaPlugin.getState.mockResolvedValue({
       activeBundleVersion: "0.0.10",
       nativeApkVersion: "1",

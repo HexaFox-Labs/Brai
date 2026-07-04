@@ -1,6 +1,6 @@
-import { Archive, Cpu, Eye, Inbox as InboxIcon, Mic, Settings, SquareTerminal, Timer, type LucideIcon } from "lucide-react";
+import { Archive, Command, Cpu, Eye, Inbox as InboxIcon, Settings, SquareTerminal, Timer, type LucideIcon } from "lucide-react";
 
-export type SectionId = "actions" | "inbox" | "focus" | "archive" | "settings" | "airwhisper" | "engine" | "evil-eye";
+export type SectionId = "actions" | "inbox" | "focus" | "archive" | "settings" | "brai-cmd" | "engine" | "evil-eye";
 export type PrimarySectionId = "actions" | "inbox" | "focus";
 export type FocusContextPanel = "none" | "goal" | "history";
 export type FocusBackgroundMode = "galaxy" | "evil-eye";
@@ -19,7 +19,7 @@ export const FOCUS_BACKGROUND_STORAGE_KEY = "brai_focus_background";
 export function sectionTitle(section: SectionId): string {
   if (section === "archive") return "Архив";
   if (section === "settings") return "Настройки";
-  if (section === "airwhisper") return "AirWhisper";
+  if (section === "brai-cmd") return "Brai Cmd";
   if (section === "engine") return "Engine";
   if (section === "evil-eye") return "Evil Eye";
   if (section === "inbox") return "Входящие";
@@ -29,7 +29,7 @@ export function sectionTitle(section: SectionId): string {
 export function sectionIcon(section: SectionId): LucideIcon {
   if (section === "archive") return Archive;
   if (section === "settings") return Settings;
-  if (section === "airwhisper") return Mic;
+  if (section === "brai-cmd") return Command;
   if (section === "engine") return Cpu;
   if (section === "evil-eye") return Eye;
   return navItems.find((item) => item.id === section)?.icon ?? Timer;
@@ -41,7 +41,7 @@ export function sectionFromLocation(): SectionId {
   const path = window.location.pathname.replace(/\/+$/, "");
   if (path === "/inbox") return "inbox";
   if (path === "/focus") return "focus";
-  if (path === "/airwhisper") return "airwhisper";
+  if (path === "/brai-cmd") return "brai-cmd";
   if (path === "/engine") return "engine";
   if (path === "/evil-eye") return "evil-eye";
   return "actions";
@@ -49,7 +49,7 @@ export function sectionFromLocation(): SectionId {
 
 export function syncSectionUrl(section: SectionId): void {
   if (typeof window === "undefined") return;
-  const nextPath = section === "inbox" ? "/inbox" : section === "focus" ? "/focus" : section === "airwhisper" ? "/airwhisper" : section === "engine" ? "/engine" : section === "evil-eye" ? "/evil-eye" : "/";
+  const nextPath = section === "inbox" ? "/inbox" : section === "focus" ? "/focus" : section === "brai-cmd" ? "/brai-cmd" : section === "engine" ? "/engine" : section === "evil-eye" ? "/evil-eye" : "/";
   if (window.location.pathname === nextPath && sectionFromLocation() === section) return;
   window.history.pushState({ braiSection: section }, "", nextPath);
 }
@@ -64,5 +64,5 @@ export function navHref(section: PrimarySectionId): string {
 }
 
 function isSectionId(value: unknown): value is SectionId {
-  return value === "actions" || value === "inbox" || value === "focus" || value === "archive" || value === "settings" || value === "airwhisper" || value === "engine" || value === "evil-eye";
+  return value === "actions" || value === "inbox" || value === "focus" || value === "archive" || value === "settings" || value === "brai-cmd" || value === "engine" || value === "evil-eye";
 }

@@ -358,7 +358,7 @@ class RecordingService : Service() {
             is ReceiverDeliveryException ->
                 Pair("Данные сохранены. Получатель данных не отвечает; повторю автоматически.", PendingReason.Server)
             is UnknownHostException ->
-                Pair("Запись сохранена. Нет интернета; когда связь вернется, AirWhisper расшифрует ее сам.", PendingReason.Network)
+                Pair("Запись сохранена. Нет интернета; когда связь вернется, Brai Cmd расшифрует ее сам.", PendingReason.Network)
             is SocketTimeoutException ->
                 Pair("Запись сохранена. Сервер долго не отвечает; повторю отправку автоматически.", PendingReason.Server)
             is ServerResponseException ->
@@ -434,7 +434,7 @@ class RecordingService : Service() {
             Notification.Builder(this)
         }
         return builder
-            .setContentTitle("AirWhisper")
+            .setContentTitle("Brai Cmd")
             .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setOngoing(true)
@@ -444,7 +444,7 @@ class RecordingService : Service() {
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.createNotificationChannel(NotificationChannel(NOTIFICATION_CHANNEL_ID, "Запись AirWhisper", NotificationManager.IMPORTANCE_LOW))
+        manager.createNotificationChannel(NotificationChannel(NOTIFICATION_CHANNEL_ID, "Запись Brai Cmd", NotificationManager.IMPORTANCE_LOW))
     }
 
     private fun startAmplitudeTicker() {
