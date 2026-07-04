@@ -12,10 +12,21 @@ const cmdPlugin = vi.hoisted(() => ({
   openSettings: vi.fn(),
 }));
 
-export { cmdPlugin, otaPlugin };
+const actionsWidgetPlugin = vi.hoisted(() => ({
+  acknowledgeStatusChanges: vi.fn(),
+  clear: vi.fn(),
+  pendingStatusChanges: vi.fn(),
+  saveSnapshot: vi.fn(),
+}));
+
+export { actionsWidgetPlugin, cmdPlugin, otaPlugin };
 
 vi.mock("@capacitor/core", () => ({
-  registerPlugin: vi.fn((name: string) => (name === "BraiCmd" ? cmdPlugin : otaPlugin)),
+  registerPlugin: vi.fn((name: string) => {
+    if (name === "BraiCmd") return cmdPlugin;
+    if (name === "BraiActionsWidget") return actionsWidgetPlugin;
+    return otaPlugin;
+  }),
 }));
 
 function matchesMediaQuery(query: string): boolean {
@@ -35,6 +46,14 @@ export function setupBraiAppTest() {
     otaPlugin.markReady.mockReset();
     cmdPlugin.openSettings.mockReset();
     cmdPlugin.openSettings.mockResolvedValue({});
+    actionsWidgetPlugin.acknowledgeStatusChanges.mockReset();
+    actionsWidgetPlugin.clear.mockReset();
+    actionsWidgetPlugin.pendingStatusChanges.mockReset();
+    actionsWidgetPlugin.saveSnapshot.mockReset();
+    actionsWidgetPlugin.acknowledgeStatusChanges.mockResolvedValue({});
+    actionsWidgetPlugin.clear.mockResolvedValue({});
+    actionsWidgetPlugin.pendingStatusChanges.mockResolvedValue({ changes: [] });
+    actionsWidgetPlugin.saveSnapshot.mockResolvedValue({});
     otaPlugin.getState.mockResolvedValue({
       activeBundleVersion: "0.0.10",
       nativeApkVersion: "1",

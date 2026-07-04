@@ -11,7 +11,7 @@ import {
   saveAndroidActionsWidgetSnapshot,
 } from "@/shared/platform/androidActionsWidget";
 import { consumeAndroidTimerStopRequest, startAndroidTimerNotification, stopAndroidTimerNotification } from "@/shared/platform/androidTimerNotification";
-import { isNativeShell } from "@/shared/platform/platform";
+import { isNativeShell, platformName } from "@/shared/platform/platform";
 import { acknowledgeActionEvents, enqueueActivityEvent, loadActionsState, markActionAttempt, markActionFailure, pendingActionEvents, projectActionsState, saveActionsState } from "@/shared/storage/activityStore";
 import { ensureClientMeta, ensureClientUser } from "@/shared/storage/db";
 import { acknowledgeInboxEvents, loadInboxState, markInboxAttempt, markInboxFailure, pendingInboxEvents, projectInboxState, saveInboxState } from "@/shared/storage/inboxStore";
@@ -35,6 +35,8 @@ import { useBraiLiveUpdates } from "./useBraiLiveUpdates";
 import { useBraiOta } from "./useBraiOta";
 import { useBraiTheme } from "./useBraiTheme";
 import { useBraiVersion } from "./useBraiVersion";
+
+const ANDROID_ACTIONS_WIDGET_STATUS_POLL_MS = 250;
 
 /**
  * Owns the Brai client state machine, local cache loading, and sync flow.
@@ -107,6 +109,13 @@ export function useBraiAppState(initialSection: SectionId) {
     setActionsAndRef(nextState);
   }
 
+  async function setProjectedActionsSnapshot(canonical: ActionsState) {
+    const queuedActions = await pendingActionEvents();
+    setActionsSnapshot(projectActionsState(canonical, queuedActions));
+    setActionPendingCount(queuedActions.length);
+    return queuedActions;
+  }
+
   function setInboxSnapshot(nextState: InboxState) {
     setInbox((current) => (current.server_revision > nextState.server_revision ? current : nextState));
   }
@@ -142,9 +151,9 @@ export function useBraiAppState(initialSection: SectionId) {
     actionsRevisionRef.current = state.server_revision;
     const accepted = await saveActionsState(state);
     if (!accepted) return;
-    setActionsSnapshot(projectActionsState(state, []));
-    setActionPendingCount(0);
-    setSyncStatus("synced");
+    const latestQueuedActions = await setProjectedActionsSnapshot(state);
+    const [timerQueued, inboxQueued] = await Promise.all([pendingEvents(), pendingInboxEvents()]);
+    setSyncStatus(latestQueuedActions.length + timerQueued.length + inboxQueued.length > 0 ? "pending_sync" : "synced");
   }
 
   async function applyInboxState(state: InboxState) {
@@ -184,7 +193,8 @@ export function useBraiAppState(initialSection: SectionId) {
         sourceApi.actions(),
         sourceApi.inbox(),
       ]);
-      const [queued, queuedActions, queuedInbox] = await Promise.all([pendingEvents(), pendingActionEvents(), pendingInboxEvents()]);
+      const [queued, queuedInbox] = await Promise.all([pendingEvents(), pendingInboxEvents()]);
+      let queuedActions = await pendingActionEvents();
       const accepted =
         nextState.server_revision >= timerRevisionRef.current && (await saveCanonicalState(nextState));
       if (accepted) {
@@ -203,7 +213,7 @@ export function useBraiAppState(initialSection: SectionId) {
         nextActions.server_revision >= actionsRevisionRef.current && (await saveActionsState(nextActions));
       if (actionsAccepted) {
         actionsRevisionRef.current = nextActions.server_revision;
-        setActionsSnapshot(projectActionsState(nextActions, queuedActions));
+        queuedActions = await setProjectedActionsSnapshot(nextActions);
       }
       const inboxAccepted =
         nextInbox.server_revision >= inboxRevisionRef.current && (await saveInboxState(nextInbox));
@@ -292,12 +302,12 @@ export function useBraiAppState(initialSection: SectionId) {
   async function refreshActionsAndFlush(sourceApi = apiRef.current) {
     try {
       const nextActions = await sourceApi.actions();
-      const queuedActions = await pendingActionEvents();
+      let queuedActions = await pendingActionEvents();
       const accepted =
         nextActions.server_revision >= actionsRevisionRef.current && (await saveActionsState(nextActions));
       if (accepted) {
         actionsRevisionRef.current = nextActions.server_revision;
-        setActionsSnapshot(projectActionsState(nextActions, queuedActions));
+        queuedActions = await setProjectedActionsSnapshot(nextActions);
       }
       setActionPendingCount(queuedActions.length);
       await flushActionPending(sourceApi);
@@ -653,7 +663,8 @@ export function useBraiAppState(initialSection: SectionId) {
 
   const publishAndroidActionsSnapshot = useCallback((nextActions: ActionsState): Promise<void> => {
     if (!localSnapshotReady || syncStatus === "auth_required") return Promise.resolve();
-    const snapshotVersion = Math.max(Date.now(), androidActionsSnapshotVersionRef.current + 1);
+    // Native widget taps bump the stored version by +1; JS advances in wider steps to avoid equal-version drops.
+    const snapshotVersion = Math.max(Date.now() * 1000, androidActionsSnapshotVersionRef.current + 1000);
     androidActionsSnapshotVersionRef.current = snapshotVersion;
     const task = androidActionsPublishTailRef.current.catch(() => undefined).then(() =>
       saveAndroidActionsWidgetSnapshot(nextActions, {
@@ -770,13 +781,18 @@ export function useBraiAppState(initialSection: SectionId) {
   }, [localSnapshotReady, publishAndroidActionsSnapshot, syncStatus]);
 
   useEffect(() => {
-    if (!localSnapshotReady || syncStatus === "auth_required") return undefined;
+    if (
+      !localSnapshotReady ||
+      syncStatus === "auth_required" ||
+      !isNativeShell() ||
+      platformName() !== "android"
+    ) return undefined;
     let cancelled = false;
     const consume = () => {
       if (!cancelled) void consumeAndroidActionsWidgetStatusChangesRef.current().catch(handleError);
     };
     consume();
-    const interval = window.setInterval(consume, 1000);
+    const interval = window.setInterval(consume, ANDROID_ACTIONS_WIDGET_STATUS_POLL_MS);
     window.addEventListener("focus", consume);
     window.addEventListener("pageshow", consume);
     document.addEventListener("visibilitychange", consume);
@@ -923,6 +939,7 @@ export function useBraiAppState(initialSection: SectionId) {
   const actionCommands = createBraiActionCommands({
     actions,
     flushActionPending,
+    getActions: () => actionsRef.current,
     publishActionsSnapshot: publishAndroidActionsSnapshot,
     setActionPendingCount,
     setActions: setActionsAndRef,

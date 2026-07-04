@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { cachedActivitiesState, openProfileMenuItem, setupBraiAppTest } from "./app-test-support";
+import { actionsWidgetPlugin, cachedActivitiesState, openProfileMenuItem, setupBraiAppTest, stubAndroidCapacitor } from "./app-test-support";
 import { BraiApp } from "@/features/app/BraiApp";
 import { ActionRow } from "@/features/app/sections/actions/ActionRow";
 import { ActionsSection } from "@/features/app/sections/actions/ActionsSection";
@@ -27,6 +27,94 @@ describe("BraiApp actions", () => {
 
     await waitFor(() => expect(screen.getByRole("button", { name: /Выполнено 1/ })).toBeInTheDocument());
     expect(screen.getByRole("checkbox", { name: "Фокус" })).toBeChecked();
+  });
+
+  it("publishes Android widget snapshots for local create and status changes", async () => {
+    stubAndroidCapacitor();
+    render(<BraiApp />);
+
+    await waitFor(() => expect(actionsWidgetPlugin.saveSnapshot).toHaveBeenCalled());
+    actionsWidgetPlugin.saveSnapshot.mockClear();
+
+    const input = screen.getByRole("textbox", { name: "Добавить" });
+    fireEvent.change(input, { target: { value: "Фокус" } });
+    fireEvent.submit(input.closest("form") as HTMLFormElement);
+
+    await waitFor(() => {
+      expect(actionsWidgetPlugin.saveSnapshot).toHaveBeenCalledWith(expect.objectContaining({
+        actions: expect.arrayContaining([
+          expect.objectContaining({ status: "New", title: "Фокус" }),
+        ]),
+        viewId: "all",
+      }));
+    });
+
+    actionsWidgetPlugin.saveSnapshot.mockClear();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Фокус" }));
+
+    await waitFor(() => {
+      expect(actionsWidgetPlugin.saveSnapshot).toHaveBeenCalledWith(expect.objectContaining({
+        actions: expect.arrayContaining([
+          expect.objectContaining({ status: "Done", title: "Фокус" }),
+        ]),
+        viewId: "all",
+      }));
+    });
+  });
+
+  it("applies Android widget status changes to the app in under one second", async () => {
+    stubAndroidCapacitor();
+    await saveActivitiesState(cachedActivitiesState("action-widget", "Виджет"));
+    let changes: Array<{ id: string; actionId: string; status: "New" | "Done"; baseServerRevision: number; occurredAtUtc: string }> = [];
+    actionsWidgetPlugin.pendingStatusChanges.mockImplementation(async () => ({ changes }));
+    actionsWidgetPlugin.acknowledgeStatusChanges.mockImplementation(async ({ ids }: { ids: string[] }) => {
+      changes = changes.filter((change) => !ids.includes(change.id));
+      return {};
+    });
+
+    render(<BraiApp />);
+
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: "Виджет" })).not.toBeChecked());
+    actionsWidgetPlugin.acknowledgeStatusChanges.mockClear();
+    changes = [{
+      id: "widget-change-1",
+      actionId: "action-widget",
+      status: "Done",
+      baseServerRevision: 8,
+      occurredAtUtc: "2026-07-04T12:00:00.000Z",
+    }];
+
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: "Виджет" })).toBeChecked(), {
+      interval: 25,
+      timeout: 900,
+    });
+    expect(actionsWidgetPlugin.acknowledgeStatusChanges).toHaveBeenCalledWith({ ids: ["widget-change-1"] });
+    await waitFor(async () => {
+      expect(await pendingActivityEvents()).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          actionId: "action-widget",
+          payload: { status: "Done" },
+          type: "set_status",
+        }),
+      ]));
+    });
+  });
+
+  it("publishes Android widget snapshots for deletes before one second", async () => {
+    stubAndroidCapacitor();
+    await saveActivitiesState(cachedActivitiesState("action-delete-widget", "Фокус"));
+    render(<BraiApp />);
+
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Название действия: Фокус" })).toBeInTheDocument());
+    actionsWidgetPlugin.saveSnapshot.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "Удалить: Фокус", hidden: true }));
+
+    await waitFor(() => {
+      expect(actionsWidgetPlugin.saveSnapshot).toHaveBeenCalledWith(expect.objectContaining({
+        actions: [],
+        viewId: "all",
+      }));
+    }, { timeout: 900 });
   });
 
   it("creates a mobile action with a description from the composer", async () => {
