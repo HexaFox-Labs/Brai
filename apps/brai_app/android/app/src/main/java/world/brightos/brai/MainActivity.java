@@ -9,7 +9,7 @@ import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.ServerPath;
 
 import world.brightos.brai.capabilities.BraiAndroidCapabilitiesPlugin;
-import world.brightos.brai.airwhisper.BraiCmdPlugin;
+import world.brightos.brai.braicmd.BraiCmdPlugin;
 import world.brightos.brai.ota.BraiOtaManager;
 import world.brightos.brai.ota.BraiOtaPlugin;
 import world.brightos.brai.ota.BraiOtaRegistry;

@@ -1,9 +1,10 @@
-package world.brightos.brai.airwhisper
+package world.brightos.brai.braicmd
 
 import world.brightos.brai.BuildConfig
 
 object AppConstants {
-    const val PREFS = "airwhisper"
+    const val PREFS = "brai_cmd"
+    const val LEGACY_PREFS = "airwhisper"
     const val KEY_SERVER_URL = "server_url"
     const val KEY_AUTH_TOKEN = "auth_token"
     const val KEY_DISPLAY_NAME = "display_name"

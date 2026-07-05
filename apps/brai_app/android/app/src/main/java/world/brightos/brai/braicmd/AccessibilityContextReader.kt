@@ -1,4 +1,4 @@
-package world.brightos.brai.airwhisper
+package world.brightos.brai.braicmd
 
 import android.annotation.SuppressLint
 import android.graphics.Rect
@@ -240,7 +240,7 @@ private val TIME_TEXT = Regex("""^\d{1,2}[:.]\d{2}$""")
 private val TITLE_VIEW_ID_HINTS = listOf("title", "name", "contact", "conversation", "recipient", "toolbar", "chat")
 private val NON_TITLE_VIEW_ID_HINTS = listOf("subtitle", "status", "typing", "time", "message", "input", "edit")
 private val HEADER_STOP_WORDS = setOf(
-    "airwhisper",
+    "brai cmd",
     "back",
     "call",
     "chats",

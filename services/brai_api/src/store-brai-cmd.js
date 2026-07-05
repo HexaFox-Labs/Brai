@@ -1,23 +1,23 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 
-export const airWhisperStoreMethods = {
-  airWhisperSettings() {
-    const row = this.db.prepare("SELECT value FROM airwhisper_settings WHERE key = 'registration_enabled'").get();
+export const braiCmdStoreMethods = {
+  braiCmdSettings() {
+    const row = this.db.prepare("SELECT value FROM brai_cmd_settings WHERE key = 'registration_enabled'").get();
     return { registrationEnabled: row?.value !== 'false' };
   },
 
-  setAirWhisperRegistrationEnabled(registrationEnabled) {
+  setBraiCmdRegistrationEnabled(registrationEnabled) {
     this.db.prepare(`
-      INSERT INTO airwhisper_settings (key, value, updated_at_utc)
+      INSERT INTO brai_cmd_settings (key, value, updated_at_utc)
       VALUES ('registration_enabled', ?, ?)
       ON CONFLICT(key) DO UPDATE SET
         value = excluded.value,
         updated_at_utc = excluded.updated_at_utc
     `).run(registrationEnabled ? 'true' : 'false', new Date().toISOString());
-    return this.airWhisperSettings();
+    return this.braiCmdSettings();
   },
 
-  issueAirWhisperAccess(input) {
+  issueBraiCmdAccess(input) {
     const token = `aw_${randomBytes(32).toString('base64url')}`;
     const now = new Date().toISOString();
     const record = {
@@ -34,7 +34,7 @@ export const airWhisperStoreMethods = {
       appPackage: cleanMetadata(input.appPackage)
     };
     this.db.prepare(`
-      INSERT INTO airwhisper_access_tokens (
+      INSERT INTO brai_cmd_access_tokens (
         id, display_name, token_hash, device_id_hash, status, source,
         created_at_utc, activated_at_utc, last_used_at_utc, client_version, app_package
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -54,11 +54,11 @@ export const airWhisperStoreMethods = {
     return { token, record };
   },
 
-  authenticateAirWhisperAccess(token, deviceId, clientVersion = '') {
+  authenticateBraiCmdAccess(token, deviceId, clientVersion = '') {
     const tokenHash = hashSecret(token.trim());
     const deviceIdHash = hashSecret(deviceId.trim());
     const rows = this.db.prepare(`
-      SELECT * FROM airwhisper_access_tokens
+      SELECT * FROM brai_cmd_access_tokens
       WHERE status = 'active'
       ORDER BY created_at_utc
     `).all();
@@ -69,14 +69,14 @@ export const airWhisperStoreMethods = {
     const now = new Date().toISOString();
     const cleanVersion = cleanMetadata(clientVersion);
     this.db.prepare(`
-      UPDATE airwhisper_access_tokens
+      UPDATE brai_cmd_access_tokens
       SET device_id_hash = COALESCE(device_id_hash, ?),
           activated_at_utc = COALESCE(activated_at_utc, ?),
           last_used_at_utc = ?,
           client_version = CASE WHEN ? <> '' THEN ? ELSE client_version END
       WHERE id = ?
     `).run(deviceIdHash, now, now, cleanVersion, cleanVersion, row.id);
-    return formatAirWhisperToken({
+    return formatBraiCmdToken({
       ...row,
       device_id_hash: row.device_id_hash ?? deviceIdHash,
       activated_at_utc: row.activated_at_utc ?? now,
@@ -85,14 +85,14 @@ export const airWhisperStoreMethods = {
     });
   },
 
-  revokeAirWhisperToken(id) {
-    const row = this.db.prepare('SELECT * FROM airwhisper_access_tokens WHERE id = ?').get(id);
+  revokeBraiCmdToken(id) {
+    const row = this.db.prepare('SELECT * FROM brai_cmd_access_tokens WHERE id = ?').get(id);
     if (!row) return null;
-    this.db.prepare("UPDATE airwhisper_access_tokens SET status = 'revoked' WHERE id = ?").run(id);
-    return formatAirWhisperToken({ ...row, status: 'revoked' });
+    this.db.prepare("UPDATE brai_cmd_access_tokens SET status = 'revoked' WHERE id = ?").run(id);
+    return formatBraiCmdToken({ ...row, status: 'revoked' });
   },
 
-  recordAirWhisperUsage(input) {
+  recordBraiCmdUsage(input) {
     const row = {
       id: randomUUID(),
       accessTokenId: input.accessTokenId,
@@ -111,7 +111,7 @@ export const airWhisperStoreMethods = {
       clientVersion: cleanMetadata(input.clientVersion)
     };
     this.db.prepare(`
-      INSERT INTO airwhisper_usage_events (
+      INSERT INTO brai_cmd_usage_events (
         id, access_token_id, created_at_utc, success, error_code,
         audio_bytes, audio_duration_ms, provider, model, fallback_used,
         transcription_ms, post_processing_ms, total_ms, transcript_chars, client_version
@@ -136,7 +136,7 @@ export const airWhisperStoreMethods = {
     return row;
   },
 
-  airWhisperAdminSummary() {
+  braiCmdAdminSummary() {
     const tokens = this.db.prepare(`
       SELECT t.*,
              COUNT(u.id) AS requests,
@@ -148,8 +148,8 @@ export const airWhisperStoreMethods = {
              COALESCE(SUM(u.transcription_ms), 0) AS transcription_ms,
              COALESCE(SUM(u.post_processing_ms), 0) AS post_processing_ms,
              COALESCE(SUM(u.total_ms), 0) AS total_ms
-      FROM airwhisper_access_tokens t
-      LEFT JOIN airwhisper_usage_events u ON u.access_token_id = t.id
+      FROM brai_cmd_access_tokens t
+      LEFT JOIN brai_cmd_usage_events u ON u.access_token_id = t.id
       GROUP BY t.id
       ORDER BY t.created_at_utc DESC
     `).all().map((row) => ({
@@ -177,7 +177,7 @@ export const airWhisperStoreMethods = {
     }));
     const totals = tokens.reduce((acc, token) => addUsage(acc, token.usage), emptyUsage());
     return {
-      settings: this.airWhisperSettings(),
+      settings: this.braiCmdSettings(),
       totals: {
         ...totals,
         activeTokens: tokens.filter((token) => token.status === 'active').length,
@@ -186,8 +186,8 @@ export const airWhisperStoreMethods = {
       tokens,
       recentUsage: this.db.prepare(`
         SELECT u.*, t.display_name
-        FROM airwhisper_usage_events u
-        LEFT JOIN airwhisper_access_tokens t ON t.id = u.access_token_id
+        FROM brai_cmd_usage_events u
+        LEFT JOIN brai_cmd_access_tokens t ON t.id = u.access_token_id
         ORDER BY u.created_at_utc DESC
         LIMIT 50
       `).all().map((row) => ({
@@ -210,7 +210,7 @@ export const airWhisperStoreMethods = {
   }
 };
 
-function formatAirWhisperToken(row) {
+function formatBraiCmdToken(row) {
   return {
     id: row.id,
     displayName: row.display_name,

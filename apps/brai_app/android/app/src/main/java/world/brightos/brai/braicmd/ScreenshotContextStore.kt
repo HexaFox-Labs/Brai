@@ -1,4 +1,4 @@
-package world.brightos.brai.airwhisper
+package world.brightos.brai.braicmd
 
 import java.io.File
 

@@ -25,7 +25,7 @@
         </activity>
 
         <activity
-            android:name=".airwhisper.BraiCmdSettingsActivity"
+            android:name=".braicmd.BraiCmdSettingsActivity"
             android:exported="false"
             android:label="Brai Cmd"
             android:theme="@style/AppTheme.NoActionBar" />
@@ -68,7 +68,7 @@
             android:foregroundServiceType="mediaProjection|microphone" />
 
         <service
-            android:name=".airwhisper.RecordingService"
+            android:name=".braicmd.RecordingService"
             android:exported="false"
             android:foregroundServiceType="microphone|dataSync" />
 
