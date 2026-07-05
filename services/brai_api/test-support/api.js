@@ -47,7 +47,7 @@ export async function createFixture(times, options = {}) {
     codexModel: options.codexModel,
     codexTimeoutMs: options.codexTimeoutMs,
     inboundTitleGenerator: options.inboundTitleGenerator,
-    airWhisper: options.airWhisper,
+    braiCmd: options.braiCmd,
     now: () => new Date(times[Math.min(index++, times.length - 1)]),
     logger: { error: () => {} }
   });

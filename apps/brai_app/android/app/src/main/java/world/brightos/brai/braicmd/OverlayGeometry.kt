@@ -1,4 +1,4 @@
-package world.brightos.brai.airwhisper
+package world.brightos.brai.braicmd
 
 import world.brightos.brai.capabilities.BraiAccessibilityService
 import kotlin.math.max

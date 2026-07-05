@@ -1,4 +1,4 @@
-package world.brightos.brai.airwhisper
+package world.brightos.brai.braicmd
 
 import world.brightos.brai.BuildConfig
 
@@ -70,7 +70,7 @@ class NetworkClient(context: Context) {
         conversationContext: VisibleConversationContext? = null,
         screenshotFile: File? = null
     ): DictationResponse {
-        val boundary = "AirWhisper-${UUID.randomUUID()}"
+        val boundary = "BraiCmd-${UUID.randomUUID()}"
         val connection = openAuthenticatedConnection("/v1/dictate", "POST").apply {
             doOutput = true
             readTimeout = DICTATE_READ_TIMEOUT_MS
@@ -169,8 +169,8 @@ class NetworkClient(context: Context) {
         require(token.isNotBlank()) { "Не указан токен доступа" }
         return openPublicConnection(path, method).apply {
             setRequestProperty("Authorization", "Bearer $token")
-            setRequestProperty("X-AirWhisper-Device-Id", config.installId)
-            setRequestProperty("X-AirWhisper-Client-Version", BuildConfig.VERSION_NAME)
+            setRequestProperty("X-Brai-Cmd-Device-Id", config.installId)
+            setRequestProperty("X-Brai-Cmd-Client-Version", BuildConfig.VERSION_NAME)
         }
     }
 

@@ -1,4 +1,4 @@
-package world.brightos.brai.airwhisper
+package world.brightos.brai.braicmd
 
 import android.content.Context
 import android.graphics.Canvas

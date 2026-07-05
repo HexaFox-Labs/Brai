@@ -12,13 +12,13 @@ import {
 } from './inbound.js';
 import { createBraiAuth } from './auth.js';
 import {
-  createAirWhisperRuntime,
-  handleAirWhisperAdminRoute,
-  handleAirWhisperPublicRoute,
-  isAirWhisperAdminRoute,
-  isAirWhisperPublicRoute,
-  requireAirWhisperAccess
-} from './airwhisper.js';
+  createBraiCmdRuntime,
+  handleBraiCmdAdminRoute,
+  handleBraiCmdPublicRoute,
+  isBraiCmdAdminRoute,
+  isBraiCmdPublicRoute,
+  requireBraiCmdAccess
+} from './brai-cmd.js';
 import { sendReleaseLoginPage, serveRelease } from './release-routes.js';
 import { BraiStore, formatFocusInterval, formatSession } from './store.js';
 import { scopedUserId, withUserScope } from './user-scope.js';
@@ -26,7 +26,7 @@ import { scopedUserId, withUserScope } from './user-scope.js';
 const BASE_JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
   'access-control-allow-methods': 'GET,POST,OPTIONS',
-  'access-control-allow-headers': 'authorization,content-type,x-api-key,x-brai-api-key,x-brai-target,x-brai-destination,x-airwhisper-device-id,x-airwhisper-client-version',
+  'access-control-allow-headers': 'authorization,content-type,x-api-key,x-brai-api-key,x-brai-target,x-brai-destination,x-brai-cmd-device-id,x-brai-cmd-client-version,x-airwhisper-device-id,x-airwhisper-client-version',
   'access-control-allow-credentials': 'true'
 };
 const SESSION_COOKIE = 'brai_session';
@@ -52,13 +52,13 @@ export function createBraiServer({
   codexModel = null,
   codexTimeoutMs = null,
   inboundTitleGenerator = null,
-  airWhisper = {},
+  braiCmd = {},
   now = () => new Date(),
   logger = console
 }) {
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   const store = new BraiStore(dbPath);
-  const airWhisperRuntime = createAirWhisperRuntime(airWhisper);
+  const braiCmdRuntime = createBraiCmdRuntime(braiCmd);
   const authRuntime = createBraiAuth({
     dbPath,
     secret: betterAuthSecret ?? sessionSecret ?? 'brai-local-auth-secret-for-local-development-only',
@@ -253,7 +253,7 @@ export function createBraiServer({
           sendJson(req, res, 405, { error: 'method_not_allowed' });
           return;
         }
-        const access = requireAirWhisperAccess(req, store);
+        const access = requireBraiCmdAccess(req, store);
         const requestNow = now();
         const body = await readJson(req, { limit: INBOUND_BODY_LIMIT_BYTES });
         const ownerUserId = store.primaryUserId();
@@ -271,8 +271,8 @@ export function createBraiServer({
         return;
       }
 
-      if (isAirWhisperPublicRoute(url.pathname)) {
-        await handleAirWhisperPublicRoute({ req, res, url, store, runtime: airWhisperRuntime, sendJson });
+      if (isBraiCmdPublicRoute(url.pathname)) {
+        await handleBraiCmdPublicRoute({ req, res, url, store, runtime: braiCmdRuntime, sendJson });
         return;
       }
 
@@ -286,8 +286,8 @@ export function createBraiServer({
         return;
       }
 
-      if (isAirWhisperAdminRoute(url.pathname)) {
-        await handleAirWhisperAdminRoute({ req, res, url, store, sendJson });
+      if (isBraiCmdAdminRoute(url.pathname)) {
+        await handleBraiCmdAdminRoute({ req, res, url, store, sendJson });
         return;
       }
 

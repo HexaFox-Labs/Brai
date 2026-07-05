@@ -1,4 +1,4 @@
-package world.brightos.brai.airwhisper
+package world.brightos.brai.braicmd
 
 import android.os.Handler
 import android.os.Looper
@@ -33,7 +33,7 @@ sealed class RecorderState {
     data class InsertText(val text: String) : RecorderState()
 }
 
-object AirWhisperBus {
+object BraiCmdBus {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val listeners = CopyOnWriteArraySet<(RecorderState) -> Unit>()
 

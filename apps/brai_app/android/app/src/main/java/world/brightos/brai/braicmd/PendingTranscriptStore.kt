@@ -1,4 +1,4 @@
-package world.brightos.brai.airwhisper
+package world.brightos.brai.braicmd
 
 import android.content.Context
 import java.io.File
@@ -14,7 +14,7 @@ object PendingTranscriptStore {
 
     fun add(context: Context, text: String): File {
         val dir = transcriptsDir(context).apply { mkdirs() }
-        val file = File(dir, "airwhisper-${System.currentTimeMillis()}-${UUID.randomUUID()}.txt")
+        val file = File(dir, "brai-cmd-${System.currentTimeMillis()}-${UUID.randomUUID()}.txt")
         file.writeText(text.trim(), Charsets.UTF_8)
         return file
     }

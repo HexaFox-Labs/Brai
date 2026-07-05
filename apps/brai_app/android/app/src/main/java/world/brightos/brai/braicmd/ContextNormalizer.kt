@@ -1,4 +1,4 @@
-package world.brightos.brai.airwhisper
+package world.brightos.brai.braicmd
 
 import org.json.JSONObject
 
@@ -25,7 +25,7 @@ object ContextNormalizer {
 
     private fun base(raw: JSONObject, page: JSONObject, normalizer: String, messenger: String): JSONObject =
         JSONObject()
-            .put("schema", "airwhisper.normalized_context.v1")
+            .put("schema", "brai-cmd.normalized_context.v1")
             .put("normalizer", normalizer)
             .put("messenger", messenger)
             .put("capturedAtMs", raw.optLong("capturedAtMs", page.optLong("capturedAtMs", 0L)))

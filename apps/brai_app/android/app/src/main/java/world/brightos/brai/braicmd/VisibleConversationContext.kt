@@ -1,4 +1,4 @@
-package world.brightos.brai.airwhisper
+package world.brightos.brai.braicmd
 
 import android.content.Intent
 import org.json.JSONObject
@@ -39,7 +39,7 @@ data class VisibleConversationContext(
     companion object {
         const val MIN_CONFIDENCE = 0.65f
 
-        private const val EXTRA_CONTEXT_JSON = "world.brightos.brai.airwhisper.extra.VISIBLE_CONTEXT_JSON"
+        private const val EXTRA_CONTEXT_JSON = "world.brightos.brai.braicmd.extra.VISIBLE_CONTEXT_JSON"
 
         fun putInto(intent: Intent, context: VisibleConversationContext?) {
             if (context == null || !context.isReliable()) return
