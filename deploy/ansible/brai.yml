@@ -94,6 +94,98 @@
         - "{{ brai_node_root }}/lib/node_modules/corepack"
         - "{{ brai_node_root }}/lib/node_modules/npm"
 
+    - name: Ensure Syncthing apt keyring directory
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install Syncthing archive signing key
+      ansible.builtin.get_url:
+        url: https://syncthing.net/release-key.gpg
+        dest: /etc/apt/keyrings/syncthing-archive-keyring.gpg
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Install Syncthing apt source
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/syncthing.list
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          deb [signed-by=/etc/apt/keyrings/syncthing-archive-keyring.gpg] https://apt.syncthing.net/ syncthing stable-v2
+
+    - name: Prefer official Syncthing packages
+      ansible.builtin.copy:
+        dest: /etc/apt/preferences.d/syncthing.pref
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          Package: *
+          Pin: origin apt.syncthing.net
+          Pin-Priority: 990
+
+    - name: Install Syncthing
+      ansible.builtin.apt:
+        name: syncthing
+        state: present
+        update_cache: true
+
+    - name: Ensure Syncthing vault root is writable by sync group
+      ansible.builtin.file:
+        path: "{{ brai_syncthing_vault_path }}"
+        state: directory
+        owner: root
+        group: "{{ brai_syncthing_user }}"
+        mode: "2770"
+
+    - name: Ensure existing Syncthing vault contents are writable by sync group
+      ansible.builtin.file:
+        path: "{{ brai_syncthing_vault_path }}"
+        state: directory
+        group: "{{ brai_syncthing_user }}"
+        mode: "u=rwX,g=rwX,o="
+        recurse: true
+
+    - name: Restore Syncthing vault root setgid mode
+      ansible.builtin.file:
+        path: "{{ brai_syncthing_vault_path }}"
+        state: directory
+        owner: root
+        group: "{{ brai_syncthing_user }}"
+        mode: "2770"
+
+    - name: Check Syncthing systemd service template
+      ansible.builtin.stat:
+        path: /usr/lib/systemd/system/syncthing@.service
+      register: brai_syncthing_system_service
+
+    - name: Enable Syncthing service
+      ansible.builtin.systemd_service:
+        name: "syncthing@{{ brai_syncthing_user }}.service"
+        enabled: true
+        state: started
+      when: brai_syncthing_system_service.stat.exists
+
+    - name: Allow Syncthing TCP sync port through ufw
+      ansible.builtin.command:
+        cmd: "ufw allow {{ brai_syncthing_sync_port }}/tcp"
+      register: brai_syncthing_ufw_tcp
+      changed_when: "'Rule added' in brai_syncthing_ufw_tcp.stdout or 'Rules updated' in brai_syncthing_ufw_tcp.stdout"
+      when: not ansible_check_mode
+
+    - name: Allow Syncthing UDP sync port through ufw
+      ansible.builtin.command:
+        cmd: "ufw allow {{ brai_syncthing_sync_port }}/udp"
+      register: brai_syncthing_ufw_udp
+      changed_when: "'Rule added' in brai_syncthing_ufw_udp.stdout or 'Rules updated' in brai_syncthing_ufw_udp.stdout"
+      when: not ansible_check_mode
+
     - name: Create environment parent directories
       ansible.builtin.file:
         path: "{{ brai_env_root }}/{{ item.value.path }}"
