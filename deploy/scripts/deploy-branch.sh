@@ -32,6 +32,7 @@ DISPLAY_LABEL="${DEPLOY_META[1]}"
 DOMAIN="${DEPLOY_META[2]}"
 ENV_PATH="${DEPLOY_META[3]}"
 SERVICE_NAME="${DEPLOY_META[4]}"
+API_PORT="${DEPLOY_META[5]:-}"
 
 GIT_SUBJECT="$(git -C "$ROOT" log -1 --format=%s "$COMMIT" 2>/dev/null || true)"
 GIT_BODY="$(git -C "$ROOT" log -1 --format=%b "$COMMIT" 2>/dev/null || true)"
@@ -65,6 +66,91 @@ else
   mkdir -p "$WEB_TARGET" "$MOBILE_TARGET" "$(dirname "$DB_PATH")"
 fi
 
+SERVICE_USER="${BRAI_SQLITE_SERVICE_USER:-brai}"
+SERVICE_GROUP="${BRAI_SQLITE_SERVICE_GROUP:-brai-deploy}"
+
+has_mode_bit() {
+  local mode="$1"
+  local bit="$2"
+  (( (8#$mode & bit) != 0 ))
+}
+
+preview_sqlite_permissions_ok() {
+  [[ "$ENVIRONMENT" == preview-* ]] || return 0
+  local data_dir
+  data_dir="$(dirname "$DB_PATH")"
+  [[ -d "$data_dir" ]] || return 1
+  [[ "$(stat -c '%G' "$data_dir")" == "$SERVICE_GROUP" ]] || return 1
+  has_mode_bit "$(stat -c '%a' "$data_dir")" 02000 || return 1
+  has_mode_bit "$(stat -c '%a' "$data_dir")" 0020 || return 1
+  local path
+  for path in "$DB_PATH" "$DB_PATH-wal" "$DB_PATH-shm"; do
+    [[ -e "$path" ]] || continue
+    [[ "$(stat -c '%G' "$path")" == "$SERVICE_GROUP" ]] || return 1
+    has_mode_bit "$(stat -c '%a' "$path")" 0020 || return 1
+  done
+}
+
+preview_sqlite_safe_path() {
+  [[ "$ENVIRONMENT" == preview-* ]] || return 0
+  case "$TARGET_ROOT" in
+    "$ENVS_ROOT"/preview-*) ;;
+    *)
+      echo "Refusing to normalize preview DB outside $ENVS_ROOT/preview-* path: $TARGET_ROOT" >&2
+      exit 1
+      ;;
+  esac
+}
+
+normalize_preview_sqlite_permissions() {
+  [[ "$ENVIRONMENT" == preview-* ]] || return 0
+  preview_sqlite_safe_path
+  preview_sqlite_permissions_ok && return 0
+  local data_dir
+  data_dir="$(dirname "$DB_PATH")"
+  chmod 2775 "$data_dir" 2>/dev/null || true
+  local path
+  for path in "$DB_PATH" "$DB_PATH-wal" "$DB_PATH-shm"; do
+    if [[ -e "$path" && "$(stat -c '%u' "$path")" == "$(id -u)" ]]; then
+      chmod 0664 "$path"
+    fi
+  done
+}
+
+assert_preview_sqlite_permissions() {
+  [[ "$ENVIRONMENT" == preview-* ]] || return 0
+  preview_sqlite_safe_path
+  preview_sqlite_permissions_ok && return 0
+  local data_dir
+  data_dir="$(dirname "$DB_PATH")"
+  cat >&2 <<RECOVERY
+Preview SQLite permissions are invalid under $data_dir.
+Expected: data directory group $SERVICE_GROUP with setgid+group-write, SQLite files group-writable by $SERVICE_GROUP.
+Recovery: run the Brai Ansible playbook as an admin, or run:
+  chown -R $SERVICE_USER:$SERVICE_GROUP "$data_dir"
+  chmod -R u+rwX,g+rwX,o=rX "$data_dir"
+  find "$data_dir" -type d -exec chmod 2775 {} +
+Then retry this same branch deploy so the preview slot is reused.
+RECOVERY
+  exit 1
+}
+
+wait_for_preview_api() {
+  [[ "$ENVIRONMENT" == preview-* ]] || return 0
+  [[ -n "$API_PORT" ]] || return 0
+  local url="http://127.0.0.1:$API_PORT/health"
+  local attempt
+  for attempt in {1..20}; do
+    if "$NODE_BIN" -e 'fetch(process.argv[1]).then((res) => process.exit(res.ok ? 0 : 1)).catch(() => process.exit(1));' "$url"; then
+      return 0
+    fi
+    sleep 0.5
+  done
+  echo "Preview API health check failed: $url" >&2
+  "${BRAI_SUDO:-sudo}" journalctl -u "$SERVICE_NAME" -n 80 --no-pager >&2 || true
+  return 1
+}
+
 if [[ "$ENVIRONMENT" == preview-* && "$ALLOCATED_NEW" == "true" && "${BRAI_RESET_NEW_PREVIEW_DB:-true}" != "false" ]]; then
   case "$TARGET_ROOT" in
     "$ENVS_ROOT"/preview-*)
@@ -88,6 +174,9 @@ RECOVERY
       ;;
   esac
 fi
+
+normalize_preview_sqlite_permissions
+assert_preview_sqlite_permissions
 
 normalize_preview_artifacts() {
   local failed=0
@@ -160,6 +249,9 @@ if [[ "$ENVIRONMENT" != "prod" || "${BRAI_RECORD_PROD_BRANCH_DEPLOYMENT:-false}"
   fi
 fi
 
+normalize_preview_sqlite_permissions
+assert_preview_sqlite_permissions
+
 if [[ "$ENVIRONMENT" != "prod" ]]; then
   echo "Normalizing preview artifact roots after metadata..."
   if ! normalize_preview_artifacts; then
@@ -170,6 +262,7 @@ fi
 if command -v systemctl >/dev/null 2>&1 && [[ "${BRAI_RESTART_SERVICE:-true}" != "false" ]]; then
   echo "Restarting $SERVICE_NAME..."
   "${BRAI_SUDO:-sudo}" systemctl restart "$SERVICE_NAME"
+  wait_for_preview_api
 fi
 
 if [[ "$ENVIRONMENT" == preview-* ]]; then

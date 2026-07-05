@@ -164,6 +164,41 @@
       changed_when: false
       when: not ansible_check_mode
 
+    - name: Ensure existing non-production SQLite files are service-writable
+      ansible.builtin.command:
+        argv:
+          - find
+          - "{{ brai_env_root }}/{{ item.value.path }}/data"
+          - -maxdepth
+          - "1"
+          - -type
+          - f
+          - "("
+          - -name
+          - brai.sqlite
+          - -o
+          - -name
+          - brai.sqlite-wal
+          - -o
+          - -name
+          - brai.sqlite-shm
+          - ")"
+          - -exec
+          - chown
+          - "{{ brai_service_user }}:{{ brai_deploy_user }}"
+          - "{}"
+          - "+"
+          - -exec
+          - chmod
+          - "0664"
+          - "{}"
+          - "+"
+      loop: "{{ brai_envs | dict2items | rejectattr('key', 'equalto', 'prod') | list }}"
+      loop_control:
+        label: "{{ item.key }}/data"
+      changed_when: false
+      when: not ansible_check_mode
+
     - name: Create preview slot status directory
       ansible.builtin.file:
         path: "{{ brai_env_root }}/preview-status"

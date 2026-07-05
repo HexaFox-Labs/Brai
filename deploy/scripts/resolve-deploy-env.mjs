@@ -23,6 +23,7 @@ console.log(env.displayLabel);
 console.log(env.domain);
 console.log(env.path);
 console.log(env.serviceName);
+console.log(env.apiPort);
 
 function resolvePreviewSlot(branchName) {
   const envsRoot = process.env.BRAI_ENVS_ROOT ?? "/srv/projects/brai-envs";

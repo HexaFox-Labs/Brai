@@ -575,6 +575,7 @@ try {
     const html = await readFile(path.join(root, "deploy/releases/index.html"), "utf8");
     expect(index.sections.a).toMatchObject({
       title: "Preview A",
+      applicationId: "world.brightos.brai.preview.a.work",
       file: "brai-v2-preview6.apk",
       apkVersion: 2,
       versionCode: 20006,

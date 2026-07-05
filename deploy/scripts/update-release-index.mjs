@@ -26,6 +26,7 @@ const data = readIndex();
 data.sections[releaseKey] = {
   ...sectionDefaults(target),
   title: apkBuildKind === "preview" ? previewTitle(target) : target.androidApp,
+  applicationId: applicationIdForBuild(target, apkBuildKind),
   file: fileName,
   apkVersion: Number(required(args, "apk-version")),
   versionCode: Number(required(args, "version-code")),
@@ -70,6 +71,10 @@ function sectionDefaults(target) {
     sha256: null,
     capabilities: apkCapabilities(),
   };
+}
+
+function applicationIdForBuild(target, apkBuildKind) {
+  return apkBuildKind === "preview" ? `${target.applicationId}.work` : target.applicationId;
 }
 
 function renderReleasePage(data, htmlPath) {
