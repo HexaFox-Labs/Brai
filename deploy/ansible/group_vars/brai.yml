@@ -5,6 +5,11 @@ brai_node_bin: /srv/opt/node-v22.16.0/bin/node
 brai_caddyfile: /etc/caddy/Caddyfile
 brai_public_site_domain: brightos.world
 brai_public_site_root: "{{ brai_repo }}/deploy/site"
+brai_syncthing_domain: sync.brightos.world
+brai_syncthing_gui_port: 8384
+brai_syncthing_sync_port: 22000
+brai_syncthing_user: mark
+brai_syncthing_vault_path: /srv/projects/brai/vault
 brai_deploy_user: brai-deploy
 brai_deploy_writers: []
 brai_operation_maintainers:
