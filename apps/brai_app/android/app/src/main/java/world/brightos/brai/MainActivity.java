@@ -9,12 +9,14 @@ import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.ServerPath;
 
 import world.brightos.brai.capabilities.BraiAndroidCapabilitiesPlugin;
+import world.brightos.brai.airwhisper.BraiCmdPlugin;
 import world.brightos.brai.ota.BraiOtaManager;
 import world.brightos.brai.ota.BraiOtaPlugin;
 import world.brightos.brai.ota.BraiOtaRegistry;
 import world.brightos.brai.ota.BraiOtaWebViewClient;
 import world.brightos.brai.timer.BraiTimerNotificationPlugin;
 import world.brightos.brai.timer.BraiTimerNotificationService;
+import world.brightos.brai.widget.BraiActionsWidgetPlugin;
 
 public class MainActivity extends BridgeActivity {
     private static final String HANDLE_ANDROID_BACK_SCRIPT =
@@ -34,9 +36,11 @@ public class MainActivity extends BridgeActivity {
         if (startupPath != null) {
             bridgeBuilder.setServerPath(startupPath);
         }
+        registerPlugin(BraiCmdPlugin.class);
         registerPlugin(BraiAndroidCapabilitiesPlugin.class);
         registerPlugin(BraiOtaPlugin.class);
         registerPlugin(BraiTimerNotificationPlugin.class);
+        registerPlugin(BraiActionsWidgetPlugin.class);
 
         super.onCreate(savedInstanceState);
 

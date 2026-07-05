@@ -101,7 +101,7 @@ export async function acknowledgeActivityEvents(ids: string[]): Promise<void> {
 
 export async function saveActivitiesState(state: ActivitiesState): Promise<boolean> {
   const currentRevision = await lastActivityServerRevision();
-  if (state.server_revision < currentRevision) return false;
+  if (state.server_revision < currentRevision || (currentRevision > 0 && state.server_revision === currentRevision)) return false;
 
   await clientDb().transaction("rw", clientDb().actions_cache, clientDb().meta, async () => {
     await clientDb().actions_cache.clear();

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { BookOpen, Crown, Info, Settings } from "lucide-react";
+import { openBraiCmdSettings } from "@/shared/platform/braiCmd";
 import { installAndroidBackHandler } from "@/shared/platform/platform";
 import { getBraiLocalStorageItem, removeBraiLocalStorageItem, setBraiLocalStorageItem } from "@/shared/storage/localStorageKeys";
 import { ScrollArea } from "@/shared/ui/scroll-area";
@@ -16,6 +17,7 @@ import { isMobileNavigationViewport, sectionSwipePageStyle, useLeftEdgeMenuSwipe
 import { ActionsSection } from "./sections/actions/ActionsSection";
 import { ActionsInfoPanel } from "./sections/actions/ActionsInfoPanel";
 import { ArchiveSection } from "./sections/actions/ArchiveSection";
+import { BraiCmdSection } from "./sections/brai-cmd/BraiCmdSection";
 import { EvilEyeSection } from "./sections/EvilEyeSection";
 import { EngineSection } from "./sections/engine/EngineSection";
 import { FocusBackground, FocusContextPanelSheet, FocusSection } from "./sections/focus/FocusSection";
@@ -45,6 +47,12 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
   function openMobileMenu(kind: "rail" | "burger") {
     setMobileMenuKind(kind);
     app.setMobileMenuOpen(true);
+  }
+
+  function openBraiCmd() {
+    void openBraiCmdSettings().then((opened) => {
+      if (!opened) app.selectSection("brai-cmd");
+    });
   }
 
   useEffect(() => {
@@ -164,6 +172,8 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
           />
         ) : screenSection === "settings" ? (
           <SettingsSection />
+        ) : screenSection === "brai-cmd" ? (
+          <BraiCmdSection />
         ) : null}
       </>
     );
@@ -189,6 +199,7 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
         versionRefreshing={app.versionRefreshing}
         syncStatus={app.displaySyncStatus}
         onSettings={app.openSettingsPage}
+        onBraiCmd={openBraiCmd}
         onEngine={() => app.selectSection("engine")}
         onArchive={() => app.selectSection("archive")}
         onLogout={app.onLogout}
@@ -239,6 +250,7 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
           versionRefreshing={app.versionRefreshing}
           onClose={() => app.setMobileMenuOpen(false)}
           onSettings={app.openSettingsPage}
+          onBraiCmd={openBraiCmd}
           onEngine={() => app.selectSection("engine")}
           onArchive={() => app.selectSection("archive")}
           onLogout={app.onLogout}

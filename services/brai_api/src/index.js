@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { airWhisperConfigFromEnv } from './airwhisper.js';
 import { createBraiServer } from './server.js';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -54,7 +55,10 @@ const runtime = createBraiServer({
   inboundStorageRoot,
   codexBin,
   codexModel,
-  codexTimeoutMs
+  codexTimeoutMs,
+  airWhisper: {
+    config: airWhisperConfigFromEnv(process.env)
+  }
 });
 runtime.server.listen(port, '127.0.0.1', () => {
   console.log(`Brai API listening on 127.0.0.1:${port}`);

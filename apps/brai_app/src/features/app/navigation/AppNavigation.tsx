@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, type TouchEventHandler } from "react";
-import { Archive, Cpu, Download, EllipsisVertical, LogOut, Menu, Settings, type LucideIcon } from "lucide-react";
+import { Archive, Command, Cpu, Download, EllipsisVertical, LogOut, Menu, Settings, type LucideIcon } from "lucide-react";
 import type { AppVersionState } from "@/shared/api/braiApi";
 import { APP_VERSION, ENVIRONMENT_BADGE_LABEL, isProductionEnvironment } from "@/shared/config/runtime";
 import { installAndroidBackHandler } from "@/shared/platform/platform";
@@ -28,6 +28,7 @@ export function DesktopRail({
   versionRefreshing,
   syncStatus,
   onSettings,
+  onBraiCmd,
   onEngine,
   onArchive,
   onLogout,
@@ -41,6 +42,7 @@ export function DesktopRail({
   versionRefreshing: boolean;
   syncStatus: SyncStatus;
   onSettings: () => void;
+  onBraiCmd: () => void;
   onEngine: () => void;
   onArchive: () => void;
   onLogout: () => Promise<void>;
@@ -66,6 +68,7 @@ export function DesktopRail({
           versionError={versionError}
           versionRefreshing={versionRefreshing}
           onSettings={onSettings}
+          onBraiCmd={onBraiCmd}
           onEngine={onEngine}
           onArchive={onArchive}
           onLogout={onLogout}
@@ -73,6 +76,7 @@ export function DesktopRail({
       </SidebarContent>
       <SidebarFooter>
         <DesktopRailStatus syncStatus={syncStatus} pendingCount={pendingCount} />
+        <BraiCmdMenuItem active={section === "brai-cmd"} onClick={onBraiCmd} />
         <EngineMenuItem
           active={section === "engine"}
           appVersionState={appVersionState}
@@ -135,6 +139,7 @@ export function MobileProfileDrawer({
   versionRefreshing,
   onClose,
   onSettings,
+  onBraiCmd,
   onEngine,
   onArchive,
   onLogout,
@@ -148,6 +153,7 @@ export function MobileProfileDrawer({
   versionRefreshing: boolean;
   onClose: () => void;
   onSettings: () => void;
+  onBraiCmd: () => void;
   onEngine: () => void;
   onArchive: () => void;
   onLogout: () => Promise<void>;
@@ -229,6 +235,7 @@ export function MobileProfileDrawer({
               <ActionMenuItem icon={LogOut} label="Выйти" onClick={() => closeThenAsync(onLogout)} />
             </SidebarMenu>
             <SidebarMenu className="mt-auto">
+              <BraiCmdMenuItem active={section === "brai-cmd"} onClick={() => closeThen(onBraiCmd)} />
               <EngineMenuItem
                 active={section === "engine"}
                 appVersionState={appVersionState}
@@ -257,6 +264,7 @@ function PageMenu({
   versionError,
   versionRefreshing,
   onSettings,
+  onBraiCmd,
   onEngine,
   onArchive,
   onLogout,
@@ -271,11 +279,12 @@ function PageMenu({
   versionError: boolean;
   versionRefreshing: boolean;
   onSettings: () => void;
+  onBraiCmd: () => void;
   onEngine: () => void;
   onArchive: () => void;
   onLogout: () => void | Promise<void>;
 }) {
-  const showActionMenu = forceActionMenu || section === "actions" || section === "settings" || section === "archive" || section === "engine";
+  const showActionMenu = forceActionMenu || section === "actions" || section === "settings" || section === "brai-cmd" || section === "archive" || section === "engine";
 
   return (
     <>
@@ -303,6 +312,7 @@ function PageMenu({
         <SidebarGroup className="mt-auto">
           <SidebarGroupContent>
             <SidebarMenu>
+              <BraiCmdMenuItem active={section === "brai-cmd"} onClick={onBraiCmd} />
               <EngineMenuItem
                 active={section === "engine"}
                 appVersionState={appVersionState}
@@ -318,6 +328,10 @@ function PageMenu({
       ) : null}
     </>
   );
+}
+
+function BraiCmdMenuItem({ active, onClick }: { active: boolean; onClick: () => void }) {
+  return <ActionMenuItem icon={Command} label="Brai Cmd" active={active} onClick={onClick} />;
 }
 
 function EngineMenuItem({

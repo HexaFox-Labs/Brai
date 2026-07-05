@@ -1,11 +1,14 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { cachedActivitiesState, openProfileMenuItem, setupBraiAppTest } from "./app-test-support";
+import { actionsWidgetPlugin, cachedActivitiesState, openProfileMenuItem, setupBraiAppTest, stubAndroidCapacitor } from "./app-test-support";
 import { BraiApp } from "@/features/app/BraiApp";
 import { ActionRow } from "@/features/app/sections/actions/ActionRow";
+import { ActionsSection } from "@/features/app/sections/actions/ActionsSection";
 import { TITLE_MAX_LENGTH } from "@/shared/activities/text";
 import { pendingActivityEvents, saveActivitiesState } from "@/shared/storage/activityStore";
 import { pendingEvents, saveCanonicalState } from "@/shared/storage/syncStore";
+import { emptyActivitiesState } from "@/shared/types/activities";
 
 describe("BraiApp actions", () => {
   setupBraiAppTest();
@@ -24,6 +27,174 @@ describe("BraiApp actions", () => {
 
     await waitFor(() => expect(screen.getByRole("button", { name: /Выполнено 1/ })).toBeInTheDocument());
     expect(screen.getByRole("checkbox", { name: "Фокус" })).toBeChecked();
+  });
+
+  it("publishes Android widget snapshots for local create and status changes", async () => {
+    stubAndroidCapacitor();
+    render(<BraiApp />);
+
+    await waitFor(() => expect(actionsWidgetPlugin.saveSnapshot).toHaveBeenCalled());
+    actionsWidgetPlugin.saveSnapshot.mockClear();
+
+    const input = screen.getByRole("textbox", { name: "Добавить" });
+    fireEvent.change(input, { target: { value: "Фокус" } });
+    fireEvent.submit(input.closest("form") as HTMLFormElement);
+
+    await waitFor(() => {
+      expect(actionsWidgetPlugin.saveSnapshot).toHaveBeenCalledWith(expect.objectContaining({
+        actions: expect.arrayContaining([
+          expect.objectContaining({ status: "New", title: "Фокус" }),
+        ]),
+        viewId: "all",
+      }));
+    }, { interval: 25, timeout: 900 });
+
+    actionsWidgetPlugin.saveSnapshot.mockClear();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Фокус" }));
+
+    await waitFor(() => {
+      expect(actionsWidgetPlugin.saveSnapshot).toHaveBeenCalledWith(expect.objectContaining({
+        actions: expect.arrayContaining([
+          expect.objectContaining({ status: "Done", title: "Фокус" }),
+        ]),
+        viewId: "all",
+      }));
+    }, { interval: 25, timeout: 900 });
+
+    actionsWidgetPlugin.saveSnapshot.mockClear();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Фокус" }));
+
+    await waitFor(() => {
+      expect(actionsWidgetPlugin.saveSnapshot).toHaveBeenCalledWith(expect.objectContaining({
+        actions: expect.arrayContaining([
+          expect.objectContaining({ status: "New", title: "Фокус" }),
+        ]),
+        viewId: "all",
+      }));
+    }, { interval: 25, timeout: 900 });
+  });
+
+  it("does not let a slow old Android widget publish block the latest app snapshot", async () => {
+    stubAndroidCapacitor();
+    actionsWidgetPlugin.saveSnapshot
+      .mockImplementationOnce(() => new Promise(() => undefined))
+      .mockResolvedValue({});
+    render(<BraiApp />);
+
+    await waitFor(() => expect(actionsWidgetPlugin.saveSnapshot).toHaveBeenCalledTimes(1));
+
+    const input = screen.getByRole("textbox", { name: "Добавить" });
+    fireEvent.change(input, { target: { value: "Сразу" } });
+    fireEvent.submit(input.closest("form") as HTMLFormElement);
+
+    await waitFor(() => {
+      expect(actionsWidgetPlugin.saveSnapshot).toHaveBeenCalledWith(expect.objectContaining({
+        actions: expect.arrayContaining([
+          expect.objectContaining({ status: "New", title: "Сразу" }),
+        ]),
+        viewId: "all",
+      }));
+    }, { interval: 25, timeout: 900 });
+  });
+
+  it("applies Android widget status changes to the app in under one second", async () => {
+    stubAndroidCapacitor();
+    await saveActivitiesState(cachedActivitiesState("action-widget", "Виджет"));
+    let changes: Array<{ id: string; actionId: string; status: "New" | "Done"; baseServerRevision: number; occurredAtUtc: string }> = [];
+    actionsWidgetPlugin.pendingStatusChanges.mockImplementation(async () => ({ changes }));
+    actionsWidgetPlugin.acknowledgeStatusChanges.mockImplementation(async ({ ids }: { ids: string[] }) => {
+      changes = changes.filter((change) => !ids.includes(change.id));
+      return {};
+    });
+
+    render(<BraiApp />);
+
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: "Виджет" })).not.toBeChecked());
+    actionsWidgetPlugin.acknowledgeStatusChanges.mockClear();
+    changes = [{
+      id: "widget-change-1",
+      actionId: "action-widget",
+      status: "Done",
+      baseServerRevision: 8,
+      occurredAtUtc: "2026-07-04T12:00:00.000Z",
+    }];
+
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: "Виджет" })).toBeChecked(), {
+      interval: 25,
+      timeout: 900,
+    });
+    expect(actionsWidgetPlugin.acknowledgeStatusChanges).toHaveBeenCalledWith({ ids: ["widget-change-1"] });
+    await waitFor(async () => {
+      expect(await pendingActivityEvents()).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          actionId: "action-widget",
+          payload: { status: "Done" },
+          type: "set_status",
+        }),
+      ]));
+    });
+  });
+
+  it("applies Android widget unchecked status to the app in under one second", async () => {
+    stubAndroidCapacitor();
+    await saveActivitiesState({
+      ...cachedActivitiesState("action-widget-done", "Виджет"),
+      actions: [{
+        ...cachedActivitiesState("action-widget-done", "Виджет").actions[0],
+        status: "Done",
+        completed_at_utc: "2026-06-16T10:01:00.000Z",
+      }],
+    });
+    let changes: Array<{ id: string; actionId: string; status: "New" | "Done"; baseServerRevision: number; occurredAtUtc: string }> = [];
+    actionsWidgetPlugin.pendingStatusChanges.mockImplementation(async () => ({ changes }));
+    actionsWidgetPlugin.acknowledgeStatusChanges.mockImplementation(async ({ ids }: { ids: string[] }) => {
+      changes = changes.filter((change) => !ids.includes(change.id));
+      return {};
+    });
+
+    render(<BraiApp />);
+
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: "Виджет" })).toBeChecked());
+    actionsWidgetPlugin.acknowledgeStatusChanges.mockClear();
+    changes = [{
+      id: "widget-change-new",
+      actionId: "action-widget-done",
+      status: "New",
+      baseServerRevision: 8,
+      occurredAtUtc: "2026-07-04T12:00:00.000Z",
+    }];
+
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: "Виджет" })).not.toBeChecked(), {
+      interval: 25,
+      timeout: 900,
+    });
+    expect(actionsWidgetPlugin.acknowledgeStatusChanges).toHaveBeenCalledWith({ ids: ["widget-change-new"] });
+    await waitFor(async () => {
+      expect(await pendingActivityEvents()).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          actionId: "action-widget-done",
+          payload: { status: "New" },
+          type: "set_status",
+        }),
+      ]));
+    });
+  });
+
+  it("publishes Android widget snapshots for deletes before one second", async () => {
+    stubAndroidCapacitor();
+    await saveActivitiesState(cachedActivitiesState("action-delete-widget", "Фокус"));
+    render(<BraiApp />);
+
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Название действия: Фокус" })).toBeInTheDocument());
+    actionsWidgetPlugin.saveSnapshot.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "Удалить: Фокус", hidden: true }));
+
+    await waitFor(() => {
+      expect(actionsWidgetPlugin.saveSnapshot).toHaveBeenCalledWith(expect.objectContaining({
+        actions: [],
+        viewId: "all",
+      }));
+    }, { timeout: 900 });
   });
 
   it("creates a mobile action with a description from the composer", async () => {
@@ -75,6 +246,53 @@ describe("BraiApp actions", () => {
       );
     });
     await waitFor(() => expect(screen.queryByRole("button", { name: "Продолжить черновик действия" })).not.toBeInTheDocument());
+  });
+
+  it("closes mobile action creation after local save and ignores duplicate submit taps", async () => {
+    let resolveCreate: () => void = () => undefined;
+    const onCreate = vi.fn(() => new Promise<void>((resolve) => {
+      resolveCreate = resolve;
+    }));
+
+    function Harness() {
+      const [draft, setDraft] = useState({ title: "", descriptionMd: "" });
+      return (
+        <ActionsSection
+          state={emptyActivitiesState(new Date("2026-07-04T12:00:00.000Z"))}
+          localSnapshotReady
+          autoFocusAddInput={false}
+          activeActivityId={null}
+          activeActivityElapsedSeconds={0}
+          mobileCreateDraft={draft}
+          onAutosaveDetails={vi.fn()}
+          onCreate={onCreate}
+          onDelete={vi.fn()}
+          onMobileCreateDraftChange={setDraft}
+          onMobileOverlayChange={vi.fn()}
+          onReorder={vi.fn()}
+          onSetStatus={vi.fn()}
+          onStartActionFocus={vi.fn()}
+          onStopActionFocus={vi.fn()}
+          onUpdateTitle={vi.fn()}
+        />
+      );
+    }
+
+    render(<Harness />);
+
+    fireEvent.click(document.querySelector(".actions-fab") as HTMLElement);
+    const overlay = document.querySelector(".actions-mobile-overlay") as HTMLElement;
+    fireEvent.change(within(overlay).getByRole("textbox", { name: "Добавить действие" }), { target: { value: "Один" } });
+    const submit = within(overlay).getByRole("button", { name: "Добавить действие" });
+
+    fireEvent.click(submit);
+    fireEvent.click(submit);
+
+    expect(onCreate).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(document.querySelector(".actions-mobile-overlay")).not.toBeInTheDocument());
+
+    await act(async () => resolveCreate());
+    expect(document.querySelector(".actions-mobile-overlay")).not.toBeInTheDocument();
   });
 
   it("closes the mobile create composer by pulling down and keeps the draft", async () => {
@@ -323,6 +541,64 @@ describe("BraiApp actions", () => {
         ]),
       );
     });
+  });
+
+  it("keeps autosaved action description when sync ack returns stale equal-revision state", async () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({
+        matches: false,
+        media: "(max-width: 860px)",
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    );
+    Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 1200 });
+    const staleState = cachedActivitiesState("action-stale-description", "Стабильное действие");
+    await saveActivitiesState(staleState);
+
+    render(<BraiApp />);
+
+    await waitFor(() => expect(screen.getByText("Стабильное действие")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("textbox", { name: "Название действия: Стабильное действие" }));
+    const fetchMock = vi.mocked(fetch);
+    let syncCalled = false;
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url.endsWith("/v1/activities/events/sync")) {
+        syncCalled = true;
+        const body = JSON.parse(String(init?.body ?? "{}")) as { events?: Array<{ event_id: string }> };
+        return new Response(JSON.stringify({
+          acknowledged_event_ids: (body.events ?? []).map((event) => event.event_id),
+          ignored_events: [],
+          server_revision: staleState.server_revision,
+          server_time_utc: staleState.server_time_utc,
+          state: {
+            server_time_utc: staleState.server_time_utc,
+            server_revision: staleState.server_revision,
+            activities: staleState.actions,
+            archived_activities: [],
+          },
+        }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return Promise.reject(new Error("offline"));
+    });
+
+    const descriptionEditor = screen.getByRole("textbox", { name: "Описание действия" });
+    descriptionEditor.textContent = "Свежее описание";
+    fireEvent.input(descriptionEditor);
+    fireEvent.click(screen.getByRole("button", { name: "Закрыть редактор" }));
+
+    await waitFor(() => expect(syncCalled).toBe(true));
+    await waitFor(async () => expect(await pendingActivityEvents()).toEqual([]));
+    expect(screen.getByText("Свежее описание")).toBeInTheDocument();
   });
 
   it("keeps desktop action rows aligned and visually bounded", async () => {

@@ -1,11 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
 import { BraiApi } from "@/shared/api/braiApi";
 import { defaultApiBase } from "@/shared/config/runtime";
+import {
+  acknowledgeAndroidActionsWidgetStatusChanges,
+  clearAndroidActionsWidgetData,
+  DEFAULT_ACTIONS_WIDGET_VIEW_ID,
+  listenAndroidActionsWidgetStatusChangesPending,
+  pendingAndroidActionsWidgetStatusChanges,
+  saveAndroidActionsWidgetSnapshot,
+} from "@/shared/platform/androidActionsWidget";
 import { consumeAndroidTimerStopRequest, startAndroidTimerNotification, stopAndroidTimerNotification } from "@/shared/platform/androidTimerNotification";
-import { isNativeShell } from "@/shared/platform/platform";
-import { acknowledgeActionEvents, loadActionsState, markActionAttempt, markActionFailure, pendingActionEvents, projectActionsState, saveActionsState } from "@/shared/storage/activityStore";
+import { isNativeShell, platformName } from "@/shared/platform/platform";
+import { acknowledgeActionEvents, enqueueActivityEvent, loadActionsState, markActionAttempt, markActionFailure, pendingActionEvents, projectActionsState, saveActionsState } from "@/shared/storage/activityStore";
 import { ensureClientMeta, ensureClientUser } from "@/shared/storage/db";
 import { acknowledgeInboxEvents, loadInboxState, markInboxAttempt, markInboxFailure, pendingInboxEvents, projectInboxState, saveInboxState } from "@/shared/storage/inboxStore";
 import { getBraiLocalStorageItem, setBraiLocalStorageItem } from "@/shared/storage/localStorageKeys";
@@ -29,6 +37,8 @@ import { useBraiOta } from "./useBraiOta";
 import { useBraiTheme } from "./useBraiTheme";
 import { useBraiVersion } from "./useBraiVersion";
 
+const ANDROID_ACTIONS_WIDGET_STATUS_POLL_MS = 250;
+
 /**
  * Owns the Brai client state machine, local cache loading, and sync flow.
  */
@@ -47,16 +57,22 @@ export function useBraiAppState(initialSection: SectionId) {
   const applyServerStateRef = useRef<(state: TimerState) => Promise<void>>(async () => undefined);
   const applyActivitiesStateRef = useRef<(state: ActionsState) => Promise<void>>(async () => undefined);
   const applyInboxStateRef = useRef<(state: InboxState) => Promise<void>>(async () => undefined);
+  const consumeAndroidActionsWidgetStatusChangesRef = useRef<() => Promise<void>>(async () => undefined);
   const timerRevisionRef = useRef(0);
   const actionsRevisionRef = useRef(0);
   const inboxRevisionRef = useRef(0);
   const historyGoalRevisionRef = useRef(0);
   const activeRef = useRef(false);
   const androidStopInFlightRef = useRef(false);
+  const androidWidgetStatusInFlightRef = useRef(false);
+  const androidActionsSnapshotVersionRef = useRef(0);
+  const actionFlushInFlightRef = useRef(false);
+  const actionFlushQueuedRef = useRef(false);
   const timerFlushTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stopTimerRef = useRef<() => Promise<void>>(async () => undefined);
   const [timer, setTimer] = useState<TimerState>(() => emptyTimerState());
   const [actions, setActions] = useState<ActionsState>(() => emptyActionsState());
+  const actionsRef = useRef<ActionsState>(actions);
   const [inbox, setInbox] = useState<InboxState>(() => emptyInboxState());
   const [history, setHistory] = useState<HistoryData>(() => emptyHistory());
   const [goal, setGoal] = useState<GoalData>(() => emptyGoal());
@@ -80,8 +96,24 @@ export function useBraiAppState(initialSection: SectionId) {
     setTimer((current) => (current.server_revision > nextState.server_revision ? current : nextState));
   }
 
+  function setActionsAndRef(nextState: SetStateAction<ActionsState>) {
+    const resolved = typeof nextState === "function"
+      ? (nextState as (current: ActionsState) => ActionsState)(actionsRef.current)
+      : nextState;
+    actionsRef.current = resolved;
+    setActions(resolved);
+  }
+
   function setActionsSnapshot(nextState: ActionsState) {
-    setActions((current) => (current.server_revision > nextState.server_revision ? current : nextState));
+    if (actionsRef.current.server_revision > nextState.server_revision) return;
+    setActionsAndRef(nextState);
+  }
+
+  async function setProjectedActionsSnapshot(canonical: ActionsState) {
+    const queuedActions = await pendingActionEvents();
+    setActionsSnapshot(projectActionsState(canonical, queuedActions));
+    setActionPendingCount(queuedActions.length);
+    return queuedActions;
   }
 
   function setInboxSnapshot(nextState: InboxState) {
@@ -119,9 +151,9 @@ export function useBraiAppState(initialSection: SectionId) {
     actionsRevisionRef.current = state.server_revision;
     const accepted = await saveActionsState(state);
     if (!accepted) return;
-    setActionsSnapshot(projectActionsState(state, []));
-    setActionPendingCount(0);
-    setSyncStatus("synced");
+    const latestQueuedActions = await setProjectedActionsSnapshot(state);
+    const [timerQueued, inboxQueued] = await Promise.all([pendingEvents(), pendingInboxEvents()]);
+    setSyncStatus(latestQueuedActions.length + timerQueued.length + inboxQueued.length > 0 ? "pending_sync" : "synced");
   }
 
   async function applyInboxState(state: InboxState) {
@@ -161,7 +193,8 @@ export function useBraiAppState(initialSection: SectionId) {
         sourceApi.actions(),
         sourceApi.inbox(),
       ]);
-      const [queued, queuedActions, queuedInbox] = await Promise.all([pendingEvents(), pendingActionEvents(), pendingInboxEvents()]);
+      const [queued, queuedInbox] = await Promise.all([pendingEvents(), pendingInboxEvents()]);
+      let queuedActions = await pendingActionEvents();
       const accepted =
         nextState.server_revision >= timerRevisionRef.current && (await saveCanonicalState(nextState));
       if (accepted) {
@@ -180,7 +213,7 @@ export function useBraiAppState(initialSection: SectionId) {
         nextActions.server_revision >= actionsRevisionRef.current && (await saveActionsState(nextActions));
       if (actionsAccepted) {
         actionsRevisionRef.current = nextActions.server_revision;
-        setActionsSnapshot(projectActionsState(nextActions, queuedActions));
+        queuedActions = await setProjectedActionsSnapshot(nextActions);
       }
       const inboxAccepted =
         nextInbox.server_revision >= inboxRevisionRef.current && (await saveInboxState(nextInbox));
@@ -269,12 +302,12 @@ export function useBraiAppState(initialSection: SectionId) {
   async function refreshActionsAndFlush(sourceApi = apiRef.current) {
     try {
       const nextActions = await sourceApi.actions();
-      const queuedActions = await pendingActionEvents();
+      let queuedActions = await pendingActionEvents();
       const accepted =
         nextActions.server_revision >= actionsRevisionRef.current && (await saveActionsState(nextActions));
       if (accepted) {
         actionsRevisionRef.current = nextActions.server_revision;
-        setActionsSnapshot(projectActionsState(nextActions, queuedActions));
+        queuedActions = await setProjectedActionsSnapshot(nextActions);
       }
       setActionPendingCount(queuedActions.length);
       await flushActionPending(sourceApi);
@@ -284,6 +317,22 @@ export function useBraiAppState(initialSection: SectionId) {
   }
 
   async function flushActionPending(sourceApi = apiRef.current) {
+    if (actionFlushInFlightRef.current) {
+      actionFlushQueuedRef.current = true;
+      return;
+    }
+    actionFlushInFlightRef.current = true;
+    try {
+      do {
+        actionFlushQueuedRef.current = false;
+        await flushActionPendingOnce(sourceApi);
+      } while (actionFlushQueuedRef.current);
+    } finally {
+      actionFlushInFlightRef.current = false;
+    }
+  }
+
+  async function flushActionPendingOnce(sourceApi = apiRef.current) {
     const queued = await pendingActionEvents();
     setActionPendingCount(queued.length);
     if (queued.length === 0) {
@@ -299,7 +348,7 @@ export function useBraiAppState(initialSection: SectionId) {
         deviceId: meta.deviceId,
         platform: meta.platform,
         events: queued,
-        lastKnownServerTimeUtc: actions.server_time_utc,
+        lastKnownServerTimeUtc: actionsRef.current.server_time_utc,
       });
       const ignoredIds = response.ignored_events.map((event) => event.event_id);
       await acknowledgeActionEvents([...response.acknowledged_event_ids, ...ignoredIds]);
@@ -307,10 +356,22 @@ export function useBraiAppState(initialSection: SectionId) {
       const accepted =
         response.state.server_revision >= actionsRevisionRef.current && (await saveActionsState(response.state));
       const remaining = await pendingActionEvents();
-      const currentState = accepted ? response.state : (await loadActionsState()) ?? response.state;
-      if (currentState.server_revision >= actionsRevisionRef.current) {
-        actionsRevisionRef.current = currentState.server_revision;
-        setActionsSnapshot(projectActionsState(currentState, remaining));
+      let projected: ActionsState | null = null;
+      if (accepted) {
+        actionsRevisionRef.current = response.state.server_revision;
+        projected = projectActionsState(response.state, remaining);
+      } else {
+        const cachedState = await loadActionsState();
+        if (cachedState && cachedState.server_revision > actionsRevisionRef.current) {
+          actionsRevisionRef.current = cachedState.server_revision;
+          projected = projectActionsState(cachedState, remaining);
+        } else {
+          projected = projectActionsState(actionsRef.current, remaining);
+        }
+      }
+      if (projected) {
+        setActionsAndRef(projected);
+        void publishAndroidActionsSnapshot(projected).catch(() => undefined);
       }
       setActionPendingCount(remaining.length);
       const [timerQueued, inboxQueued] = await Promise.all([pendingEvents(), pendingInboxEvents()]);
@@ -318,6 +379,50 @@ export function useBraiAppState(initialSection: SectionId) {
     } catch (error) {
       await markActionFailure(queued, error instanceof Error ? error.message : "sync_failed");
       handleError(error);
+    }
+  }
+
+  async function consumeAndroidActionsWidgetStatusChanges() {
+    if (androidWidgetStatusInFlightRef.current) return;
+    androidWidgetStatusInFlightRef.current = true;
+    try {
+      const changes = await pendingAndroidActionsWidgetStatusChanges();
+      if (changes.length === 0) return;
+
+      const currentActions = actionsRef.current;
+      const statusById = new Map(currentActions.actions.map((action) => [action.id, action.status]));
+      const acknowledgedIds: string[] = [];
+      let enqueued = false;
+      for (const change of changes) {
+        const currentStatus = statusById.get(change.actionId);
+        if (!currentStatus || currentStatus === change.status) {
+          acknowledgedIds.push(change.id);
+          continue;
+        }
+        await enqueueActivityEvent({
+          type: "set_status",
+          actionId: change.actionId,
+          payload: { status: change.status },
+          baseServerRevision: currentActions.server_revision,
+        });
+        statusById.set(change.actionId, change.status);
+        acknowledgedIds.push(change.id);
+        enqueued = true;
+      }
+
+      const queued = await pendingActionEvents();
+      const canonical = await loadActionsState();
+      const projected = projectActionsState(canonical ?? currentActions, queued);
+      setActionsAndRef(projected);
+      await publishAndroidActionsSnapshot(projected);
+      await acknowledgeAndroidActionsWidgetStatusChanges(acknowledgedIds);
+      if (!enqueued) return;
+
+      setActionPendingCount(queued.length);
+      setSyncStatus("pending_sync");
+      await flushActionPending();
+    } finally {
+      androidWidgetStatusInFlightRef.current = false;
     }
   }
 
@@ -490,7 +595,7 @@ export function useBraiAppState(initialSection: SectionId) {
     inboxRevisionRef.current = 0;
     historyGoalRevisionRef.current = 0;
     setTimer(emptyTimerState());
-    setActions(emptyActionsState());
+    setActionsAndRef(emptyActionsState());
     setInbox(emptyInboxState());
     setHistory(emptyHistory());
     setGoal(emptyGoal());
@@ -566,6 +671,18 @@ export function useBraiAppState(initialSection: SectionId) {
     setSyncStatus(typeof navigator !== "undefined" && navigator.onLine ? "sync_failed" : "offline");
   }
 
+  const publishAndroidActionsSnapshot = useCallback((nextActions: ActionsState): Promise<void> => {
+    if (!localSnapshotReady || syncStatus === "auth_required") return Promise.resolve();
+    // Native widget taps bump the stored version by +1; JS advances in wider steps to avoid equal-version drops.
+    const snapshotVersion = Math.max(Date.now() * 1000, androidActionsSnapshotVersionRef.current + 1000);
+    androidActionsSnapshotVersionRef.current = snapshotVersion;
+    return saveAndroidActionsWidgetSnapshot(nextActions, {
+      viewId: DEFAULT_ACTIONS_WIDGET_VIEW_ID,
+      actions: nextActions.actions,
+      snapshotVersion,
+    });
+  }, [localSnapshotReady, syncStatus]);
+
   useEffect(() => {
     apiRef.current = api;
     refreshAllRef.current = refreshAll;
@@ -573,6 +690,7 @@ export function useBraiAppState(initialSection: SectionId) {
     applyServerStateRef.current = applyServerState;
     applyActivitiesStateRef.current = applyActivitiesState;
     applyInboxStateRef.current = applyInboxState;
+    consumeAndroidActionsWidgetStatusChangesRef.current = consumeAndroidActionsWidgetStatusChanges;
   });
 
   useEffect(() => {
@@ -628,6 +746,8 @@ export function useBraiAppState(initialSection: SectionId) {
     return () => {
       cancelled = true;
     };
+    // Boot is intentionally one-shot; rerunning on setter wrapper identity would duplicate startup sync.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useBraiLiveUpdates({
@@ -639,6 +759,68 @@ export function useBraiAppState(initialSection: SectionId) {
     applyActivitiesStateRef,
     applyInboxStateRef,
   });
+
+  useEffect(() => {
+    if (!localSnapshotReady) return;
+    if (syncStatus === "auth_required") {
+      void clearAndroidActionsWidgetData();
+      return;
+    }
+    void publishAndroidActionsSnapshot(actions);
+  }, [actions, localSnapshotReady, publishAndroidActionsSnapshot, syncStatus]);
+
+  useEffect(() => {
+    if (!localSnapshotReady || syncStatus === "auth_required") return undefined;
+    const publishLatest = () => {
+      const nextActions = actionsRef.current;
+      void publishAndroidActionsSnapshot(nextActions);
+    };
+    const publishWhenHidden = () => {
+      if (document.visibilityState === "hidden") publishLatest();
+    };
+    window.addEventListener("blur", publishLatest);
+    window.addEventListener("pagehide", publishLatest);
+    document.addEventListener("visibilitychange", publishWhenHidden);
+    return () => {
+      window.removeEventListener("blur", publishLatest);
+      window.removeEventListener("pagehide", publishLatest);
+      document.removeEventListener("visibilitychange", publishWhenHidden);
+    };
+  }, [localSnapshotReady, publishAndroidActionsSnapshot, syncStatus]);
+
+  useEffect(() => {
+    if (
+      !localSnapshotReady ||
+      syncStatus === "auth_required" ||
+      !isNativeShell() ||
+      platformName() !== "android"
+    ) return undefined;
+    let cancelled = false;
+    let listener: { remove: () => Promise<void> } | null = null;
+    const consume = () => {
+      if (!cancelled) void consumeAndroidActionsWidgetStatusChangesRef.current().catch(handleError);
+    };
+    consume();
+    const interval = window.setInterval(consume, ANDROID_ACTIONS_WIDGET_STATUS_POLL_MS);
+    void listenAndroidActionsWidgetStatusChangesPending(consume).then((handle) => {
+      if (cancelled) {
+        void handle?.remove().catch(() => undefined);
+        return;
+      }
+      listener = handle;
+    });
+    window.addEventListener("focus", consume);
+    window.addEventListener("pageshow", consume);
+    document.addEventListener("visibilitychange", consume);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      void listener?.remove().catch(() => undefined);
+      window.removeEventListener("focus", consume);
+      window.removeEventListener("pageshow", consume);
+      document.removeEventListener("visibilitychange", consume);
+    };
+  }, [localSnapshotReady, syncStatus]);
 
   const active = timer.active_session != null;
   const activeStartedAtUtc = timer.active_session?.started_at_utc ?? null;
@@ -774,8 +956,10 @@ export function useBraiAppState(initialSection: SectionId) {
   const actionCommands = createBraiActionCommands({
     actions,
     flushActionPending,
+    getActions: () => actionsRef.current,
+    publishActionsSnapshot: publishAndroidActionsSnapshot,
     setActionPendingCount,
-    setActions,
+    setActions: setActionsAndRef,
     setSyncStatus,
   });
   const inboxCommands = createBraiInboxCommands({
