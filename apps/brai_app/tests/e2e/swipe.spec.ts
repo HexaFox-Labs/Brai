@@ -108,12 +108,13 @@ test("opens the mobile menu from the left edge outside the bottom dock", async (
   await dispatchTouch(page, "touchmove", { x: 88, y: 224 });
   await dispatchTouch(page, "touchend", { x: 116, y: 224 });
 
-  const drawer = page.locator(".mobile-profile-drawer");
+  const drawer = page.locator(".mobile-dock-overflow-sheet");
   await expect(drawer).toBeVisible();
   const viewport = page.viewportSize();
   const box = await drawer.boundingBox();
   if (!viewport || !box) throw new Error("Missing mobile menu geometry");
-  expect(Math.round(box.width)).toBe(Math.round(viewport.width * 0.8));
+  expect(box.width).toBeGreaterThanOrEqual(viewport.width - 1);
+  expect(box.height).toBeLessThan(viewport.height * 0.6);
 });
 
 test("keeps horizontal page swipes from moving the vertical scroll", async ({ page }, testInfo) => {

@@ -12,7 +12,7 @@ import { isPrimarySection, sectionIcon, sectionTitle } from "./appModel";
 import { cx } from "./appUtils";
 import { AuthPanel, IconButton, MobileContextSheet, ScreenHeader, ThemeButton } from "./chrome/AppChrome";
 import { useBraiAppState } from "./hooks/useBraiAppState";
-import { DesktopRail, MainDock, MobileMenuButton, MobileProfileDrawer, MobileRailMenuButton } from "./navigation/AppNavigation";
+import { DesktopRail, MainDock, MobileDockOverflowButton, MobileDockOverflowSheet, MobileMenuButton, MobileProfileDrawer } from "./navigation/AppNavigation";
 import { isMobileNavigationViewport, sectionSwipePageStyle, useLeftEdgeMenuSwipe } from "./navigation/useSectionSwipeNavigation";
 import { ActionsSection } from "./sections/actions/ActionsSection";
 import { ActionsInfoPanel } from "./sections/actions/ActionsInfoPanel";
@@ -32,7 +32,7 @@ const INBOX_MOBILE_CREATE_DRAFT_STORAGE_KEY = "brai_inbox_mobile_create_draft";
 
 export function BraiApp({ initialSection = "actions" }: { initialSection?: SectionId }) {
   const app = useBraiAppState(initialSection);
-  const [mobileMenuKind, setMobileMenuKind] = useState<"rail" | "burger">("burger");
+  const [mobileDockMenu, setMobileDockMenu] = useState<"left" | "right" | null>(null);
   const [actionsMobileCreateDraft, setActionsMobileCreateDraft] = useStoredMobileCreateDraft(ACTIONS_MOBILE_CREATE_DRAFT_STORAGE_KEY);
   const [inboxMobileCreateDraft, setInboxMobileCreateDraft] = useStoredMobileCreateDraft(INBOX_MOBILE_CREATE_DRAFT_STORAGE_KEY);
   const mobileViewport = useMountedMobileNavigationViewport();
@@ -40,12 +40,11 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
   const selectSectionRef = useRef(app.selectSection);
   const adjacentSection = app.swipeNavigation.visual?.to;
   const mobileMenuSwipe = useLeftEdgeMenuSwipe(
-    () => openMobileMenu("rail"),
-    !app.mobileMenuOpen && !app.mobileContextPanel && !app.actionOverlayOpen,
+    () => setMobileDockMenu("left"),
+    !app.mobileMenuOpen && !mobileDockMenu && !app.mobileContextPanel && !app.actionOverlayOpen,
   );
 
-  function openMobileMenu(kind: "rail" | "burger") {
-    setMobileMenuKind(kind);
+  function openMobileMenu() {
     app.setMobileMenuOpen(true);
   }
 
@@ -61,7 +60,7 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
   }, [app.section, app.selectSection]);
 
   useEffect(() => installAndroidBackHandler(() => {
-    if (window.history.state?.braiMobileMenu || window.history.state?.braiMobileSheet || window.history.state?.braiActivityEditor || window.history.state?.braiMobileActionCreate || window.history.state?.braiInboxEditor || window.history.state?.braiMobileInboxCreate) return false;
+    if (window.history.state?.braiMobileMenu || window.history.state?.braiMobileDockMenu || window.history.state?.braiMobileSheet || window.history.state?.braiActivityEditor || window.history.state?.braiMobileActionCreate || window.history.state?.braiInboxEditor || window.history.state?.braiMobileInboxCreate) return false;
     if (sectionRef.current === "actions") return false;
     if (window.history.state?.braiSection === sectionRef.current) {
       window.history.back();
@@ -79,7 +78,7 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
           icon={sectionIcon(screenSection)}
           syncStatus={app.displaySyncStatus}
           pendingCount={app.totalPendingCount}
-          leading={isPrimarySection(screenSection) ? <MobileMenuButton onClick={() => openMobileMenu("burger")} /> : null}
+          leading={isPrimarySection(screenSection) ? <MobileMenuButton onClick={openMobileMenu} /> : null}
           trailing={
             screenSection === "actions" && mobileViewport ? (
               <IconButton icon={Info} label="Информация о действиях" active={app.actionsInfoActive} onClick={app.toggleActionsInfoPanel} />
@@ -235,20 +234,31 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
         swipeHandlers={app.swipeNavigation.handlers}
         timer={app.timer}
       />
-      <MobileRailMenuButton
-        hidden={app.actionOverlayOpen || app.mobileContextPanel != null || app.mobileMenuOpen}
-        onClick={() => openMobileMenu("rail")}
+      <MobileDockOverflowButton
+        side="left"
+        hidden={app.mobileMenuOpen || mobileDockMenu != null || app.actionOverlayOpen}
+        onClick={() => setMobileDockMenu("left")}
+      />
+      <MobileDockOverflowButton
+        side="right"
+        hidden={app.mobileMenuOpen || mobileDockMenu != null || app.actionOverlayOpen}
+        onClick={() => setMobileDockMenu("right")}
       />
       {app.mobileMenuOpen ? (
         <MobileProfileDrawer
-          mode={mobileMenuKind}
+          onClose={() => app.setMobileMenuOpen(false)}
+        />
+      ) : null}
+      {mobileDockMenu ? (
+        <MobileDockOverflowSheet
+          side={mobileDockMenu}
           section={app.section}
           appVersionState={app.versionState}
           otaRefreshing={app.otaRefreshing}
           otaState={app.otaState}
           versionError={app.versionError}
           versionRefreshing={app.versionRefreshing}
-          onClose={() => app.setMobileMenuOpen(false)}
+          onClose={() => setMobileDockMenu(null)}
           onSettings={app.openSettingsPage}
           onBraiCmd={openBraiCmd}
           onEngine={() => app.selectSection("engine")}

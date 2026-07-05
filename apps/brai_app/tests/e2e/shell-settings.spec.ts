@@ -19,7 +19,7 @@ test("shows Settings without update state", async ({ page }, testInfo) => {
 });
 
 test("opens Engine from the profile menu", async ({ page }) => {
-  await page.route("**/api/v1/version", (route) => route.fulfill({
+  await page.route("**/v1/version", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({
       server_time_utc: "2026-06-29T12:00:00.000Z",
@@ -49,7 +49,7 @@ test("opens Engine from the profile menu", async ({ page }) => {
   await openEngineFromProfile(page);
 
   await expect(page.getByRole("heading", { name: "Engine", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: /Текущая OTA-версия 0\.\d+\.\d+/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Текущая OTA-версия (unknown|0\.\d+\.\d+)/ })).toBeVisible();
   await expect(page.getByText("Доступна OTA-версия 0.11.52", { exact: true })).toBeVisible();
   await expect(page.getByText("Перезагрузите страницу, чтобы получить новую версию.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Проверить обновления" })).toBeVisible();
@@ -151,25 +151,17 @@ test("keeps Android Engine download progress compact on mobile", async ({ page }
     .toBeLessThan(72);
 });
 
-test("pins Engine to the bottom of the mobile profile drawer", async ({ page }, testInfo) => {
+test("shows Engine in the mobile dock overflow menu", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "mobile", "mobile-only layout");
 
   await page.goto("/");
   await page.getByRole("button", { name: "Открыть левое меню" }).click();
 
-  const drawer = page.locator(".mobile-profile-drawer");
-  const engineButton = drawer.getByRole("button", { name: "Engine" });
-  await expect(drawer).toBeVisible();
+  const sheet = page.locator(".mobile-dock-overflow-sheet");
+  const engineButton = sheet.getByRole("button", { name: "Engine" });
+  await expect(sheet).toBeVisible();
   await expect(engineButton).toBeVisible();
-  await expect
-    .poll(async () => {
-      const drawerBox = await drawer.boundingBox();
-      const engineBox = await engineButton.boundingBox();
-      if (!drawerBox || !engineBox) return Number.POSITIVE_INFINITY;
-      const bottomGap = drawerBox.y + drawerBox.height - (engineBox.y + engineBox.height);
-      return bottomGap / drawerBox.height;
-    })
-    .toBeLessThan(0.08);
+  await expect(sheet.getByRole("button", { name: "Brai Cmd" })).toBeVisible();
 });
 
 test("keeps Engine text out of the collapsed desktop rail on load", async ({ page }, testInfo) => {

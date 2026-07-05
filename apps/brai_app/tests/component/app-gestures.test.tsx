@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { setupBraiAppTest, swipe } from "./app-test-support";
 import { BraiApp } from "@/features/app/BraiApp";
@@ -43,7 +43,7 @@ describe("BraiApp gestures", () => {
     expect(document.querySelector('[data-section-page="focus"]')).not.toBeInTheDocument();
   });
 
-  it("opens the mobile profile drawer from a left-edge page swipe", async () => {
+  it("opens the left mobile dock overflow from a left-edge page swipe", async () => {
     render(<BraiApp />);
     const main = screen.getByRole("main");
 
@@ -57,12 +57,13 @@ describe("BraiApp gestures", () => {
       changedTouches: [{ identifier: 1, clientX: 116, clientY: 224 }],
     });
 
-    const drawer = await waitFor(() => {
-      const current = document.querySelector(".mobile-profile-drawer");
+    const sheet = await waitFor(() => {
+      const current = document.querySelector(".mobile-dock-overflow-sheet");
       expect(current).toBeInstanceOf(HTMLElement);
       return current as HTMLElement;
     });
-    expect(drawer).toHaveClass("w-4/5");
+    expect(sheet).toHaveAttribute("aria-label", "Левое меню");
+    expect(within(sheet).getByRole("button", { name: "Настройки" })).toBeInTheDocument();
   });
 
   it("switches adjacent mobile tabs by swiping anywhere across the bottom menu zone", async () => {
@@ -108,6 +109,16 @@ describe("BraiApp gestures", () => {
     expect(window.BraiAndroidBack?.()).toBe(true);
 
     await waitFor(() => expect(document.querySelector(".mobile-menu-backdrop")).not.toBeInTheDocument());
+  });
+
+  it("closes the mobile dock overflow through the Android back bridge", async () => {
+    render(<BraiApp />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Открыть правое меню" }));
+    await waitFor(() => expect(window.BraiAndroidBack).toBeTypeOf("function"));
+    expect(window.BraiAndroidBack?.()).toBe(true);
+
+    await waitFor(() => expect(document.querySelector(".mobile-dock-overflow-sheet")).not.toBeInTheDocument());
   });
 
   it("drags the mobile profile drawer back to the screen edge", async () => {

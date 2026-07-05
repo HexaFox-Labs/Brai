@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, type TouchEventHandler } from "react";
-import { Archive, Command, Cpu, Download, EllipsisVertical, LogOut, Menu, Settings, type LucideIcon } from "lucide-react";
+import { Archive, CalendarDays, Command, Cpu, Download, Ellipsis, Flag, LogOut, Menu, Settings, Tag, type LucideIcon } from "lucide-react";
 import type { AppVersionState } from "@/shared/api/braiApi";
 import { APP_VERSION, ENVIRONMENT_BADGE_LABEL, isProductionEnvironment } from "@/shared/config/runtime";
 import { installAndroidBackHandler } from "@/shared/platform/platform";
@@ -113,66 +113,44 @@ export function MobileMenuButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-export function MobileRailMenuButton({ hidden, onClick }: { hidden: boolean; onClick: () => void }) {
+export function MobileDockOverflowButton({
+  hidden,
+  side,
+  onClick,
+}: {
+  hidden: boolean;
+  side: "left" | "right";
+  onClick: () => void;
+}) {
   return (
     <button
       type="button"
       className={cx(
-        "mobile-rail-menu-button pointer-events-auto fixed bottom-[calc(0.25rem+env(safe-area-inset-bottom))] left-3 z-[70] hidden h-11 w-11 place-items-center rounded-full border-0 bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-0 focus-visible:ring-2 focus-visible:ring-ring max-[860px]:grid",
+        "mobile-dock-overflow-button pointer-events-auto fixed bottom-[calc(0.25rem+env(safe-area-inset-bottom))] z-[100] hidden h-11 w-11 place-items-center rounded-full border-0 bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-0 focus-visible:ring-2 focus-visible:ring-ring max-[860px]:grid",
+        side === "left" ? "left-3" : "right-3",
         hidden && "max-[860px]:pointer-events-none max-[860px]:invisible max-[860px]:opacity-0",
       )}
-      aria-label="Открыть левое меню"
+      aria-label={side === "left" ? "Открыть левое меню" : "Открыть правое меню"}
       onClick={onClick}
     >
-      <EllipsisVertical className="h-5 w-5" aria-hidden="true" />
+      <Ellipsis className="h-5 w-5" aria-hidden="true" />
     </button>
   );
 }
 
 export function MobileProfileDrawer({
-  mode,
-  section,
-  appVersionState,
-  otaRefreshing,
-  otaState,
-  versionError,
-  versionRefreshing,
   onClose,
-  onSettings,
-  onBraiCmd,
-  onEngine,
-  onArchive,
-  onLogout,
 }: {
-  mode: "rail" | "burger";
-  section: SectionId;
-  appVersionState: AppVersionState | null;
-  otaRefreshing: boolean;
-  otaState: BraiOtaState | null;
-  versionError: boolean;
-  versionRefreshing: boolean;
   onClose: () => void;
-  onSettings: () => void;
-  onBraiCmd: () => void;
-  onEngine: () => void;
-  onArchive: () => void;
-  onLogout: () => Promise<void>;
 }) {
   const suppressPopRef = useRef(false);
-  const afterCloseRef = useRef<(() => void) | null>(null);
-  const finishClose = useCallback(() => {
-    onClose();
-    afterCloseRef.current?.();
-    afterCloseRef.current = null;
-  }, [onClose]);
   const { backdropRef, backdropStyle, closeWithAnimation, resetOpen, sheetDragHandlers, sheetRef, sheetStyle } = useMobileSheetDrag({
     axis: "x",
     excludeControls: true,
-    onClose: finishClose,
+    onClose,
   });
 
-  const closeMenu = useCallback((afterClose?: () => void) => {
-    afterCloseRef.current = afterClose ?? null;
+  const closeMenu = useCallback(() => {
     if (window.history.state?.braiMobileMenu) {
       suppressPopRef.current = true;
       window.history.back();
@@ -205,36 +183,137 @@ export function MobileProfileDrawer({
     return true;
   }), [closeMenu]);
 
-  function closeThen(callback: () => void) {
-    closeMenu(callback);
-  }
-
-  function closeThenAsync(callback: () => Promise<void>) {
-    closeMenu(() => void callback());
-  }
-
   return (
     <div className="mobile-menu-backdrop fixed inset-0 z-[90]" data-nav-swipe-exclusion onClick={() => closeMenu()}>
       <div ref={backdropRef} className="absolute inset-0 bg-foreground/15 dark:bg-background/80" style={backdropStyle} aria-hidden="true" />
       <aside
         ref={sheetRef}
-        className={cx(
-          "mobile-profile-drawer flex h-full flex-col border-r border-border bg-card px-2 pt-[calc(12px+env(safe-area-inset-top))] shadow-xl animate-[mobile-drawer-in_180ms_ease-out] [touch-action:pan-y] will-change-transform",
-          mode === "rail" ? "w-4/5 pb-[calc(1rem+env(safe-area-inset-bottom))]" : "w-16 pb-[calc(0.75rem+env(safe-area-inset-bottom))]",
-        )}
+        className="mobile-profile-drawer flex h-full w-16 flex-col border-r border-border bg-card px-2 pt-[calc(12px+env(safe-area-inset-top))] pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-xl animate-[mobile-drawer-in_180ms_ease-out] [touch-action:pan-y] will-change-transform"
         style={sheetStyle}
-        aria-label={mode === "rail" ? "Левое меню" : "Пустое меню"}
+        aria-label="Пустое меню"
+        {...sheetDragHandlers}
+        onClick={(event) => event.stopPropagation()}
+      />
+    </div>
+  );
+}
+
+const MOBILE_DOCK_PLACEHOLDER_ITEMS = [
+  { label: "Дата", icon: CalendarDays },
+  { label: "Флаг", icon: Flag },
+  { label: "Тег", icon: Tag },
+  { label: "Архив", icon: Archive },
+] as const;
+
+export function MobileDockOverflowSheet({
+  side,
+  section,
+  appVersionState,
+  otaRefreshing,
+  otaState,
+  versionError,
+  versionRefreshing,
+  onClose,
+  onSettings,
+  onBraiCmd,
+  onEngine,
+  onArchive,
+  onLogout,
+}: {
+  side: "left" | "right";
+  section: SectionId;
+  appVersionState: AppVersionState | null;
+  otaRefreshing: boolean;
+  otaState: BraiOtaState | null;
+  versionError: boolean;
+  versionRefreshing: boolean;
+  onClose: () => void;
+  onSettings: () => void;
+  onBraiCmd: () => void;
+  onEngine: () => void;
+  onArchive: () => void;
+  onLogout: () => Promise<void>;
+}) {
+  const suppressPopRef = useRef(false);
+  const afterCloseRef = useRef<(() => void) | null>(null);
+  const finishClose = useCallback(() => {
+    onClose();
+    afterCloseRef.current?.();
+    afterCloseRef.current = null;
+  }, [onClose]);
+  const { backdropRef, backdropStyle, closeWithAnimation, resetOpen, sheetDragHandlers, sheetRef, sheetStyle } = useMobileSheetDrag({
+    excludeControls: true,
+    onClose: finishClose,
+  });
+
+  const closeSheet = useCallback((afterClose?: () => void) => {
+    afterCloseRef.current = afterClose ?? null;
+    if (window.history.state?.braiMobileDockMenu === side) {
+      suppressPopRef.current = true;
+      window.history.back();
+    }
+    closeWithAnimation();
+  }, [closeWithAnimation, side]);
+
+  useEffect(() => {
+    resetOpen();
+    if (window.history.state?.braiMobileDockMenu) {
+      window.history.replaceState({ ...window.history.state, braiMobileDockMenu: side }, "", window.location.href);
+    } else {
+      window.history.pushState({ ...window.history.state, braiMobileDockMenu: side }, "", window.location.href);
+    }
+
+    function onPopState() {
+      if (suppressPopRef.current) {
+        suppressPopRef.current = false;
+        return;
+      }
+      closeWithAnimation();
+    }
+
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [closeWithAnimation, resetOpen, side]);
+
+  useEffect(() => installAndroidBackHandler(() => {
+    closeSheet();
+    return true;
+  }), [closeSheet]);
+
+  function closeThen(callback: () => void) {
+    closeSheet(callback);
+  }
+
+  function closeThenAsync(callback: () => Promise<void>) {
+    closeSheet(() => void callback());
+  }
+
+  return (
+    <div className="mobile-dock-overflow-backdrop fixed inset-0 z-[110] hidden items-end max-[860px]:flex" data-nav-swipe-exclusion onClick={() => closeSheet()}>
+      <div ref={backdropRef} className="absolute inset-0 bg-foreground/20 dark:bg-background/80" style={backdropStyle} aria-hidden="true" />
+      <aside
+        ref={sheetRef}
+        className="mobile-dock-overflow-sheet pointer-events-auto relative z-[1] grid max-h-[60dvh] w-full min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-t-2xl border-t border-border bg-card pb-[env(safe-area-inset-bottom)] pt-2 shadow-xl animate-[mobile-detail-sheet-in_180ms_ease-out] will-change-transform"
+        style={sheetStyle}
+        aria-label={side === "left" ? "Левое меню" : "Правое меню"}
         {...sheetDragHandlers}
         onClick={(event) => event.stopPropagation()}
       >
-        {mode === "rail" ? (
-          <div className="flex min-h-0 flex-1 flex-col pt-2">
+        <header className="relative flex min-h-12 items-start justify-between gap-4 px-6 pt-4">
+          <button type="button" className="sr-only" aria-label={`Закрыть панель: ${side === "left" ? "Левое меню" : "Правое меню"}`} onClick={() => closeSheet()}>
+            Закрыть
+          </button>
+          <div className="mobile-dock-overflow-drag-zone absolute left-1/2 top-0 flex h-6 w-32 -translate-x-1/2 touch-none cursor-grab items-start justify-center pt-1.5 active:cursor-grabbing">
+            <span className="mobile-dock-overflow-grabber h-1 w-11 rounded-full bg-muted-foreground/30" aria-hidden="true" />
+          </div>
+          <h2 className="m-0 text-lg font-semibold leading-tight">Больше</h2>
+        </header>
+        {side === "left" ? (
+          <div className="min-h-0 px-2 pb-4">
             <SidebarMenu>
               <ActionMenuItem large icon={Settings} label="Настройки" active={section === "settings"} onClick={() => closeThen(onSettings)} />
               <ActionMenuItem large icon={Archive} label="Архив" active={section === "archive"} onClick={() => closeThen(onArchive)} />
               <ActionMenuItem large icon={LogOut} label="Выйти" onClick={() => closeThenAsync(onLogout)} />
-            </SidebarMenu>
-            <SidebarMenu className="mt-auto">
               <BraiCmdMenuItem large active={section === "brai-cmd"} onClick={() => closeThen(onBraiCmd)} />
               <EngineMenuItem
                 large
@@ -248,7 +327,21 @@ export function MobileProfileDrawer({
               />
             </SidebarMenu>
           </div>
-        ) : null}
+        ) : (
+          <div className="grid min-h-0 grid-cols-4 gap-3 px-6 pb-6 pt-2">
+            {MOBILE_DOCK_PLACEHOLDER_ITEMS.map(({ icon: Icon, label }) => (
+              <button
+                key={label}
+                type="button"
+                className="grid h-14 place-items-center rounded-lg border border-border bg-card text-muted-foreground"
+                aria-label={`Заглушка: ${label}`}
+                disabled
+              >
+                <Icon className="h-6 w-6" aria-hidden="true" />
+              </button>
+            ))}
+          </div>
+        )}
       </aside>
     </div>
   );

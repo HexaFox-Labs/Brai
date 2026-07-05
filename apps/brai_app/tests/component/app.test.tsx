@@ -24,6 +24,7 @@ describe("BraiApp shell", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Информация о действиях" })).toBeInTheDocument());
     expect(screen.getAllByLabelText("Информация о действиях").length).toBeGreaterThan(0);
     expect(screen.getByRole("textbox", { name: "Добавить" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Открыть правое меню" })).toBeInTheDocument();
   });
 
   it("keeps collapsed desktop rail action icons clickable", async () => {
@@ -52,6 +53,21 @@ describe("BraiApp shell", () => {
 
     expect(document.querySelector(".mobile-context-sheet")).toBeInTheDocument();
     expect(infoButton).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("opens the mobile dock overflow over an existing mobile sheet", async () => {
+    render(<BraiApp />);
+
+    const infoButton = await screen.findByRole("button", { name: "Информация о действиях" });
+    fireEvent.click(infoButton);
+    expect(document.querySelector(".mobile-context-sheet")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Открыть правое меню" }));
+
+    expect(document.querySelector(".mobile-dock-overflow-sheet")).toBeInTheDocument();
+    expect(document.querySelector(".mobile-dock-overflow-backdrop")).toHaveClass("z-[110]");
+    expect(document.querySelector(".mobile-context-sheet")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Заглушка: Дата" })).toBeDisabled();
   });
 
   it("keeps contextual actions before the rightmost sync status", async () => {
@@ -869,7 +885,7 @@ describe("BraiApp shell", () => {
     });
   });
 
-  it("opens the mobile profile drawer with navigation from primary screens and closes it by backdrop", async () => {
+  it("keeps the burger drawer empty and opens mobile overflow navigation from primary screens", async () => {
     render(<BraiApp />);
 
     fireEvent.click(screen.getByRole("button", { name: "Открыть меню" }));
@@ -883,39 +899,39 @@ describe("BraiApp shell", () => {
     await waitFor(() => expect(document.querySelector(".mobile-menu-backdrop")).not.toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: "Открыть левое меню" }));
-    expect(document.querySelector(".mobile-menu-backdrop")).toBeInTheDocument();
-    expect(document.querySelector(".mobile-profile-drawer")).not.toHaveTextContent("Workspace");
-    expect(document.querySelector(".mobile-profile-drawer")).not.toHaveTextContent("Меню страницы");
-    expect(document.querySelector(".mobile-profile-drawer")).not.toHaveTextContent("Действия");
-    expect(document.querySelector(".mobile-profile-drawer")).not.toHaveTextContent("Platform");
-    expect(document.querySelector(".mobile-profile-drawer")).not.toHaveTextContent("Time");
-    expect(document.querySelector(".mobile-profile-drawer")).not.toHaveTextContent("Фокус");
-    const drawer = document.querySelector(".mobile-profile-drawer") as HTMLElement;
-    expect(within(drawer).getByRole("button", { name: "Настройки" })).toBeInTheDocument();
-    expect(within(drawer).getByRole("button", { name: "Архив" })).toBeInTheDocument();
-    expect(within(drawer).getByRole("button", { name: "Выйти" })).toBeInTheDocument();
+    expect(document.querySelector(".mobile-dock-overflow-backdrop")).toBeInTheDocument();
+    expect(document.querySelector(".mobile-dock-overflow-sheet")).not.toHaveTextContent("Workspace");
+    expect(document.querySelector(".mobile-dock-overflow-sheet")).not.toHaveTextContent("Меню страницы");
+    expect(document.querySelector(".mobile-dock-overflow-sheet")).not.toHaveTextContent("Действия");
+    expect(document.querySelector(".mobile-dock-overflow-sheet")).not.toHaveTextContent("Platform");
+    expect(document.querySelector(".mobile-dock-overflow-sheet")).not.toHaveTextContent("Time");
+    expect(document.querySelector(".mobile-dock-overflow-sheet")).not.toHaveTextContent("Фокус");
+    const sheet = document.querySelector(".mobile-dock-overflow-sheet") as HTMLElement;
+    expect(within(sheet).getByRole("button", { name: "Настройки" })).toBeInTheDocument();
+    expect(within(sheet).getByRole("button", { name: "Архив" })).toBeInTheDocument();
+    expect(within(sheet).getByRole("button", { name: "Выйти" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Открыть меню профиля" })).not.toBeInTheDocument();
 
-    fireEvent.click(document.querySelector(".mobile-menu-backdrop") as HTMLElement);
-    await waitFor(() => expect(document.querySelector(".mobile-menu-backdrop")).not.toBeInTheDocument());
+    fireEvent.click(document.querySelector(".mobile-dock-overflow-backdrop") as HTMLElement);
+    await waitFor(() => expect(document.querySelector(".mobile-dock-overflow-backdrop")).not.toBeInTheDocument());
 
     fireEvent.click(screen.getAllByRole("button", { name: "Фокус" }).at(-1) as HTMLElement);
     await waitFor(() => expect(screen.getByRole("heading", { name: "Фокус" })).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Открыть левое меню" }));
-    expect(document.querySelector(".mobile-menu-backdrop")).toBeInTheDocument();
-    expect(document.querySelector(".mobile-profile-drawer")).not.toHaveTextContent("Меню страницы");
-    expect(document.querySelector(".mobile-profile-drawer")).not.toHaveTextContent("Фокус");
-    expect(document.querySelector(".mobile-profile-drawer")).not.toHaveTextContent("Действия");
-    expect(within(document.querySelector(".mobile-profile-drawer") as HTMLElement).getByRole("button", { name: "Настройки" })).toBeInTheDocument();
-    expect(within(document.querySelector(".mobile-profile-drawer") as HTMLElement).getByRole("button", { name: /Engine/ })).toBeInTheDocument();
+    expect(document.querySelector(".mobile-dock-overflow-backdrop")).toBeInTheDocument();
+    expect(document.querySelector(".mobile-dock-overflow-sheet")).not.toHaveTextContent("Меню страницы");
+    expect(document.querySelector(".mobile-dock-overflow-sheet")).not.toHaveTextContent("Фокус");
+    expect(document.querySelector(".mobile-dock-overflow-sheet")).not.toHaveTextContent("Действия");
+    expect(within(document.querySelector(".mobile-dock-overflow-sheet") as HTMLElement).getByRole("button", { name: "Настройки" })).toBeInTheDocument();
+    expect(within(document.querySelector(".mobile-dock-overflow-sheet") as HTMLElement).getByRole("button", { name: /Engine/ })).toBeInTheDocument();
 
-    fireEvent.click(within(document.querySelector(".mobile-profile-drawer") as HTMLElement).getByRole("button", { name: "Настройки" }));
+    fireEvent.click(within(document.querySelector(".mobile-dock-overflow-sheet") as HTMLElement).getByRole("button", { name: "Настройки" }));
     await waitFor(() => expect(screen.getByRole("heading", { name: "Настройки" })).toBeInTheDocument());
-    await waitFor(() => expect(document.querySelector(".mobile-menu-backdrop")).not.toBeInTheDocument());
+    await waitFor(() => expect(document.querySelector(".mobile-dock-overflow-backdrop")).not.toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Открыть левое меню" }));
-    expect(document.querySelector(".mobile-menu-backdrop")).toBeInTheDocument();
-    expect(document.querySelector(".mobile-profile-drawer")).not.toHaveTextContent("Workspace");
-    expect(within(document.querySelector(".mobile-profile-drawer") as HTMLElement).getByRole("button", { name: "Архив" })).toBeInTheDocument();
+    expect(document.querySelector(".mobile-dock-overflow-backdrop")).toBeInTheDocument();
+    expect(document.querySelector(".mobile-dock-overflow-sheet")).not.toHaveTextContent("Workspace");
+    expect(within(document.querySelector(".mobile-dock-overflow-sheet") as HTMLElement).getByRole("button", { name: "Архив" })).toBeInTheDocument();
   });
 });
 
