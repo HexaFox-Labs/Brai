@@ -1569,6 +1569,7 @@ function deliveryClassForFile(file) {
       "deploy/scripts/permissions.sh",
       "deploy/scripts/prune-caddy-site-blocks.mjs",
       "deploy/scripts/publish-capacitor-apk.sh",
+      "deploy/scripts/publish-client-web-layer.sh",
       "deploy/scripts/publish-mobile-bundle.sh",
       "deploy/scripts/publish-environment-web-layer.sh",
       "deploy/scripts/publish-web.sh",
