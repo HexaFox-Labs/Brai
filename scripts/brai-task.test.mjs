@@ -341,6 +341,7 @@ test("delivery classifier separates infra-docs from runtime preview", () => {
   assert.equal(deliveryClassForFile("deploy/scripts/permissions.sh"), "infra");
   assert.equal(deliveryClassForFile("deploy/scripts/prune-caddy-site-blocks.mjs"), "infra");
   assert.equal(deliveryClassForFile("deploy/scripts/publish-web.sh"), "infra");
+  assert.equal(deliveryClassForFile("deploy/scripts/publish-client-web-layer.sh"), "infra");
   assert.equal(deliveryClassForFile("deploy/scripts/publish-mobile-bundle.sh"), "infra");
   assert.equal(deliveryClassForFile("deploy/scripts/publish-capacitor-apk.sh"), "infra");
   assert.equal(deliveryClassForFile("deploy/scripts/complete-operation-activities.sh"), "infra");
