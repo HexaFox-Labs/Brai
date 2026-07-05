@@ -15,6 +15,11 @@ describe("mobile OTA publish scripts", () => {
   it("publishes browser web and Android OTA from one web-layer command", async () => {
     const root = await fixtureRoot("brai-client-web-layer-");
     await writeStaticExport(root, "unified");
+    await mkdir(path.join(root, "landing/public"), { recursive: true });
+    await writeFile(path.join(root, "landing/public/index.html"), "<main>landing-home</main>");
+    await writeFile(path.join(root, "landing/public/versions.html"), "<main>landing-versions</main>");
+    await writeFile(path.join(root, "landing/public/styles.css"), "body{}");
+    await writeFile(path.join(root, "landing/public/auth-link.js"), "console.log('landing')");
     const previousVersion = "9.9.8";
     const previousBundle = path.join(root, "deploy/mobile-update/bundles", previousVersion);
     await mkdir(previousBundle, { recursive: true });
@@ -43,6 +48,9 @@ describe("mobile OTA publish scripts", () => {
 
     await expect(readFile(path.join(root, "deploy/web/index.html"), "utf8")).resolves.toContain(
       "unified",
+    );
+    await expect(readFile(path.join(root, "deploy/site/versions.html"), "utf8")).resolves.toContain(
+      "landing-versions",
     );
     await expect(
       readFile(path.join(root, "deploy/mobile-update/bundles", bundleVersion, "bundle.zip")),
