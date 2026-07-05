@@ -15,6 +15,11 @@ describe("mobile OTA publish scripts", () => {
   it("publishes browser web and Android OTA from one web-layer command", async () => {
     const root = await fixtureRoot("brai-client-web-layer-");
     await writeStaticExport(root, "unified");
+    await mkdir(path.join(root, "landing/public"), { recursive: true });
+    await writeFile(path.join(root, "landing/public/index.html"), "<main>landing-home</main>");
+    await writeFile(path.join(root, "landing/public/versions.html"), "<main>landing-versions</main>");
+    await writeFile(path.join(root, "landing/public/styles.css"), "body{}");
+    await writeFile(path.join(root, "landing/public/auth-link.js"), "console.log('landing')");
     const previousVersion = "9.9.8";
     const previousBundle = path.join(root, "deploy/mobile-update/bundles", previousVersion);
     await mkdir(previousBundle, { recursive: true });
@@ -43,6 +48,9 @@ describe("mobile OTA publish scripts", () => {
 
     await expect(readFile(path.join(root, "deploy/web/index.html"), "utf8")).resolves.toContain(
       "unified",
+    );
+    await expect(readFile(path.join(root, "deploy/site/versions.html"), "utf8")).resolves.toContain(
+      "landing-versions",
     );
     await expect(
       readFile(path.join(root, "deploy/mobile-update/bundles", bundleVersion, "bundle.zip")),
@@ -320,6 +328,7 @@ await fs.writeFile(outputPath, JSON.stringify({
     expect(buildApk).toContain('if [[ -z "$MOBILE_TARGET" && -n "$ENV_PATH" ]]; then');
     expect(buildApk).toContain('--mobile-target "$MOBILE_TARGET"');
     expect(ciDeploy).toContain('export BRAI_PROD_DB="$DEPLOY_REPO/data/brai.sqlite"');
+    expect(ciDeploy).toContain('export BRAI_PUBLIC_SITE_TARGET="$DEPLOY_REPO/deploy/site"');
   });
 
   it("records shipped APK ledger rows idempotently by target commit", async () => {
