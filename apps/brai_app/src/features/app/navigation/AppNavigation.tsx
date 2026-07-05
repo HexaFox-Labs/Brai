@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, type TouchEventHandler } from "react";
-import { Archive, Cpu, Download, EllipsisVertical, LogOut, Menu, Settings, type LucideIcon } from "lucide-react";
+import { Archive, Cpu, Download, EllipsisVertical, LogOut, Menu, Mic, Settings, type LucideIcon } from "lucide-react";
 import type { AppVersionState } from "@/shared/api/braiApi";
 import { APP_VERSION, ENVIRONMENT_BADGE_LABEL, isProductionEnvironment } from "@/shared/config/runtime";
 import { installAndroidBackHandler } from "@/shared/platform/platform";
@@ -28,6 +28,7 @@ export function DesktopRail({
   versionRefreshing,
   syncStatus,
   onSettings,
+  onAirWhisper,
   onEngine,
   onArchive,
   onLogout,
@@ -41,6 +42,7 @@ export function DesktopRail({
   versionRefreshing: boolean;
   syncStatus: SyncStatus;
   onSettings: () => void;
+  onAirWhisper: () => void;
   onEngine: () => void;
   onArchive: () => void;
   onLogout: () => Promise<void>;
@@ -66,6 +68,7 @@ export function DesktopRail({
           versionError={versionError}
           versionRefreshing={versionRefreshing}
           onSettings={onSettings}
+          onAirWhisper={onAirWhisper}
           onEngine={onEngine}
           onArchive={onArchive}
           onLogout={onLogout}
@@ -135,6 +138,7 @@ export function MobileProfileDrawer({
   versionRefreshing,
   onClose,
   onSettings,
+  onAirWhisper,
   onEngine,
   onArchive,
   onLogout,
@@ -148,6 +152,7 @@ export function MobileProfileDrawer({
   versionRefreshing: boolean;
   onClose: () => void;
   onSettings: () => void;
+  onAirWhisper: () => void;
   onEngine: () => void;
   onArchive: () => void;
   onLogout: () => Promise<void>;
@@ -225,6 +230,7 @@ export function MobileProfileDrawer({
           <div className="flex min-h-0 flex-1 flex-col pt-2">
             <SidebarMenu>
               <ActionMenuItem icon={Settings} label="Настройки" active={section === "settings"} onClick={() => closeThen(onSettings)} />
+              <ActionMenuItem icon={Mic} label="AirWhisper" active={section === "airwhisper"} onClick={() => closeThen(onAirWhisper)} />
               <ActionMenuItem icon={Archive} label="Архив" active={section === "archive"} onClick={() => closeThen(onArchive)} />
               <ActionMenuItem icon={LogOut} label="Выйти" onClick={() => closeThenAsync(onLogout)} />
             </SidebarMenu>
@@ -257,6 +263,7 @@ function PageMenu({
   versionError,
   versionRefreshing,
   onSettings,
+  onAirWhisper,
   onEngine,
   onArchive,
   onLogout,
@@ -271,11 +278,12 @@ function PageMenu({
   versionError: boolean;
   versionRefreshing: boolean;
   onSettings: () => void;
+  onAirWhisper: () => void;
   onEngine: () => void;
   onArchive: () => void;
   onLogout: () => void | Promise<void>;
 }) {
-  const showActionMenu = forceActionMenu || section === "actions" || section === "settings" || section === "archive" || section === "engine";
+  const showActionMenu = forceActionMenu || section === "actions" || section === "settings" || section === "airwhisper" || section === "archive" || section === "engine";
 
   return (
     <>
@@ -293,6 +301,7 @@ function PageMenu({
           <SidebarGroupContent>
             <SidebarMenu>
               <ActionMenuItem icon={Settings} label="Настройки" active={section === "settings"} onClick={onSettings} />
+              <ActionMenuItem icon={Mic} label="AirWhisper" active={section === "airwhisper"} onClick={onAirWhisper} />
               <ActionMenuItem icon={Archive} label="Архив" active={section === "archive"} onClick={onArchive} />
               <ActionMenuItem icon={LogOut} label="Выйти" onClick={onLogout} />
             </SidebarMenu>

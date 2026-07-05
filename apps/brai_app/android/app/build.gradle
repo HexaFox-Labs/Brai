@@ -1,4 +1,5 @@
 apply plugin: 'com.android.application'
+apply plugin: 'org.jetbrains.kotlin.android'
 
 def androidKeystorePath = System.getenv('BRAI_ANDROID_KEYSTORE_PATH')
 def androidStorePassword = System.getenv('BRAI_ANDROID_STORE_PASSWORD')
@@ -40,6 +41,13 @@ android {
     }
     buildFeatures {
         buildConfig true
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+    kotlinOptions {
+        jvmTarget = '21'
     }
     flavorDimensions "environment"
     productFlavors {

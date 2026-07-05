@@ -16,6 +16,7 @@ import { isMobileNavigationViewport, sectionSwipePageStyle, useLeftEdgeMenuSwipe
 import { ActionsSection } from "./sections/actions/ActionsSection";
 import { ActionsInfoPanel } from "./sections/actions/ActionsInfoPanel";
 import { ArchiveSection } from "./sections/actions/ArchiveSection";
+import { AirWhisperSection } from "./sections/airwhisper/AirWhisperSection";
 import { EvilEyeSection } from "./sections/EvilEyeSection";
 import { EngineSection } from "./sections/engine/EngineSection";
 import { FocusBackground, FocusContextPanelSheet, FocusSection } from "./sections/focus/FocusSection";
@@ -164,6 +165,8 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
           />
         ) : screenSection === "settings" ? (
           <SettingsSection />
+        ) : screenSection === "airwhisper" ? (
+          <AirWhisperSection />
         ) : null}
       </>
     );
@@ -189,6 +192,7 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
         versionRefreshing={app.versionRefreshing}
         syncStatus={app.displaySyncStatus}
         onSettings={app.openSettingsPage}
+        onAirWhisper={() => app.selectSection("airwhisper")}
         onEngine={() => app.selectSection("engine")}
         onArchive={() => app.selectSection("archive")}
         onLogout={app.onLogout}
@@ -239,6 +243,7 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
           versionRefreshing={app.versionRefreshing}
           onClose={() => app.setMobileMenuOpen(false)}
           onSettings={app.openSettingsPage}
+          onAirWhisper={() => app.selectSection("airwhisper")}
           onEngine={() => app.selectSection("engine")}
           onArchive={() => app.selectSection("archive")}
           onLogout={app.onLogout}

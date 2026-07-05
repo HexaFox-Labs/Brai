@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import { activityEventMethods } from './store-activity-events.js';
 import { authUserMethods } from './store-auth-users.js';
+import { airWhisperStoreMethods } from './store-airwhisper.js';
 import { inboxEventMethods } from './store-inbox-events.js';
 import { migrationMethods } from './store-migrations.js';
 import { deploymentMethods } from './store-deployments.js';
@@ -21,6 +22,7 @@ Object.assign(
   BraiStore.prototype,
   migrationMethods,
   authUserMethods,
+  airWhisperStoreMethods,
   deploymentMethods,
   timerEventMethods,
   activityEventMethods,

@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from 'node:fs';
 import {
   CHALLENGE_DAYS,
   CHALLENGE_START_DATE,
@@ -148,6 +149,7 @@ export const migrationMethods = {
     this.ensureInboxSchema();
     this.ensureHandlerSchema();
     this.ensureHandlerScheduleSchema();
+    this.ensureAirWhisperSchema();
     this.ensureTableDescriptions();
 
     if (!this.hasMigration(25)) {
@@ -255,6 +257,12 @@ export const migrationMethods = {
       this.ensureVersionSchema();
       this.ensureTableDescriptions();
       this.recordMigration(46, 'restore accepted build version ledger');
+    }
+
+    if (!this.hasMigration(47)) {
+      this.ensureAirWhisperSchema();
+      this.ensureTableDescriptions();
+      this.recordMigration(47, 'add AirWhisper dictation runtime');
     }
   }
 ,
@@ -716,6 +724,9 @@ export const migrationMethods = {
       ['activities', 'Действия', 'Текущий список действий и операций.', 'Хранит рабочее состояние действий Brai и внутренних операций агента: activity_type_id, user_id, название, описание, автора, причину, статус, сортировку, удаление и восстановление. Пользовательские записи имеют activity_type_id action, агентские задачи имеют activity_type_id operation. Для operation поле title хранит короткое название задачи, description_md описывает что сделать и какой результат получить, reason объясняет почему задача появилась.'],
       ['activity_events', 'События действий', 'Журнал изменений действий.', 'Хранит каждое клиентское изменение по действиям для синхронизации, аудита и восстановления текущей таблицы activities. Поле user_id отделяет события разных пользователей, change_type хранит тип изменения.'],
       ['activity_types', 'Типы действий', 'Справочник типов activities.', 'Хранит разрешённые типы activities для поля activities.activity_type_id: action для пользовательских действий и operation для внутренних задач агента.'],
+      ['airwhisper_access_tokens', 'AirWhisper токены', 'Доступ Android-диктовки.', 'Хранит выданные AirWhisper access tokens без raw secret: token_hash, device_id_hash, статус, источник, имя для статистики, client version, package name и timestamps активации/использования.'],
+      ['airwhisper_settings', 'AirWhisper настройки', 'Runtime-настройки AirWhisper.', 'Хранит ключ-значение настройки AirWhisper runtime, включая registration_enabled для self-service выдачи Android access tokens и marker legacy_store_imported_* для одноразового переноса старого AirWhisper store.'],
+      ['airwhisper_usage_events', 'AirWhisper usage', 'Метрики запросов диктовки.', 'Хранит технические usage-события AirWhisper dictation: успех/ошибка, размеры и длительности аудио, provider/model, timings и длину результата. Аудио, скриншоты, prompts и текст транскрипта не сохраняются.'],
       ['app_settings', 'Настройки', 'Глобальные настройки приложения.', 'Хранит runtime-настройки в формате ключ-значение: дату старта цели, длительность цели, дневную норму фокуса и похожие параметры.'],
       ['build_version_refs', 'Связи версий', 'Технические связи версий.', 'Хранит source/target branch и commit для записей build_versions, чтобы audit-метаданные не подменяли короткое изменение, детальные изменения и причину выпуска.'],
       ['build_versions', 'Версии сборок', 'Журнал версий сборок и APK.', 'Хранит accepted build ledger и отдельную APK-линию. Accepted production promotion создаёт build-строку с short_changes, detailed_changes и reason; APK остаётся отдельной публичной Android-линейкой.'],
@@ -763,6 +774,155 @@ export const migrationMethods = {
     this.db
       .prepare("DELETE FROM table_descriptions WHERE table_name IN ('timer_sessions', 'timer_session_sources', 'focus_session_versions')")
       .run();
+  }
+,
+
+  ensureAirWhisperSchema() {
+    const now = new Date().toISOString();
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS airwhisper_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at_utc TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS airwhisper_access_tokens (
+        id TEXT PRIMARY KEY,
+        display_name TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        device_id_hash TEXT,
+        status TEXT NOT NULL CHECK (status IN ('active', 'revoked')),
+        source TEXT NOT NULL CHECK (source IN ('self_service', 'admin')),
+        created_at_utc TEXT NOT NULL,
+        activated_at_utc TEXT,
+        last_used_at_utc TEXT,
+        client_version TEXT NOT NULL DEFAULT '',
+        app_package TEXT NOT NULL DEFAULT ''
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_airwhisper_access_tokens_status_created
+      ON airwhisper_access_tokens (status, created_at_utc);
+
+      CREATE TABLE IF NOT EXISTS airwhisper_usage_events (
+        id TEXT PRIMARY KEY,
+        access_token_id TEXT NOT NULL,
+        created_at_utc TEXT NOT NULL,
+        success INTEGER NOT NULL CHECK (success IN (0, 1)),
+        error_code TEXT NOT NULL DEFAULT '',
+        audio_bytes INTEGER NOT NULL DEFAULT 0,
+        audio_duration_ms INTEGER NOT NULL DEFAULT 0,
+        provider TEXT NOT NULL DEFAULT '',
+        model TEXT NOT NULL DEFAULT '',
+        fallback_used INTEGER NOT NULL DEFAULT 0 CHECK (fallback_used IN (0, 1)),
+        transcription_ms INTEGER NOT NULL DEFAULT 0,
+        post_processing_ms INTEGER NOT NULL DEFAULT 0,
+        total_ms INTEGER NOT NULL DEFAULT 0,
+        transcript_chars INTEGER NOT NULL DEFAULT 0,
+        client_version TEXT NOT NULL DEFAULT '',
+        FOREIGN KEY (access_token_id) REFERENCES airwhisper_access_tokens(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_airwhisper_usage_events_token_created
+      ON airwhisper_usage_events (access_token_id, created_at_utc);
+
+      CREATE INDEX IF NOT EXISTS idx_airwhisper_usage_events_created
+      ON airwhisper_usage_events (created_at_utc);
+    `);
+
+    this.db.prepare(`
+      INSERT INTO airwhisper_settings (key, value, updated_at_utc)
+      VALUES ('registration_enabled', 'true', ?)
+      ON CONFLICT(key) DO NOTHING
+    `).run(now);
+    this.importAirWhisperLegacyStore();
+  }
+,
+
+  importAirWhisperLegacyStore() {
+    const legacyPath = process.env.BRAI_AIRWHISPER_LEGACY_STORE_PATH ?? '';
+    if (!legacyPath || !existsSync(legacyPath)) return;
+    const alreadyImported = this.db
+      .prepare("SELECT 1 AS found FROM airwhisper_settings WHERE key = 'legacy_store_imported_path'")
+      .get();
+    if (alreadyImported) return;
+
+    const importedAt = new Date().toISOString();
+    const parsed = JSON.parse(readFileSync(legacyPath, 'utf8'));
+    if (typeof parsed?.settings?.registrationEnabled === 'boolean') {
+      this.db.prepare(`
+        INSERT INTO airwhisper_settings (key, value, updated_at_utc)
+        VALUES ('registration_enabled', ?, ?)
+        ON CONFLICT(key) DO UPDATE SET
+          value = excluded.value,
+          updated_at_utc = excluded.updated_at_utc
+      `).run(parsed.settings.registrationEnabled ? 'true' : 'false', importedAt);
+    }
+
+    const insertToken = this.db.prepare(`
+      INSERT OR IGNORE INTO airwhisper_access_tokens (
+        id, display_name, token_hash, device_id_hash, status, source,
+        created_at_utc, activated_at_utc, last_used_at_utc, client_version, app_package
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const token of Array.isArray(parsed.tokens) ? parsed.tokens : []) {
+      const id = cleanLegacyMetadata(token.id, 120);
+      const tokenHash = cleanLegacyHash(token.tokenHash);
+      if (!id || !tokenHash) continue;
+      insertToken.run(
+        id,
+        cleanLegacyMetadata(token.displayName, 80) || 'AirWhisper',
+        tokenHash,
+        cleanLegacyHash(token.deviceIdHash) || null,
+        token.status === 'revoked' ? 'revoked' : 'active',
+        token.source === 'admin' ? 'admin' : 'self_service',
+        cleanLegacyMetadata(token.createdAt, 40) || importedAt,
+        cleanLegacyMetadata(token.activatedAt, 40) || null,
+        cleanLegacyMetadata(token.lastUsedAt, 40) || null,
+        cleanLegacyMetadata(token.clientVersion, 120),
+        cleanLegacyMetadata(token.appPackage, 120)
+      );
+    }
+
+    const tokenIds = new Set(this.db.prepare('SELECT id FROM airwhisper_access_tokens').all().map((row) => row.id));
+    const insertUsage = this.db.prepare(`
+      INSERT OR IGNORE INTO airwhisper_usage_events (
+        id, access_token_id, created_at_utc, success, error_code,
+        audio_bytes, audio_duration_ms, provider, model, fallback_used,
+        transcription_ms, post_processing_ms, total_ms, transcript_chars, client_version
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const event of Array.isArray(parsed.usageEvents) ? parsed.usageEvents : []) {
+      const id = cleanLegacyMetadata(event.id, 120);
+      const accessTokenId = cleanLegacyMetadata(event.accessTokenId, 120);
+      if (!id || !tokenIds.has(accessTokenId)) continue;
+      insertUsage.run(
+        id,
+        accessTokenId,
+        cleanLegacyMetadata(event.createdAt, 40) || importedAt,
+        event.success ? 1 : 0,
+        cleanLegacyMetadata(event.errorCode, 120),
+        safeLegacyNumber(event.audioBytes),
+        safeLegacyNumber(event.audioDurationMs),
+        cleanLegacyMetadata(event.provider, 120),
+        cleanLegacyMetadata(event.model, 120),
+        event.fallbackUsed ? 1 : 0,
+        safeLegacyNumber(event.transcriptionMs),
+        safeLegacyNumber(event.postProcessingMs),
+        safeLegacyNumber(event.totalMs),
+        safeLegacyNumber(event.transcriptChars),
+        cleanLegacyMetadata(event.clientVersion, 120)
+      );
+    }
+
+    const upsertSetting = this.db.prepare(`
+      INSERT INTO airwhisper_settings (key, value, updated_at_utc)
+      VALUES (?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET
+        value = excluded.value,
+        updated_at_utc = excluded.updated_at_utc
+    `);
+    upsertSetting.run('legacy_store_imported_path', legacyPath, importedAt);
+    upsertSetting.run('legacy_store_imported_at', importedAt, importedAt);
   }
 ,
 
@@ -1005,6 +1165,33 @@ export const migrationMethods = {
       120000,
       'Не применяется, пока handler disabled.',
       'services/brai_api/src/scheduler-runner.js',
+      now
+    );
+    upsertHandler.run(
+      'airwhisper.dictate.transcription',
+      'airwhisper',
+      'android_audio_transcription',
+      'active',
+      'AirWhisper диктовка',
+      'Принимает авторизованное Android-аудио, расшифровывает речь через Groq/OpenAI-compatible transcription API и при необходимости выполняет Groq post-processing или context reply.',
+      'Срабатывает на POST /v1/dictate или /v1/airwhisper/dictate после проверки AirWhisper bearer token, X-AirWhisper-Device-Id, multipart/form-data, лимита размера и обязательного audio/file поля.',
+      'Не запускается без активного AirWhisper access token, без device id, при отключенном/невалидном multipart, превышении лимита audio bytes или неподдержанном audio content type/extension.',
+      'Получает multipart audio/file, audioDurationMs, clientVersion/appPackage/device metadata, optional locale, postProcessingEnabled/postProcessingPrompt, headerContextEnabled и normalizedContextJson. Raw audio, screenshot и prompts не сохраняются в SQLite.',
+      'Возвращает JSON с text, requestId, provider, model, fallbackUsed, timings, postProcessed и postProcessingModel. В SQLite сохраняются только usage metrics и error_code.',
+      'Читает airwhisper_access_tokens/settings/usage_events, вызывает Groq transcription endpoint, при ошибке и наличии ключа вызывает OpenAI fallback, затем опционально Groq chat completions для post-processing/context reply.',
+      'Выдача access token записывает только hash секрета и hash device id. Dictation requests создают usage row без текста транскрипта, аудио, скриншотов или prompt содержимого.',
+      'groq,openai',
+      'whisper-large-v3; openai/gpt-oss-20b',
+      [
+        'Post-processing system prompt:',
+        'You post-process speech transcripts. Follow the user editing instruction, preserve the original meaning and language unless explicitly asked otherwise, and return only the final text.',
+        '',
+        'Context reply system prompt:',
+        'You write chat replies from Android screen JSON context. Use the visible conversation context and the user spoken command. Return only the exact text to insert into the chat.'
+      ].join('\n'),
+      60000,
+      'Если Groq transcription падает и BRAI_AIRWHISPER_OPENAI_API_KEY/OPENAI_API_KEY задан, используется OpenAI transcription fallback. Если post-processing/context reply падает, request завершается upstream_error и usage фиксирует ошибку.',
+      'services/brai_api/src/airwhisper.js',
       now
     );
   }
@@ -1759,6 +1946,20 @@ export const migrationMethods = {
   }
 
 };
+
+function cleanLegacyMetadata(value, maxLength) {
+  return String(value ?? '').trim().slice(0, maxLength);
+}
+
+function cleanLegacyHash(value) {
+  const hash = cleanLegacyMetadata(value, 64).toLowerCase();
+  return /^[a-f0-9]{64}$/.test(hash) ? hash : '';
+}
+
+function safeLegacyNumber(value) {
+  const number = Number(value ?? 0);
+  return Number.isFinite(number) ? Math.max(0, Math.round(number)) : 0;
+}
 
 const VERSION_LEDGER_REPAIRS = [
   {
