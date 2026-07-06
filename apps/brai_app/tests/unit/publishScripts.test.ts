@@ -829,7 +829,7 @@ try {
     expect(statusHtml).toContain("APK versionCode");
   });
 
-  it("commits the global preview APK counter only after a ready preview", async () => {
+  it("commits preview APK counters per stable version only after a ready preview", async () => {
     const root = await fixtureRoot("brai-slots-apk-counter-");
     const envsRoot = path.join(root, "envs");
     const env = {

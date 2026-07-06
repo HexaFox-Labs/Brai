@@ -260,7 +260,7 @@ export function InboxSection({
             : undefined
         }
       >
-        <ScrollArea className="actions-list-pane h-full min-h-0 min-w-0">
+        <ScrollArea className="actions-list-pane h-full min-h-0 min-w-0 max-[860px]:[&>[data-slot=scroll-area-viewport]>div]:pb-24">
           <form className="sticky top-0 z-[4] mb-[18px] max-[860px]:hidden" onSubmit={submitDesktop}>
             <InputGroup className="actions-add-form">
               <InputGroupInput
@@ -491,7 +491,8 @@ function InboxRow({
     <div
       ref={swipeRef}
       className={cx(
-        "action-row group relative grid min-h-[54px] max-h-[220px] grid-cols-[minmax(0,1fr)_44px] items-stretch overflow-hidden border-b border-border transition-[max-height,opacity,border-color,box-shadow] duration-150 [&:has(+_.action-row.selected)]:border-b-transparent max-[860px]:grid-cols-[minmax(0,1fr)_46px] max-[860px]:select-none max-[860px]:[touch-action:pan-y]",
+        "action-row group relative grid min-h-[54px] grid-cols-[minmax(0,1fr)_44px] items-stretch overflow-hidden border-b border-border transition-[max-height,opacity,border-color,box-shadow] duration-150 [&:has(+_.action-row.selected)]:border-b-transparent max-[860px]:grid-cols-[minmax(0,1fr)_46px] max-[860px]:select-none max-[860px]:[touch-action:pan-y]",
+        "max-h-[220px]",
         item.pending && "pending opacity-80",
         deleteOpen && "delete-open",
         dragging && "dragging",
