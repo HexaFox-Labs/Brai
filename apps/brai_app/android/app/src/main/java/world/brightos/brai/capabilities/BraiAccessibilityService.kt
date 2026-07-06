@@ -14,16 +14,16 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import android.widget.Toast
-import world.brightos.brai.airwhisper.AccessibilityContextReader
-import world.brightos.brai.airwhisper.AccessibilityTextInserter
-import world.brightos.brai.airwhisper.AirWhisperBus
-import world.brightos.brai.airwhisper.OverlayController
-import world.brightos.brai.airwhisper.PendingReason
-import world.brightos.brai.airwhisper.PendingTranscript
-import world.brightos.brai.airwhisper.PendingTranscriptStore
-import world.brightos.brai.airwhisper.RecorderState
-import world.brightos.brai.airwhisper.RecordingService
-import world.brightos.brai.airwhisper.VisibleConversationContext
+import world.brightos.brai.braicmd.AccessibilityContextReader
+import world.brightos.brai.braicmd.AccessibilityTextInserter
+import world.brightos.brai.braicmd.BraiCmdBus
+import world.brightos.brai.braicmd.OverlayController
+import world.brightos.brai.braicmd.PendingReason
+import world.brightos.brai.braicmd.PendingTranscript
+import world.brightos.brai.braicmd.PendingTranscriptStore
+import world.brightos.brai.braicmd.RecorderState
+import world.brightos.brai.braicmd.RecordingService
+import world.brightos.brai.braicmd.VisibleConversationContext
 import java.io.File
 import kotlin.math.max
 
@@ -127,7 +127,7 @@ class BraiAccessibilityService : AccessibilityService() {
         if (!inserted) {
             if (retryOnFocus && !retryingAutoInsert) autoInsertTranscriptFile = transcript.file.name
             if (showToast) Toast.makeText(this, "Текст скопирован в буфер. Откройте нужное поле и нажмите кнопку еще раз.", Toast.LENGTH_LONG).show()
-            AirWhisperBus.post(
+            BraiCmdBus.post(
                 RecorderState.Pending(
                     message = "Текст сохранен и ожидает поле ввода",
                     recordings = RecordingService.pendingRecordingsCount(this),
@@ -142,9 +142,9 @@ class BraiAccessibilityService : AccessibilityService() {
         PendingTranscriptStore.delete(transcript)
         val pendingTranscripts = PendingTranscriptStore.list(this).size
         if (!RecordingService.hasPendingRecordings(this) && pendingTranscripts == 0) {
-            AirWhisperBus.post(RecorderState.Idle)
+            BraiCmdBus.post(RecorderState.Idle)
         } else {
-            AirWhisperBus.post(
+            BraiCmdBus.post(
                 RecorderState.Pending(
                     message = "Есть сохраненные записи или тексты в очереди",
                     recordings = RecordingService.pendingRecordingsCount(this),
@@ -275,7 +275,7 @@ class BraiAccessibilityService : AccessibilityService() {
 
         val scaled = scaleBitmap(bitmap)
         val dir = File(filesDir, SCREENSHOT_DIR).apply { mkdirs() }
-        val output = File(dir, "airwhisper-${System.currentTimeMillis()}.png")
+        val output = File(dir, "brai-cmd-${System.currentTimeMillis()}.png")
         val written = runCatching {
             output.outputStream().use { stream ->
                 scaled.compress(Bitmap.CompressFormat.PNG, 100, stream)

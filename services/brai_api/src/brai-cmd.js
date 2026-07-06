@@ -4,25 +4,25 @@ const GROQ_TRANSCRIPTIONS_URL = 'https://api.groq.com/openai/v1/audio/transcript
 const GROQ_CHAT_COMPLETIONS_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const OPENAI_TRANSCRIPTIONS_URL = 'https://api.openai.com/v1/audio/transcriptions';
 const MAX_POST_PROCESSING_PROMPT_CHARS = 4000;
-const AIRWHISPER_AGENT_ID = 'airwhisper.dictate.transcription';
+const BRAI_CMD_AGENT_ID = 'brai-cmd.dictate.transcription';
 
-export function airWhisperConfigFromEnv(env = process.env) {
+export function braiCmdConfigFromEnv(env = process.env) {
   return {
-    groqApiKey: env.BRAI_AIRWHISPER_GROQ_API_KEY ?? env.GROQ_API_KEY ?? '',
-    transcriptionModel: env.BRAI_AIRWHISPER_TRANSCRIPTION_MODEL ?? env.GROQ_TRANSCRIPTION_MODEL ?? 'whisper-large-v3',
-    transcriptionFallbackModel: env.BRAI_AIRWHISPER_TRANSCRIPTION_FALLBACK_MODEL ?? env.GROQ_TRANSCRIPTION_FALLBACK_MODEL ?? 'whisper-large-v3-turbo',
-    transcriptionTimeoutMs: parsePositiveInt(env.BRAI_AIRWHISPER_TRANSCRIPTION_TIMEOUT_MS ?? env.GROQ_TRANSCRIPTION_TIMEOUT_MS, 60_000),
-    postProcessingModel: env.BRAI_AIRWHISPER_POST_PROCESSING_MODEL ?? env.GROQ_POST_PROCESSING_MODEL ?? 'openai/gpt-oss-20b',
-    postProcessingTimeoutMs: parsePositiveInt(env.BRAI_AIRWHISPER_POST_PROCESSING_TIMEOUT_MS ?? env.GROQ_POST_PROCESSING_TIMEOUT_MS, 60_000),
-    openaiApiKey: env.BRAI_AIRWHISPER_OPENAI_API_KEY ?? env.OPENAI_API_KEY ?? '',
-    openaiTranscriptionModel: env.BRAI_AIRWHISPER_OPENAI_TRANSCRIPTION_MODEL ?? env.OPENAI_TRANSCRIPTION_MODEL ?? 'gpt-4o-mini-transcribe',
-    maxAudioBytes: parsePositiveInt(env.BRAI_AIRWHISPER_MAX_AUDIO_BYTES ?? env.MAX_AUDIO_BYTES, 25 * 1024 * 1024),
-    maxRequestExtraBytes: parsePositiveInt(env.BRAI_AIRWHISPER_MAX_REQUEST_EXTRA_BYTES, 8 * 1024 * 1024)
+    groqApiKey: env.BRAI_CMD_GROQ_API_KEY ?? env.BRAI_AIRWHISPER_GROQ_API_KEY ?? env.GROQ_API_KEY ?? '',
+    transcriptionModel: env.BRAI_CMD_TRANSCRIPTION_MODEL ?? env.BRAI_AIRWHISPER_TRANSCRIPTION_MODEL ?? env.GROQ_TRANSCRIPTION_MODEL ?? 'whisper-large-v3',
+    transcriptionFallbackModel: env.BRAI_CMD_TRANSCRIPTION_FALLBACK_MODEL ?? env.BRAI_AIRWHISPER_TRANSCRIPTION_FALLBACK_MODEL ?? env.GROQ_TRANSCRIPTION_FALLBACK_MODEL ?? 'whisper-large-v3-turbo',
+    transcriptionTimeoutMs: parsePositiveInt(env.BRAI_CMD_TRANSCRIPTION_TIMEOUT_MS ?? env.BRAI_AIRWHISPER_TRANSCRIPTION_TIMEOUT_MS ?? env.GROQ_TRANSCRIPTION_TIMEOUT_MS, 60_000),
+    postProcessingModel: env.BRAI_CMD_POST_PROCESSING_MODEL ?? env.BRAI_AIRWHISPER_POST_PROCESSING_MODEL ?? env.GROQ_POST_PROCESSING_MODEL ?? 'openai/gpt-oss-20b',
+    postProcessingTimeoutMs: parsePositiveInt(env.BRAI_CMD_POST_PROCESSING_TIMEOUT_MS ?? env.BRAI_AIRWHISPER_POST_PROCESSING_TIMEOUT_MS ?? env.GROQ_POST_PROCESSING_TIMEOUT_MS, 60_000),
+    openaiApiKey: env.BRAI_CMD_OPENAI_API_KEY ?? env.BRAI_AIRWHISPER_OPENAI_API_KEY ?? env.OPENAI_API_KEY ?? '',
+    openaiTranscriptionModel: env.BRAI_CMD_OPENAI_TRANSCRIPTION_MODEL ?? env.BRAI_AIRWHISPER_OPENAI_TRANSCRIPTION_MODEL ?? env.OPENAI_TRANSCRIPTION_MODEL ?? 'gpt-4o-mini-transcribe',
+    maxAudioBytes: parsePositiveInt(env.BRAI_CMD_MAX_AUDIO_BYTES ?? env.BRAI_AIRWHISPER_MAX_AUDIO_BYTES ?? env.MAX_AUDIO_BYTES, 25 * 1024 * 1024),
+    maxRequestExtraBytes: parsePositiveInt(env.BRAI_CMD_MAX_REQUEST_EXTRA_BYTES ?? env.BRAI_AIRWHISPER_MAX_REQUEST_EXTRA_BYTES, 8 * 1024 * 1024)
   };
 }
 
-export function createAirWhisperRuntime(options = {}) {
-  const config = { ...airWhisperConfigFromEnv({}), ...(options.config ?? {}) };
+export function createBraiCmdRuntime(options = {}) {
+  const config = { ...braiCmdConfigFromEnv({}), ...(options.config ?? {}) };
   return {
     config,
     deps: {
@@ -44,98 +44,122 @@ export function createAirWhisperRuntime(options = {}) {
   };
 }
 
-export function isAirWhisperPublicRoute(pathname) {
+export function isBraiCmdPublicRoute(pathname) {
   return [
     '/v1/health',
     '/v1/access/request',
     '/v1/dictate',
+    '/v1/brai-cmd/health',
+    '/v1/brai-cmd/access/request',
+    '/v1/brai-cmd/dictate',
     '/v1/airwhisper/health',
     '/v1/airwhisper/access/request',
     '/v1/airwhisper/dictate'
   ].includes(pathname);
 }
 
-export function isAirWhisperAdminRoute(pathname) {
-  return pathname === '/v1/airwhisper/admin/summary' ||
+export function isBraiCmdAdminRoute(pathname) {
+  return pathname === '/v1/brai-cmd/admin/summary' ||
+    pathname === '/v1/airwhisper/admin/summary' ||
+    pathname === '/v1/brai-cmd/admin/settings' ||
     pathname === '/v1/airwhisper/admin/settings' ||
-    /^\/v1\/airwhisper\/admin\/tokens\/[^/]+\/revoke$/.test(pathname);
+    /^\/v1\/(?:brai-cmd|airwhisper)\/admin\/tokens\/[^/]+\/revoke$/.test(pathname);
 }
 
-export async function handleAirWhisperPublicRoute({ req, res, url, store, runtime, sendJson }) {
+export async function handleBraiCmdPublicRoute({ req, res, url, store, runtime, sendJson }) {
   try {
-    if (req.method === 'GET' && (url.pathname === '/v1/health' || url.pathname === '/v1/airwhisper/health')) {
-      requireAirWhisperAccess(req, store);
+    if (req.method === 'GET' && (
+      url.pathname === '/v1/health' ||
+      url.pathname === '/v1/brai-cmd/health' ||
+      url.pathname === '/v1/airwhisper/health'
+    )) {
+      requireBraiCmdAccess(req, store);
       sendJson(req, res, 200, { status: 'ok' });
       return;
     }
 
-    if (req.method === 'POST' && (url.pathname === '/v1/access/request' || url.pathname === '/v1/airwhisper/access/request')) {
+    if (req.method === 'POST' && (
+      url.pathname === '/v1/access/request' ||
+      url.pathname === '/v1/brai-cmd/access/request' ||
+      url.pathname === '/v1/airwhisper/access/request'
+    )) {
       await handleAccessRequest({ req, res, store, sendJson });
       return;
     }
 
-    if (req.method === 'POST' && (url.pathname === '/v1/dictate' || url.pathname === '/v1/airwhisper/dictate')) {
-      const access = requireAirWhisperAccess(req, store);
+    if (req.method === 'POST' && (
+      url.pathname === '/v1/dictate' ||
+      url.pathname === '/v1/brai-cmd/dictate' ||
+      url.pathname === '/v1/airwhisper/dictate'
+    )) {
+      const access = requireBraiCmdAccess(req, store);
       await handleDictate({ req, res, store, runtime, access, sendJson });
       return;
     }
 
-    throw new AirWhisperHttpError(405, 'Method not allowed', 'method_not_allowed');
+    throw new BraiCmdHttpError(405, 'Method not allowed', 'method_not_allowed');
   } catch (error) {
-    writeAirWhisperError(req, res, sendJson, error);
+    writeBraiCmdError(req, res, sendJson, error);
   }
 }
 
-export async function handleAirWhisperAdminRoute({ req, res, url, store, sendJson }) {
+export async function handleBraiCmdAdminRoute({ req, res, url, store, sendJson }) {
   try {
-    if (req.method === 'GET' && url.pathname === '/v1/airwhisper/admin/summary') {
-      sendJson(req, res, 200, store.airWhisperAdminSummary());
+    if (req.method === 'GET' && (
+      url.pathname === '/v1/brai-cmd/admin/summary' ||
+      url.pathname === '/v1/airwhisper/admin/summary'
+    )) {
+      sendJson(req, res, 200, store.braiCmdAdminSummary());
       return;
     }
 
-    if (req.method === 'PUT' && url.pathname === '/v1/airwhisper/admin/settings') {
+    if (req.method === 'PUT' && (
+      url.pathname === '/v1/brai-cmd/admin/settings' ||
+      url.pathname === '/v1/airwhisper/admin/settings'
+    )) {
       const body = await readJsonBody(req, 64 * 1024);
-      const settings = store.setAirWhisperRegistrationEnabled(Boolean(body.registrationEnabled));
+      const settings = store.setBraiCmdRegistrationEnabled(Boolean(body.registrationEnabled));
       sendJson(req, res, 200, { settings });
       return;
     }
 
-    const revokeMatch = url.pathname.match(/^\/v1\/airwhisper\/admin\/tokens\/([^/]+)\/revoke$/);
+    const revokeMatch = url.pathname.match(/^\/v1\/(?:brai-cmd|airwhisper)\/admin\/tokens\/([^/]+)\/revoke$/);
     if (req.method === 'POST' && revokeMatch) {
-      const token = store.revokeAirWhisperToken(decodeURIComponent(revokeMatch[1]));
-      if (!token) throw new AirWhisperHttpError(404, 'Token not found', 'not_found');
+      const token = store.revokeBraiCmdToken(decodeURIComponent(revokeMatch[1]));
+      if (!token) throw new BraiCmdHttpError(404, 'Token not found', 'not_found');
       sendJson(req, res, 200, { id: token.id, status: token.status });
       return;
     }
 
-    throw new AirWhisperHttpError(405, 'Method not allowed', 'method_not_allowed');
+    throw new BraiCmdHttpError(405, 'Method not allowed', 'method_not_allowed');
   } catch (error) {
-    writeAirWhisperError(req, res, sendJson, error);
+    writeBraiCmdError(req, res, sendJson, error);
   }
 }
 
-export function requireAirWhisperAccess(req, store) {
+export function requireBraiCmdAccess(req, store) {
   const token = bearerToken(req);
-  const deviceId = headerValue(req, 'x-airwhisper-device-id');
-  if (!token) throw new AirWhisperHttpError(401, 'Missing bearer token', 'unauthorized');
-  if (!deviceId) throw new AirWhisperHttpError(400, 'Missing device id', 'missing_device_id');
-  const access = store.authenticateAirWhisperAccess(token, deviceId, headerValue(req, 'x-airwhisper-client-version'));
-  if (!access) throw new AirWhisperHttpError(401, 'Invalid bearer token', 'unauthorized');
+  const deviceId = headerValue(req, 'x-brai-cmd-device-id') || headerValue(req, 'x-airwhisper-device-id');
+  const clientVersion = headerValue(req, 'x-brai-cmd-client-version') || headerValue(req, 'x-airwhisper-client-version');
+  if (!token) throw new BraiCmdHttpError(401, 'Missing bearer token', 'unauthorized');
+  if (!deviceId) throw new BraiCmdHttpError(400, 'Missing device id', 'missing_device_id');
+  const access = store.authenticateBraiCmdAccess(token, deviceId, clientVersion);
+  if (!access) throw new BraiCmdHttpError(401, 'Invalid bearer token', 'unauthorized');
   return access;
 }
 
 async function handleAccessRequest({ req, res, store, sendJson }) {
-  if (!store.airWhisperSettings().registrationEnabled) {
-    throw new AirWhisperHttpError(403, 'Пока регистрация новых пользователей приостановлена. Обратитесь в поддержку.', 'registration_paused');
+  if (!store.braiCmdSettings().registrationEnabled) {
+    throw new BraiCmdHttpError(403, 'Пока регистрация новых пользователей приостановлена. Обратитесь в поддержку.', 'registration_paused');
   }
 
   const body = await readJsonBody(req, 64 * 1024);
   const displayName = stringField(body, 'displayName');
   const deviceId = stringField(body, 'deviceId');
-  if (!displayName) throw new AirWhisperHttpError(400, 'Введите имя', 'display_name_required');
-  if (!deviceId) throw new AirWhisperHttpError(400, 'Missing device id', 'missing_device_id');
+  if (!displayName) throw new BraiCmdHttpError(400, 'Введите имя', 'display_name_required');
+  if (!deviceId) throw new BraiCmdHttpError(400, 'Missing device id', 'missing_device_id');
 
-  const issued = store.issueAirWhisperAccess({
+  const issued = store.issueBraiCmdAccess({
     displayName,
     deviceId,
     clientVersion: stringField(body, 'clientVersion'),
@@ -153,8 +177,8 @@ async function handleDictate({ req, res, store, runtime, access, sendJson }) {
   const started = Date.now();
   const requestId = randomUUID();
   const { config, deps } = runtime;
-  const agent = store.getAgent(AIRWHISPER_AGENT_ID);
-  const clientVersion = headerValue(req, 'x-airwhisper-client-version');
+  const agent = store.getAgent(BRAI_CMD_AGENT_ID);
+  const clientVersion = headerValue(req, 'x-brai-cmd-client-version') || headerValue(req, 'x-airwhisper-client-version');
   let audioBytes = 0;
   let audioDurationMs = 0;
   let transcriptionMs = 0;
@@ -174,22 +198,22 @@ async function handleDictate({ req, res, store, runtime, access, sendJson }) {
   try {
     const contentType = headerValue(req, 'content-type');
     if (!contentType.startsWith('multipart/form-data')) {
-      throw new AirWhisperHttpError(415, 'Expected multipart/form-data', 'unsupported_media_type');
+      throw new BraiCmdHttpError(415, 'Expected multipart/form-data', 'unsupported_media_type');
     }
     const maxRequestBytes = config.maxAudioBytes + config.maxRequestExtraBytes;
     const contentLength = parseContentLength(req);
     if (contentLength !== null && contentLength > maxRequestBytes) {
-      throw new AirWhisperHttpError(413, 'Request body is too large', 'request_too_large');
+      throw new BraiCmdHttpError(413, 'Request body is too large', 'request_too_large');
     }
 
     const body = await readBody(req, maxRequestBytes);
     const multipart = parseMultipart(body, parseBoundary(contentType));
     audioDurationMs = parseDurationMs(multipart.fields.audioDurationMs ?? multipart.fields.durationMs);
     audio = multipart.files.find((file) => file.fieldName === 'audio' || file.fieldName === 'file');
-    if (!audio) throw new AirWhisperHttpError(400, 'Missing audio file field', 'missing_audio');
+    if (!audio) throw new BraiCmdHttpError(400, 'Missing audio file field', 'missing_audio');
     audioBytes = audio.data.length;
-    if (audioBytes > config.maxAudioBytes) throw new AirWhisperHttpError(413, 'Audio file is too large', 'audio_too_large');
-    if (!isAllowedAudio(audio)) throw new AirWhisperHttpError(415, 'Unsupported audio type', 'unsupported_audio');
+    if (audioBytes > config.maxAudioBytes) throw new BraiCmdHttpError(413, 'Audio file is too large', 'audio_too_large');
+    if (!isAllowedAudio(audio)) throw new BraiCmdHttpError(415, 'Unsupported audio type', 'unsupported_audio');
 
     const transcribeStarted = Date.now();
     const transcription = await deps.transcribeAudio(audio);
@@ -219,7 +243,7 @@ async function handleDictate({ req, res, store, runtime, access, sendJson }) {
     }
 
     const totalMs = Date.now() - started;
-    store.recordAirWhisperUsage({
+    store.recordBraiCmdUsage({
       accessTokenId: access.id,
       success: true,
       audioBytes,
@@ -233,7 +257,7 @@ async function handleDictate({ req, res, store, runtime, access, sendJson }) {
       transcriptChars: text.length,
       clientVersion
     });
-    recordAirWhisperAiLog(store, {
+    recordBraiCmdAiLog(store, {
       agent,
       status: 'done',
       requestId,
@@ -272,7 +296,7 @@ async function handleDictate({ req, res, store, runtime, access, sendJson }) {
       postProcessingModel
     });
   } catch (error) {
-    store.recordAirWhisperUsage({
+    store.recordBraiCmdUsage({
       accessTokenId: access.id,
       success: false,
       errorCode: errorCode(error),
@@ -288,7 +312,7 @@ async function handleDictate({ req, res, store, runtime, access, sendJson }) {
       clientVersion
     });
     if (!aiLogWritten) {
-      recordAirWhisperAiLog(store, {
+      recordBraiCmdAiLog(store, {
         agent,
         status: 'failed',
         requestId,
@@ -317,12 +341,12 @@ async function handleDictate({ req, res, store, runtime, access, sendJson }) {
   }
 }
 
-function recordAirWhisperAiLog(store, input) {
+function recordBraiCmdAiLog(store, input) {
   store.recordAiLog({
-    agentId: AIRWHISPER_AGENT_ID,
+    agentId: BRAI_CMD_AGENT_ID,
     agentVersion: input.agent?.version ?? '',
     status: input.status,
-    aiTitle: input.status === 'done' ? 'Расшифровал AirWhisper аудио' : 'Не расшифровал AirWhisper аудио',
+    aiTitle: input.status === 'done' ? 'Расшифровал Brai Cmd аудио' : 'Не расшифровал Brai Cmd аудио',
     jsonData: {
       schema: 'brai.ai_log.v1',
       inputs: [
@@ -339,7 +363,7 @@ function recordAirWhisperAiLog(store, input) {
         { ref: 'request.field.postProcessingPrompt', value: { present: Boolean(input.postProcessingPrompt), chars: input.postProcessingPrompt?.length ?? 0 } },
         { ref: 'request.field.normalizedContextJson', value: { present: Boolean(input.normalizedContextJson), chars: input.normalizedContextJson?.length ?? 0 } },
         { ref: 'request.field.headerContextEnabled', value: input.contextEnabled },
-        { ref: 'request.header.x-airwhisper-client-version', value: input.clientVersion || '' }
+        { ref: 'request.header.x-brai-cmd-client-version', value: input.clientVersion || '' }
       ],
       outputs: [
         { ref: 'response.text', value: input.text || '' },
@@ -578,7 +602,7 @@ function parseMultipart(buffer, boundary) {
 function parseBoundary(contentType) {
   const match = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/i);
   const boundary = match?.[1] ?? match?.[2];
-  if (!boundary) throw new AirWhisperHttpError(400, 'Missing multipart boundary', 'missing_boundary');
+  if (!boundary) throw new BraiCmdHttpError(400, 'Missing multipart boundary', 'missing_boundary');
   return boundary;
 }
 
@@ -593,9 +617,9 @@ function isAllowedAudio(file) {
 function postProcessingPromptField(fields) {
   if (!truthyField(fields.postProcessingEnabled)) return '';
   const prompt = (fields.postProcessingPrompt ?? '').trim();
-  if (!prompt) throw new AirWhisperHttpError(400, 'Missing post-processing prompt', 'post_processing_prompt_required');
+  if (!prompt) throw new BraiCmdHttpError(400, 'Missing post-processing prompt', 'post_processing_prompt_required');
   if (prompt.length > MAX_POST_PROCESSING_PROMPT_CHARS) {
-    throw new AirWhisperHttpError(400, 'Post-processing prompt is too long', 'post_processing_prompt_too_long');
+    throw new BraiCmdHttpError(400, 'Post-processing prompt is too long', 'post_processing_prompt_too_long');
   }
   return prompt;
 }
@@ -633,12 +657,12 @@ async function readJsonBody(req, maxBytes) {
   try {
     const parsed = JSON.parse(body);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      throw new AirWhisperHttpError(400, 'Expected JSON object', 'invalid_json');
+      throw new BraiCmdHttpError(400, 'Expected JSON object', 'invalid_json');
     }
     return parsed;
   } catch (error) {
-    if (error instanceof AirWhisperHttpError) throw error;
-    throw new AirWhisperHttpError(400, 'Invalid JSON', 'invalid_json');
+    if (error instanceof BraiCmdHttpError) throw error;
+    throw new BraiCmdHttpError(400, 'Invalid JSON', 'invalid_json');
   }
 }
 
@@ -648,7 +672,7 @@ async function readBody(req, maxBytes) {
   for await (const chunk of req) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     size += buffer.length;
-    if (size > maxBytes) throw new AirWhisperHttpError(413, 'Request body is too large', 'request_too_large');
+    if (size > maxBytes) throw new BraiCmdHttpError(413, 'Request body is too large', 'request_too_large');
     chunks.push(buffer);
   }
   return Buffer.concat(chunks);
@@ -687,7 +711,7 @@ function errorCode(error) {
   if (error.code === 'ECONNRESET' || error.code === 'ERR_HTTP_REQUEST_TIMEOUT' || error.message === 'aborted') {
     return 'request_aborted';
   }
-  return error instanceof AirWhisperHttpError ? error.code : 'internal_error';
+  return error instanceof BraiCmdHttpError ? error.code : 'internal_error';
 }
 
 function errorText(error) {
@@ -699,15 +723,15 @@ function parsePositiveInt(value, fallback) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-function writeAirWhisperError(req, res, sendJson, error) {
-  if (error instanceof AirWhisperHttpError) {
+function writeBraiCmdError(req, res, sendJson, error) {
+  if (error instanceof BraiCmdHttpError) {
     sendJson(req, res, error.status, { error: error.message, code: error.code });
     return;
   }
   sendJson(req, res, 500, { error: 'Internal error', code: 'internal_error' });
 }
 
-class AirWhisperHttpError extends Error {
+class BraiCmdHttpError extends Error {
   constructor(status, message, code = 'bad_request') {
     super(message);
     this.status = status;
@@ -715,7 +739,7 @@ class AirWhisperHttpError extends Error {
   }
 }
 
-class UpstreamError extends AirWhisperHttpError {
+class UpstreamError extends BraiCmdHttpError {
   constructor(message) {
     super(502, message, 'upstream_error');
   }

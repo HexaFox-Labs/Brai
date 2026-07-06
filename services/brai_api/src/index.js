@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { airWhisperConfigFromEnv } from './airwhisper.js';
+import { braiCmdConfigFromEnv } from './brai-cmd.js';
 import { createBraiServer } from './server.js';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -64,8 +64,8 @@ const runtime = createBraiServer({
   codexBin,
   codexModel,
   codexTimeoutMs,
-  airWhisper: {
-    config: airWhisperConfigFromEnv(process.env)
+  braiCmd: {
+    config: braiCmdConfigFromEnv(process.env)
   }
 });
 runtime.server.listen(port, '127.0.0.1', () => {

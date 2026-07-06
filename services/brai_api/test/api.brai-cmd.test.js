@@ -18,18 +18,18 @@ const PNG_BYTES = Buffer.from([
   0x42, 0x60, 0x82
 ]);
 
-test('AirWhisper access tokens, health, admin summary, and migrations work in Brai API', async () => {
+test('Brai Cmd access tokens, health, admin summary, and migrations work in Brai API', async () => {
   const fixture = await createFixture(['2026-07-03T12:00:00.000Z']);
   try {
-    for (const table of ['airwhisper_settings', 'airwhisper_access_tokens', 'airwhisper_usage_events']) {
+    for (const table of ['brai_cmd_settings', 'brai_cmd_access_tokens', 'brai_cmd_usage_events']) {
       assert.ok(fixture.store.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table));
       assert.ok(fixture.store.db.prepare('SELECT title FROM table_descriptions WHERE table_name = ?').get(table));
     }
     assert.equal(
       fixture.store.db.prepare('SELECT description FROM schema_migrations WHERE version = 47').get().description,
-      'add AirWhisper dictation runtime'
+      'add Brai Cmd dictation runtime'
     );
-    assert.ok(fixture.store.db.prepare("SELECT 1 FROM agents WHERE id = 'airwhisper.dictate.transcription'").get());
+    assert.ok(fixture.store.db.prepare("SELECT 1 FROM agents WHERE id = 'brai-cmd.dictate.transcription'").get());
 
     const denied = await fetch(`${fixture.url}/v1/health`);
     assert.equal(denied.status, 401);
@@ -47,7 +47,7 @@ test('AirWhisper access tokens, health, admin summary, and migrations work in Br
     assert.match(access.body.token, /^aw_/);
     assert.equal(access.body.displayName, 'Demo User');
 
-    const tokenRows = fixture.store.db.prepare('SELECT * FROM airwhisper_access_tokens').all();
+    const tokenRows = fixture.store.db.prepare('SELECT * FROM brai_cmd_access_tokens').all();
     assert.equal(tokenRows.length, 1);
     assert.equal(JSON.stringify(tokenRows).includes(access.body.token), false);
     assert.equal(JSON.stringify(tokenRows).includes('device-1'), false);
@@ -55,15 +55,15 @@ test('AirWhisper access tokens, health, admin summary, and migrations work in Br
     const health = await fetch(`${fixture.url}/v1/health`, {
       headers: {
         authorization: `Bearer ${access.body.token}`,
-        'x-airwhisper-device-id': 'device-1'
+        'x-brai-cmd-device-id': 'device-1'
       }
     });
     assert.equal(health.status, 200);
     assert.deepEqual(await health.json(), { status: 'ok' });
 
-    const adminDenied = await fetch(`${fixture.url}/v1/airwhisper/admin/summary`);
+    const adminDenied = await fetch(`${fixture.url}/v1/brai-cmd/admin/summary`);
     assert.equal(adminDenied.status, 401);
-    const admin = await fetch(`${fixture.url}/v1/airwhisper/admin/summary`, {
+    const admin = await fetch(`${fixture.url}/v1/brai-cmd/admin/summary`, {
       headers: { authorization: `Bearer ${TOKEN}` }
     });
     assert.equal(admin.status, 200);
@@ -74,9 +74,9 @@ test('AirWhisper access tokens, health, admin summary, and migrations work in Br
   }
 });
 
-test('AirWhisper imports legacy token hashes and usage once', async () => {
-  const tempDir = await mkdtemp(join(tmpdir(), 'brai-airwhisper-'));
-  const legacyPath = join(tempDir, 'airwhisper-store.json');
+test('Brai Cmd imports legacy token hashes and usage once', async () => {
+  const tempDir = await mkdtemp(join(tmpdir(), 'brai-cmd-legacy-'));
+  const legacyPath = join(tempDir, 'brai-cmd-store.json');
   const rawToken = 'aw_legacy-token';
   const deviceId = 'legacy-device';
   await writeFile(legacyPath, JSON.stringify({
@@ -92,7 +92,7 @@ test('AirWhisper imports legacy token hashes and usage once', async () => {
       activatedAt: '2026-06-01T00:00:00.000Z',
       lastUsedAt: null,
       clientVersion: 'old-apk',
-      appPackage: 'dev.airwhisper'
+      appPackage: 'dev.braicmd'
     }],
     usageEvents: [{
       id: 'legacy-usage-1',
@@ -111,40 +111,40 @@ test('AirWhisper imports legacy token hashes and usage once', async () => {
     }]
   }));
 
-  const previousPath = process.env.BRAI_AIRWHISPER_LEGACY_STORE_PATH;
-  process.env.BRAI_AIRWHISPER_LEGACY_STORE_PATH = legacyPath;
+  const previousPath = process.env.BRAI_CMD_LEGACY_STORE_PATH;
+  process.env.BRAI_CMD_LEGACY_STORE_PATH = legacyPath;
   const fixture = await createFixture(['2026-07-03T12:05:00.000Z']);
   try {
-    assert.equal(fixture.store.airWhisperSettings().registrationEnabled, false);
-    assert.equal(fixture.store.db.prepare('SELECT COUNT(*) AS count FROM airwhisper_access_tokens').get().count, 1);
-    assert.equal(fixture.store.db.prepare('SELECT COUNT(*) AS count FROM airwhisper_usage_events').get().count, 1);
-    assert.equal(JSON.stringify(fixture.store.airWhisperAdminSummary()).includes(rawToken), false);
+    assert.equal(fixture.store.braiCmdSettings().registrationEnabled, false);
+    assert.equal(fixture.store.db.prepare('SELECT COUNT(*) AS count FROM brai_cmd_access_tokens').get().count, 1);
+    assert.equal(fixture.store.db.prepare('SELECT COUNT(*) AS count FROM brai_cmd_usage_events').get().count, 1);
+    assert.equal(JSON.stringify(fixture.store.braiCmdAdminSummary()).includes(rawToken), false);
 
     const health = await fetch(`${fixture.url}/v1/health`, {
       headers: {
         authorization: `Bearer ${rawToken}`,
-        'x-airwhisper-device-id': deviceId
+        'x-brai-cmd-device-id': deviceId
       }
     });
     assert.equal(health.status, 200);
 
     fixture.store.migrate();
-    assert.equal(fixture.store.db.prepare('SELECT COUNT(*) AS count FROM airwhisper_access_tokens').get().count, 1);
-    assert.equal(fixture.store.db.prepare('SELECT COUNT(*) AS count FROM airwhisper_usage_events').get().count, 1);
-    assert.ok(fixture.store.db.prepare("SELECT value FROM airwhisper_settings WHERE key = 'legacy_store_imported_path'").get());
+    assert.equal(fixture.store.db.prepare('SELECT COUNT(*) AS count FROM brai_cmd_access_tokens').get().count, 1);
+    assert.equal(fixture.store.db.prepare('SELECT COUNT(*) AS count FROM brai_cmd_usage_events').get().count, 1);
+    assert.ok(fixture.store.db.prepare("SELECT value FROM brai_cmd_settings WHERE key = 'legacy_store_imported_path'").get());
   } finally {
     await fixture.close();
-    if (previousPath === undefined) delete process.env.BRAI_AIRWHISPER_LEGACY_STORE_PATH;
-    else process.env.BRAI_AIRWHISPER_LEGACY_STORE_PATH = previousPath;
+    if (previousPath === undefined) delete process.env.BRAI_CMD_LEGACY_STORE_PATH;
+    else process.env.BRAI_CMD_LEGACY_STORE_PATH = previousPath;
     await rm(tempDir, { recursive: true, force: true });
   }
 });
 
-test('AirWhisper dictation accepts multipart audio and stores only usage metrics', async () => {
+test('Brai Cmd dictation accepts multipart audio and stores only usage metrics', async () => {
   let postProcessCalls = 0;
   let contextReplyCalls = 0;
   const fixture = await createFixture(['2026-07-03T12:10:00.000Z'], {
-    airWhisper: {
+    braiCmd: {
       deps: {
         transcribeAudio: async (file) => {
           assert.equal(file.fieldName, 'audio');
@@ -193,7 +193,7 @@ test('AirWhisper dictation accepts multipart audio and stores only usage metrics
     assert.equal(context.body.text, 'context reply');
     assert.equal(contextReplyCalls, 1);
 
-    const usage = fixture.store.db.prepare('SELECT * FROM airwhisper_usage_events ORDER BY created_at_utc').all();
+    const usage = fixture.store.db.prepare('SELECT * FROM brai_cmd_usage_events ORDER BY created_at_utc').all();
     assert.equal(usage.length, 2);
     assert.equal(usage.every((row) => row.success === 1), true);
     assert.equal(usage.every((row) => row.audio_bytes === 'fake-audio'.length), true);
@@ -201,7 +201,7 @@ test('AirWhisper dictation accepts multipart audio and stores only usage metrics
     assert.equal(JSON.stringify(usage).includes('raw transcript'), false);
     const aiLogs = fixture.store.db.prepare('SELECT agent_id, agent_version, status, json_data FROM ai_logs ORDER BY id').all();
     assert.equal(aiLogs.length, 2);
-    assert.equal(aiLogs.every((row) => row.agent_id === 'airwhisper.dictate.transcription'), true);
+    assert.equal(aiLogs.every((row) => row.agent_id === 'brai-cmd.dictate.transcription'), true);
     assert.equal(aiLogs.every((row) => row.agent_version === '1'), true);
     assert.equal(aiLogs.every((row) => row.status === 'done'), true);
     assert.equal(JSON.parse(aiLogs[0].json_data).outputs.find((output) => output.ref === 'response.text').value, 'processed transcript');
@@ -233,7 +233,7 @@ test('Brai Cmd inbox route accepts Android access token and creates Inbox contex
       method: 'POST',
       headers: {
         authorization: `Bearer ${access.body.token}`,
-        'x-airwhisper-device-id': 'cmd-device'
+        'x-brai-cmd-device-id': 'cmd-device'
       },
       body: JSON.stringify({
         text: 'разбери экран',
@@ -256,7 +256,7 @@ test('Brai Cmd inbox route accepts Android access token and creates Inbox contex
       method: 'POST',
       headers: {
         authorization: `Bearer ${access.body.token}`,
-        'x-airwhisper-device-id': 'cmd-device'
+        'x-brai-cmd-device-id': 'cmd-device'
       },
       body: JSON.stringify({ text: 'разбери экран', idempotency_key: 'cmd-1' })
     });
@@ -268,9 +268,9 @@ test('Brai Cmd inbox route accepts Android access token and creates Inbox contex
   }
 });
 
-test('AirWhisper dictation rejects bad requests and records failure usage', async () => {
+test('Brai Cmd dictation rejects bad requests and records failure usage', async () => {
   const fixture = await createFixture(['2026-07-03T12:20:00.000Z'], {
-    airWhisper: {
+    braiCmd: {
       deps: {
         transcribeAudio: async () => {
           throw new Error('should not transcribe');
@@ -288,7 +288,7 @@ test('AirWhisper dictation rejects bad requests and records failure usage', asyn
       method: 'POST',
       headers: {
         authorization: `Bearer ${access.body.token}`,
-        'x-airwhisper-device-id': 'device-3',
+        'x-brai-cmd-device-id': 'device-3',
         'content-type': 'application/json'
       },
       body: '{}'
@@ -296,11 +296,11 @@ test('AirWhisper dictation rejects bad requests and records failure usage', asyn
     assert.equal(response.status, 415);
     assert.equal((await response.json()).code, 'unsupported_media_type');
     assert.equal(
-      fixture.store.db.prepare('SELECT success, error_code FROM airwhisper_usage_events').get().error_code,
+      fixture.store.db.prepare('SELECT success, error_code FROM brai_cmd_usage_events').get().error_code,
       'unsupported_media_type'
     );
     const aiLog = fixture.store.db.prepare('SELECT agent_id, status, json_data FROM ai_logs').get();
-    assert.equal(aiLog.agent_id, 'airwhisper.dictate.transcription');
+    assert.equal(aiLog.agent_id, 'brai-cmd.dictate.transcription');
     assert.equal(aiLog.status, 'failed');
     assert.equal(JSON.parse(aiLog.json_data).metadata.error, 'unsupported_media_type');
   } finally {
@@ -317,8 +317,8 @@ async function dictate(baseUrl, token, deviceId, fields = {}) {
     method: 'POST',
     headers: {
       authorization: `Bearer ${token}`,
-      'x-airwhisper-device-id': deviceId,
-      'x-airwhisper-client-version': 'test'
+      'x-brai-cmd-device-id': deviceId,
+      'x-brai-cmd-client-version': 'test'
     },
     body: form
   });

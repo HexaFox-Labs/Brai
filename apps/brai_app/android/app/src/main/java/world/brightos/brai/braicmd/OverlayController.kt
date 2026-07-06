@@ -1,4 +1,4 @@
-package world.brightos.brai.airwhisper
+package world.brightos.brai.braicmd
 
 import android.content.Context
 import android.content.SharedPreferences
@@ -121,14 +121,14 @@ class OverlayController(private val service: BraiAccessibilityService) {
     }
 
     fun start() {
-        AirWhisperBus.addListener(busListener)
+        BraiCmdBus.addListener(busListener)
         config.registerChangeListener(settingsListener)
         pendingRetry.start()
         applyIconSettings()
     }
 
     fun stop() {
-        AirWhisperBus.removeListener(busListener)
+        BraiCmdBus.removeListener(busListener)
         config.unregisterChangeListener(settingsListener)
         pendingRetry.stop()
         recording.cancelLongPress()
@@ -155,7 +155,7 @@ class OverlayController(private val service: BraiAccessibilityService) {
         val view = button ?: AirButtonView(service).also {
             it.contentDescription = "Микрофон Brai Cmd"
             it.setOnTouchListener { _, event -> handleTouch(event) }
-            it.setRecorderState(recording.mainButtonState(AirWhisperBus.latest))
+            it.setRecorderState(recording.mainButtonState(BraiCmdBus.latest))
             button = it
         }
         view.alpha = mainIconAlpha()
@@ -177,7 +177,7 @@ class OverlayController(private val service: BraiAccessibilityService) {
         windowManager.addView(view, lp)
         isShown = true
         updateScreenshotButtonVisibility()
-        if (AirWhisperBus.latest is RecorderState.Recording) showCancelButton()
+        if (BraiCmdBus.latest is RecorderState.Recording) showCancelButton()
     }
 
     fun hideInputButton() {
@@ -304,7 +304,7 @@ class OverlayController(private val service: BraiAccessibilityService) {
         val view = screenshotButton ?: ScreenshotButtonView(service).also {
             it.contentDescription = "Отправить контекст Brai Cmd"
             it.setOnTouchListener { _, event -> handleScreenshotTouch(event) }
-            it.setRecorderState(recording.screenshotButtonState(AirWhisperBus.latest))
+            it.setRecorderState(recording.screenshotButtonState(BraiCmdBus.latest))
             screenshotButton = it
         }
         view.alpha = screenshotIconAlpha()

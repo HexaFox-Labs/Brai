@@ -1,4 +1,4 @@
-package world.brightos.brai.airwhisper
+package world.brightos.brai.braicmd
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -71,7 +71,7 @@ class RecordingService : Service() {
         inboxDelivery = deliverToInbox
         startRecordingForeground()
 
-        val file = File(recordingsDir().apply { mkdirs() }, "airwhisper-${System.currentTimeMillis()}.recording.m4a")
+        val file = File(recordingsDir().apply { mkdirs() }, "brai-cmd-${System.currentTimeMillis()}.recording.m4a")
         val mediaRecorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) MediaRecorder(this) else MediaRecorder()
         try {
             mediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC)
@@ -87,7 +87,7 @@ class RecordingService : Service() {
             ScreenshotContextStore.save(file, screenshotFile)
             if (inboxDelivery) InboxPayloadStore.mark(file)
             screenshotFile = null
-            AirWhisperBus.post(RecorderState.Recording(0))
+            BraiCmdBus.post(RecorderState.Recording(0))
             startAmplitudeTicker()
         } catch (error: Throwable) {
             mediaRecorder.release()
@@ -95,7 +95,7 @@ class RecordingService : Service() {
             screenshotFile = null
             InboxPayloadStore.delete(file)
             file.delete()
-            AirWhisperBus.post(RecorderState.Error(error.message ?: "Не удалось начать запись"))
+            BraiCmdBus.post(RecorderState.Error(error.message ?: "Не удалось начать запись"))
             stopSelf()
         }
     }
@@ -108,7 +108,7 @@ class RecordingService : Service() {
             recordingFile?.let { ConversationContextStore.delete(it) }
             recordingFile?.let { ScreenshotContextStore.delete(it) }
             recordingFile?.let { InboxPayloadStore.delete(it) }
-            AirWhisperBus.post(RecorderState.Error("Запись слишком короткая"))
+            BraiCmdBus.post(RecorderState.Error("Запись слишком короткая"))
             stopRecordingForeground()
             stopSelf()
             return
@@ -116,7 +116,7 @@ class RecordingService : Service() {
 
         val pendingFile = finalizeRecording(recordingFile)
         if (!pendingFile.exists()) {
-            AirWhisperBus.post(RecorderState.Error("Не удалось сохранить запись"))
+            BraiCmdBus.post(RecorderState.Error("Не удалось сохранить запись"))
             stopRecordingForeground()
             stopSelf()
             return
@@ -138,7 +138,7 @@ class RecordingService : Service() {
         recordingFile?.let { ScreenshotContextStore.delete(it) }
         recordingFile?.let { InboxPayloadStore.delete(it) }
         recordingFile?.delete()
-        AirWhisperBus.post(RecorderState.Idle)
+        BraiCmdBus.post(RecorderState.Idle)
         stopRecordingForeground()
         stopSelf()
     }
@@ -158,7 +158,7 @@ class RecordingService : Service() {
             uploadInProgress.set(false)
             val transcripts = PendingTranscriptStore.list(this).size
             if (transcripts > 0) {
-                AirWhisperBus.post(RecorderState.TranscriptReady(transcripts))
+                BraiCmdBus.post(RecorderState.TranscriptReady(transcripts))
             }
             stopRecordingForeground()
             stopSelf()
@@ -166,7 +166,7 @@ class RecordingService : Service() {
         }
 
         startUploadForeground()
-        AirWhisperBus.post(RecorderState.Uploading)
+        BraiCmdBus.post(RecorderState.Uploading)
         Thread {
             try {
                 val client = NetworkClient(this)
@@ -248,7 +248,7 @@ class RecordingService : Service() {
                 val pendingRecordings = pendingAudioFiles(this).size
                 val pendingTranscripts = PendingTranscriptStore.list(this).size
                 if (pendingTranscripts > 0) {
-                    AirWhisperBus.post(
+                    BraiCmdBus.post(
                         RecorderState.TranscriptReady(
                             transcripts = pendingTranscripts,
                             autoInsertTranscriptFile = autoInsertTranscriptFile,
@@ -258,7 +258,7 @@ class RecordingService : Service() {
                         )
                     )
                 } else if (pendingRecordings > 0) {
-                    AirWhisperBus.post(
+                    BraiCmdBus.post(
                         RecorderState.Pending(
                             message = "Есть сохраненные записи в очереди",
                             recordings = pendingRecordings,
@@ -267,11 +267,11 @@ class RecordingService : Service() {
                         )
                     )
                 } else if (permanentFailureMessage != null) {
-                    AirWhisperBus.post(RecorderState.Error(permanentFailureMessage))
+                    BraiCmdBus.post(RecorderState.Error(permanentFailureMessage))
                 } else if (inboxDelivered) {
-                    AirWhisperBus.post(RecorderState.InboxDelivered)
+                    BraiCmdBus.post(RecorderState.InboxDelivered)
                 } else {
-                    AirWhisperBus.post(RecorderState.Idle)
+                    BraiCmdBus.post(RecorderState.Idle)
                 }
             } catch (error: Throwable) {
                 val (message, reason) = pendingStatusFor(error)
@@ -300,7 +300,7 @@ class RecordingService : Service() {
     }
 
     private fun postPendingState(message: String, reason: PendingReason) {
-        AirWhisperBus.post(
+        BraiCmdBus.post(
             RecorderState.Pending(
                 message = message,
                 recordings = pendingAudioFiles(this).size,
@@ -447,7 +447,7 @@ class RecordingService : Service() {
         amplitudeTicker = object : Runnable {
             override fun run() {
                 val amplitude = runCatching { recorder?.maxAmplitude ?: 0 }.getOrDefault(0)
-                AirWhisperBus.post(RecorderState.Recording(amplitude))
+                BraiCmdBus.post(RecorderState.Recording(amplitude))
                 handler.postDelayed(this, 120L)
             }
         }.also { handler.post(it) }
@@ -466,14 +466,14 @@ class RecordingService : Service() {
     companion object {
         private const val RECORDINGS_DIR = "pending-recordings"
         private const val BYTES_PER_MEGABYTE = 1024L * 1024L
-        private const val NOTIFICATION_CHANNEL_ID = "airwhisper_recording"
+        private const val NOTIFICATION_CHANNEL_ID = "brai_cmd_recording"
         private const val NOTIFICATION_ID = 4007
-        private const val ACTION_START = "world.brightos.brai.airwhisper.START_RECORDING"
-        private const val ACTION_STOP = "world.brightos.brai.airwhisper.STOP_RECORDING"
-        private const val ACTION_CANCEL = "world.brightos.brai.airwhisper.CANCEL_RECORDING"
-        private const val ACTION_RETRY = "world.brightos.brai.airwhisper.RETRY_RECORDINGS"
-        private const val EXTRA_SCREENSHOT_PATH = "world.brightos.brai.airwhisper.extra.SCREENSHOT_PATH"
-        private const val EXTRA_INBOX_DELIVERY = "world.brightos.brai.airwhisper.extra.INBOX_DELIVERY"
+        private const val ACTION_START = "world.brightos.brai.braicmd.START_RECORDING"
+        private const val ACTION_STOP = "world.brightos.brai.braicmd.STOP_RECORDING"
+        private const val ACTION_CANCEL = "world.brightos.brai.braicmd.CANCEL_RECORDING"
+        private const val ACTION_RETRY = "world.brightos.brai.braicmd.RETRY_RECORDINGS"
+        private const val EXTRA_SCREENSHOT_PATH = "world.brightos.brai.braicmd.extra.SCREENSHOT_PATH"
+        private const val EXTRA_INBOX_DELIVERY = "world.brightos.brai.braicmd.extra.INBOX_DELIVERY"
         private val uploadInProgress = AtomicBoolean(false)
 
         fun start(
@@ -492,7 +492,7 @@ class RecordingService : Service() {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent) else context.startService(intent)
             } catch (error: Throwable) {
                 screenshotFile?.delete()
-                AirWhisperBus.post(RecorderState.Error(error.message ?: "Android заблокировал запуск микрофона"))
+                BraiCmdBus.post(RecorderState.Error(error.message ?: "Android заблокировал запуск микрофона"))
             }
         }
 
@@ -500,7 +500,7 @@ class RecordingService : Service() {
             try {
                 context.startService(Intent(context, RecordingService::class.java).setAction(ACTION_STOP))
             } catch (error: Throwable) {
-                AirWhisperBus.post(RecorderState.Error(error.message ?: "Не удалось остановить запись"))
+                BraiCmdBus.post(RecorderState.Error(error.message ?: "Не удалось остановить запись"))
             }
         }
 
@@ -508,12 +508,12 @@ class RecordingService : Service() {
             try {
                 context.startService(Intent(context, RecordingService::class.java).setAction(ACTION_CANCEL))
             } catch (error: Throwable) {
-                AirWhisperBus.post(RecorderState.Error(error.message ?: "Не удалось отменить запись"))
+                BraiCmdBus.post(RecorderState.Error(error.message ?: "Не удалось отменить запись"))
             }
         }
 
         fun retryPending(context: Context) {
-            val state = AirWhisperBus.latest
+            val state = BraiCmdBus.latest
             if (uploadInProgress.get() ||
                 state is RecorderState.Recording ||
                 state is RecorderState.Uploading ||
@@ -525,7 +525,7 @@ class RecordingService : Service() {
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent) else context.startService(intent)
             } catch (error: Throwable) {
-                AirWhisperBus.post(RecorderState.Error(error.message ?: "Не удалось повторить отправку сохраненной записи"))
+                BraiCmdBus.post(RecorderState.Error(error.message ?: "Не удалось повторить отправку сохраненной записи"))
             }
         }
 

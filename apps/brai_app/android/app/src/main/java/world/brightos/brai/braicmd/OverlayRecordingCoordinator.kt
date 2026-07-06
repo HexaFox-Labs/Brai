@@ -1,4 +1,4 @@
-package world.brightos.brai.airwhisper
+package world.brightos.brai.braicmd
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -29,7 +29,7 @@ internal class OverlayRecordingCoordinator(
     private var longPressRunnable: Runnable? = null
 
     fun toggle(useScreenshot: Boolean) {
-        when (AirWhisperBus.latest) {
+        when (BraiCmdBus.latest) {
             is RecorderState.Recording -> {
                 Haptics.recordingStop(service)
                 RecordingService.stop(service)
@@ -70,7 +70,7 @@ internal class OverlayRecordingCoordinator(
         if (activeButton == RecordingButton.Screenshot) state else RecorderState.Idle
 
     private fun insertNextSavedTranscript() {
-        when (AirWhisperBus.latest) {
+        when (BraiCmdBus.latest) {
             is RecorderState.Recording,
             is RecorderState.Uploading -> return
             else -> Unit
@@ -86,17 +86,17 @@ internal class OverlayRecordingCoordinator(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
             service.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED
         ) {
-            AirWhisperBus.post(RecorderState.Error("Откройте Brai Cmd и разрешите доступ к микрофону"))
+            BraiCmdBus.post(RecorderState.Error("Откройте Brai Cmd и разрешите доступ к микрофону"))
             return
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             service.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
-            AirWhisperBus.post(RecorderState.Error("Откройте Brai Cmd и разрешите уведомления"))
+            BraiCmdBus.post(RecorderState.Error("Откройте Brai Cmd и разрешите уведомления"))
             return
         }
         if (config.authToken.isBlank()) {
-            AirWhisperBus.post(RecorderState.Error("Откройте Brai Cmd и получите доступ"))
+            BraiCmdBus.post(RecorderState.Error("Откройте Brai Cmd и получите доступ"))
             return
         }
         activeButton = if (useScreenshot) RecordingButton.Screenshot else RecordingButton.Main
@@ -109,7 +109,7 @@ internal class OverlayRecordingCoordinator(
                 val conversationContext = service.captureVisibleConversationContext()
                 if (conversationContext == null) {
                     activeButton = null
-                    AirWhisperBus.post(RecorderState.Error("JSON страницы недоступен"))
+                    BraiCmdBus.post(RecorderState.Error("JSON страницы недоступен"))
                     return
                 }
                 beginRecording(conversationContext, null, deliverToInbox = true)
@@ -121,7 +121,7 @@ internal class OverlayRecordingCoordinator(
     private fun startRecordingWithScreenshot() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
             activeButton = null
-            AirWhisperBus.post(RecorderState.Error("Скриншот недоступен"))
+            BraiCmdBus.post(RecorderState.Error("Скриншот недоступен"))
             return
         }
 
@@ -134,7 +134,7 @@ internal class OverlayRecordingCoordinator(
                 if (screenshotFile == null) {
                     startingRecording = false
                     activeButton = null
-                    AirWhisperBus.post(RecorderState.Error("Скриншот недоступен"))
+                    BraiCmdBus.post(RecorderState.Error("Скриншот недоступен"))
                     return@captureActiveWindowScreenshot
                 }
                 beginRecording(null, screenshotFile, deliverToInbox = true)

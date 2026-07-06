@@ -1,4 +1,4 @@
-package world.brightos.brai.airwhisper
+package world.brightos.brai.braicmd
 
 import android.content.Context
 import android.content.SharedPreferences
@@ -10,7 +10,12 @@ enum class ContextDeliveryMode {
 }
 
 class ConfigStore(context: Context) {
-    private val prefs = context.applicationContext.getSharedPreferences(AppConstants.PREFS, Context.MODE_PRIVATE)
+    private val appContext = context.applicationContext
+    private val prefs = appContext.getSharedPreferences(AppConstants.PREFS, Context.MODE_PRIVATE)
+
+    init {
+        migrateLegacyPreferences()
+    }
 
     var serverUrl: String
         get() {
@@ -114,6 +119,24 @@ class ConfigStore(context: Context) {
             .putInt(AppConstants.KEY_BUTTON_X, x)
             .putInt(AppConstants.KEY_BUTTON_Y, y)
             .apply()
+    }
+
+    private fun migrateLegacyPreferences() {
+        if (prefs.all.isNotEmpty()) return
+        val legacy = appContext.getSharedPreferences(AppConstants.LEGACY_PREFS, Context.MODE_PRIVATE)
+        if (legacy.all.isEmpty()) return
+        val editor = prefs.edit()
+        for ((key, value) in legacy.all) {
+            when (value) {
+                is String -> editor.putString(key, value)
+                is Boolean -> editor.putBoolean(key, value)
+                is Int -> editor.putInt(key, value)
+                is Long -> editor.putLong(key, value)
+                is Float -> editor.putFloat(key, value)
+                is Set<*> -> editor.putStringSet(key, value.filterIsInstance<String>().toSet())
+            }
+        }
+        editor.apply()
     }
 
     companion object {
