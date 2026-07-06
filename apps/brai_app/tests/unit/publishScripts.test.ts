@@ -434,6 +434,10 @@ try {
     expect(deploy).toContain("export BRAI_NATIVE_APK_CHANGE");
     expect(deployBranch).toContain("BRAI_NATIVE_APK_CHANGE:-false");
     expect(deployBranch).toContain('resolve-required-apk-version.mjs" prod apkVersion');
+    expect(deployBranch).toContain('export BRAI_TARGET_APK_VERSION="$("$NODE_BIN" "$SCRIPT_DIR/resolve-required-apk-version.mjs" prod apkVersion)"');
+    expect(deployBranch).toContain('export BRAI_TARGET_APK_BUILD_KIND="stable"');
+    expect(deployBranch).not.toContain("BRAI_TARGET_APK_VERSION:-");
+    expect(deployBranch).not.toContain("BRAI_TARGET_APK_BUILD_KIND:-stable");
     expect(deployBranch).toContain('preview-slots.sh" clear-apk "$BRANCH" "$COMMIT"');
     expect(prodBlock).toContain('deploy/scripts/build-android-env-apk.sh production');
     expect(prodBlock).toContain('node deploy/scripts/resolve-app-version.mjs --environment prod --root "$SOURCE_ROOT" --db "${BRAI_DB:-}"');
