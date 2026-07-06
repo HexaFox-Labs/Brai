@@ -2,7 +2,7 @@
   "name": "Brai",
   "client": "next-capacitor",
   "version": "0.0.10",
-  "otaVersion": "0.0.84",
+  "otaVersion": "0.0.85",
   "versionParts": {
     "major": 0,
     "release": 0,
