@@ -30,7 +30,12 @@ try {
         JOIN pg_namespace n ON n.oid = p.pronamespace
         WHERE n.nspname = 'public'
           AND p.proname = 'brai_enable_rls_for_new_public_tables'
-          AND 'search_path=pg_catalog' = ANY(COALESCE(p.proconfig, ARRAY[]::text[]))
+          AND EXISTS (
+            SELECT 1
+            FROM unnest(COALESCE(p.proconfig, ARRAY[]::text[])) AS config(value)
+            WHERE config.value LIKE 'search_path=%'
+              AND translate(substring(config.value FROM length('search_path=') + 1), '"'' ', '') = ''
+          )
       )::int
     `),
     scalar(`

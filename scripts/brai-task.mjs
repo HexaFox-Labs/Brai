@@ -1540,7 +1540,8 @@ function deliveryClassForFile(file) {
   }
   if (
     file === "supabase/migrations/0002_enable_rls_public_tables.sql" ||
-    file === "supabase/migrations/0003_fix_rls_function_search_path.sql"
+    file === "supabase/migrations/0003_fix_rls_function_search_path.sql" ||
+    file === "supabase/migrations/0004_empty_rls_function_search_path.sql"
   ) return "infra";
   if (
     file === ".gitignore" ||
