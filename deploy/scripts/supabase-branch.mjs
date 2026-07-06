@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
+import crypto from "node:crypto";
 import { createRequire } from "node:module";
 import fs from "node:fs";
 import path from "node:path";
@@ -18,15 +19,17 @@ if (command === "preview-env") {
   const envFile = required(args, "runtime-env");
   const name = args.name || previewBranchName(branch);
   const projectRef = requiredEnv("SUPABASE_PROJECT_REF");
-  ensureBranch(name, { projectRef, persistent: false, withData: true });
+  ensureBranch(name, { projectRef, persistent: false, withData: false });
   const details = waitForBranch(name, projectRef);
   const env = branchEnv(name, projectRef);
+  const databaseUrl = env.DATABASE_URL ?? env.POSTGRES_URL ?? env.SUPABASE_DB_URL;
+  assertBranchReady(name, details, databaseUrl);
   upsertEnvFile(envFile, {
-    BRAI_DATABASE_URL: env.DATABASE_URL ?? env.POSTGRES_URL ?? env.SUPABASE_DB_URL,
-    BRAI_DATA_STORE: "postgres",
+    BRAI_DATABASE_URL: databaseUrl,
     BRAI_SUPABASE_BRANCH: name
   });
-  await applyMigrations(env.DATABASE_URL ?? env.POSTGRES_URL ?? env.SUPABASE_DB_URL);
+  await applyMigrations(databaseUrl);
+  await applyPreviewSeed(databaseUrl);
   updatePreviewRegistry(branch, name, details);
   console.log(JSON.stringify({ ok: true, branch: name, id: branchId(details), status: branchStatus(details), envFile }, null, 2));
 } else if (command === "dev-env") {
@@ -34,14 +37,15 @@ if (command === "preview-env") {
   const name = args.name || "brai-dev";
   const projectRef = requiredEnv("SUPABASE_PROJECT_REF");
   ensureBranch(name, { projectRef, persistent: true, withData: true });
-  waitForBranch(name, projectRef);
+  const details = waitForBranch(name, projectRef);
   const env = branchEnv(name, projectRef);
+  const databaseUrl = env.DATABASE_URL ?? env.POSTGRES_URL ?? env.SUPABASE_DB_URL;
+  assertBranchReady(name, details, databaseUrl);
   upsertEnvFile(envFile, {
-    BRAI_DATABASE_URL: env.DATABASE_URL ?? env.POSTGRES_URL ?? env.SUPABASE_DB_URL,
-    BRAI_DATA_STORE: "postgres",
+    BRAI_DATABASE_URL: databaseUrl,
     BRAI_SUPABASE_BRANCH: name
   });
-  await applyMigrations(env.DATABASE_URL ?? env.POSTGRES_URL ?? env.SUPABASE_DB_URL);
+  await applyMigrations(databaseUrl);
   console.log(JSON.stringify({ ok: true, branch: name, envFile }, null, 2));
 } else if (command === "delete-preview") {
   const branch = required(args, "branch");
@@ -49,6 +53,7 @@ if (command === "preview-env") {
   const projectRef = requiredEnv("SUPABASE_PROJECT_REF");
   const get = runSupabase(["branches", "get", name, "--project-ref", projectRef], { allowFailure: true });
   if (get.status !== 0) {
+    if (!isMissingBranch(get)) throw new Error(`Cannot verify Supabase preview branch before delete: ${get.stderr || get.stdout}`);
     console.log(JSON.stringify({ ok: true, branch: name, deleted: false }, null, 2));
     process.exit(0);
   }
@@ -135,6 +140,19 @@ async function applyMigrations(databaseUrl) {
   }
 }
 
+async function applyPreviewSeed(databaseUrl) {
+  if (process.env.BRAI_SUPABASE_APPLY_PREVIEW_SEED === "false") return;
+  if (process.env.BRAI_SUPABASE_DRY_RUN === "true") return;
+  const seedPath = path.join(root, "supabase/preview_seed.sql");
+  if (!fs.existsSync(seedPath)) return;
+  const pool = new Pool({ connectionString: databaseUrl, ssl: postgresSsl(databaseUrl) });
+  try {
+    await pool.query(fs.readFileSync(seedPath, "utf8"));
+  } finally {
+    await pool.end();
+  }
+}
+
 function runSupabase(args, { allowFailure = false } = {}) {
   if (process.env.BRAI_SUPABASE_DRY_RUN === "true") {
     if (args.includes("json")) return { status: 0, stdout: JSON.stringify({ id: "dry-run", name: args[2], status: "healthy" }), stderr: "" };
@@ -198,6 +216,17 @@ function updatePreviewRegistry(branch, name, details) {
   if (result.status !== 0) throw new Error(`preview-slots.sh supabase failed: ${result.stderr || result.stdout}`);
 }
 
+function assertBranchReady(name, details, databaseUrl) {
+  if (!/^postgres(?:ql)?:\/\//.test(String(databaseUrl ?? ""))) throw new Error(`Supabase branch ${name} did not provide a Postgres database URL`);
+  if (!branchId(details)) throw new Error(`Supabase branch ${name} did not provide a branch id`);
+  if (!branchStatus(details)) throw new Error(`Supabase branch ${name} did not provide a branch status`);
+}
+
+function isMissingBranch(result) {
+  const text = `${result.stderr || ""}\n${result.stdout || ""}`.toLowerCase();
+  return /not found|does not exist|no branch|404/.test(text);
+}
+
 function branchId(details) {
   return String(details?.id ?? details?.branch_id ?? "");
 }
@@ -219,7 +248,9 @@ function upsertEnvFile(filePath, values) {
 }
 
 function previewBranchName(branch) {
-  return `brai-preview-${branch.replace(/^codex\//, "").replace(/[^A-Za-z0-9._-]+/g, "-").slice(0, 40)}`;
+  const slug = branch.replace(/^codex\//, "").replace(/[^A-Za-z0-9._-]+/g, "-").slice(0, 32);
+  const hash = crypto.createHash("sha1").update(branch).digest("hex").slice(0, 8);
+  return `brai-preview-${slug}-${hash}`;
 }
 
 function shellQuote(value) {

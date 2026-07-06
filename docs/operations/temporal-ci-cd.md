@@ -111,7 +111,7 @@ The `state` query exposes `deliveryClass`, `handoff`, `autoMerge`, `tasks`, `mis
 
 The production checklist requires Supabase migration/smoke, accepted-preview metadata promotion,
 version/ledger recording, deployment, and preview-slot cleanup. The production Supabase smoke
-requires the SQLite import marker so an empty baseline database cannot pass cutover by accident.
+requires baseline runtime tables and deployment ledger tables to be present.
 During the post-deploy accepted-preview release step, occupied preview OTA manifests are republished
 from each preview slot's own source checkout so their `otaVersion` follows the production build
 ledger without replacing preview content with production content. `prod_deploy_passed` completes the
