@@ -227,6 +227,14 @@ export NEXT_PUBLIC_BRAI_OTA_CHANNEL="$DOMAIN/mobile-update"
 export NEXT_PUBLIC_BRAI_API="/api"
 export NEXT_PUBLIC_BRAI_ANDROID_API="$ANDROID_API"
 
+if [[ "$ENVIRONMENT" == preview-* && "$BRANCH" == codex/* && "${BRAI_NATIVE_APK_CHANGE:-false}" != "true" ]]; then
+  export BRAI_TARGET_APK_VERSION="${BRAI_TARGET_APK_VERSION:-$("$NODE_BIN" "$SCRIPT_DIR/resolve-required-apk-version.mjs" prod apkVersion)}"
+  export BRAI_TARGET_APK_RELEASE_KEY="${BRAI_TARGET_APK_RELEASE_KEY:-${SLOT,,}}"
+  export BRAI_TARGET_APK_BUILD_KIND="${BRAI_TARGET_APK_BUILD_KIND:-stable}"
+  export BRAI_TARGET_APK_PREVIEW_ITERATION="${BRAI_TARGET_APK_PREVIEW_ITERATION:-0}"
+  export BRAI_TARGET_APK_VERSION_CODE="${BRAI_TARGET_APK_VERSION_CODE:-$BRAI_TARGET_APK_VERSION}"
+fi
+
 "$SCRIPT_DIR/publish-client-web-layer.sh"
 
 if [[ "$ENVIRONMENT" != "prod" ]]; then
@@ -273,6 +281,9 @@ if command -v systemctl >/dev/null 2>&1 && [[ "${BRAI_RESTART_SERVICE:-true}" !=
 fi
 
 if [[ "$ENVIRONMENT" == preview-* ]]; then
+  if [[ "$BRANCH" == codex/* && "${BRAI_NATIVE_APK_CHANGE:-false}" != "true" ]]; then
+    "$SCRIPT_DIR/preview-slots.sh" clear-apk "$BRANCH" "$COMMIT" >/dev/null
+  fi
   echo "Marking preview slot ready..."
   "$SCRIPT_DIR/preview-slots.sh" ready "$BRANCH" "$COMMIT" >/dev/null
 fi
