@@ -71,7 +71,20 @@ test("opens the right mobile dock overflow with placeholder items", async ({ pag
   await expect(sheet).toHaveAttribute("aria-label", "Правое меню");
   await expect(sheet.getByRole("button", { name: "Заглушка: Дата" })).toBeVisible();
   await expect(sheet.getByRole("button", { name: "Заглушка: Флаг" })).toBeVisible();
+  await expect(sheet.getByRole("button", { name: "Скрыть правое меню" })).toBeVisible();
 
+  const viewport = page.viewportSize();
+  const sheetBox = await sheet.boundingBox();
+  const dockBox = await page.locator(".main-dock").boundingBox();
+  if (!viewport || !sheetBox || !dockBox) throw new Error("Missing dock overflow geometry");
+  expect(sheetBox.width).toBeLessThan(viewport.width - 20);
+  expect(sheetBox.height).toBeLessThan(90);
+  expect(sheetBox.y + sheetBox.height).toBeLessThanOrEqual(dockBox.y + 1);
+
+  await sheet.getByRole("button", { name: "Скрыть правое меню" }).click();
+  await expect(page.locator(".mobile-dock-overflow-sheet")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Открыть правое меню" }).click();
   await page.locator(".mobile-dock-overflow-backdrop").click({ position: { x: 20, y: 120 } });
   await expect(page.locator(".mobile-dock-overflow-sheet")).toHaveCount(0);
 });
@@ -87,7 +100,12 @@ test("opens the dock overflow above an existing mobile sheet", async ({ page }, 
 
   await expect(page.locator(".mobile-context-sheet")).toBeVisible();
   await expect(page.locator(".mobile-dock-overflow-sheet")).toBeVisible();
-  await expect.poll(async () => page.evaluate(() => Boolean(document.elementFromPoint(window.innerWidth / 2, window.innerHeight - 24)?.closest(".mobile-dock-overflow-sheet")))).toBe(true);
+  const sheetBox = await page.locator(".mobile-dock-overflow-sheet").boundingBox();
+  if (!sheetBox) throw new Error("Missing dock overflow geometry");
+  await expect.poll(async () => page.evaluate(({ x, y }) => Boolean(document.elementFromPoint(x, y)?.closest(".mobile-dock-overflow-sheet")), {
+    x: sheetBox.x + sheetBox.width / 2,
+    y: sheetBox.y + sheetBox.height / 2,
+  })).toBe(true);
 });
 
 test("opens mobile action input overlay from the floating plus button", async ({ page }, testInfo) => {

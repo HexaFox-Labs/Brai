@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, type TouchEventHandler } from "react";
-import { Archive, CalendarDays, Command, Cpu, Download, Ellipsis, Flag, LogOut, Menu, Settings, Tag, type LucideIcon } from "lucide-react";
+import { Archive, CalendarDays, ChevronDown, ChevronUp, Command, Cpu, Download, Ellipsis, Flag, LogOut, Menu, Settings, Tag, type LucideIcon } from "lucide-react";
 import type { AppVersionState } from "@/shared/api/braiApi";
 import { APP_VERSION, ENVIRONMENT_BADGE_LABEL, isProductionEnvironment } from "@/shared/config/runtime";
 import { installAndroidBackHandler } from "@/shared/platform/platform";
@@ -133,7 +133,7 @@ export function MobileDockOverflowButton({
       aria-label={side === "left" ? "Открыть левое меню" : "Открыть правое меню"}
       onClick={onClick}
     >
-      <Ellipsis className="h-5 w-5" aria-hidden="true" />
+      {side === "left" ? <Ellipsis className="h-5 w-5" aria-hidden="true" /> : <ChevronUp className="h-5 w-5" aria-hidden="true" />}
     </button>
   );
 }
@@ -289,61 +289,96 @@ export function MobileDockOverflowSheet({
   }
 
   return (
-    <div className="mobile-dock-overflow-backdrop fixed inset-0 z-[110] hidden items-end max-[860px]:flex" data-nav-swipe-exclusion onClick={() => closeSheet()}>
+    <div
+      className={cx(
+        "mobile-dock-overflow-backdrop fixed inset-0 z-[110] hidden items-end max-[860px]:flex",
+        side === "right" && "justify-center px-3 pb-[calc(4.25rem+env(safe-area-inset-bottom))]",
+      )}
+      data-nav-swipe-exclusion
+      onClick={() => closeSheet()}
+    >
       <div ref={backdropRef} className="absolute inset-0 bg-foreground/20 dark:bg-background/80" style={backdropStyle} aria-hidden="true" />
       <aside
         ref={sheetRef}
-        className="mobile-dock-overflow-sheet pointer-events-auto relative z-[1] grid max-h-[60dvh] w-full min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-t-2xl border-t border-border bg-card pb-[env(safe-area-inset-bottom)] pt-2 shadow-xl animate-[mobile-detail-sheet-in_180ms_ease-out] will-change-transform"
+        className={cx(
+          "mobile-dock-overflow-sheet pointer-events-auto relative z-[1] grid min-w-0 overflow-hidden shadow-xl animate-[mobile-detail-sheet-in_180ms_ease-out] will-change-transform",
+          side === "left"
+            ? "max-h-[60dvh] w-full grid-rows-[auto_minmax(0,1fr)] rounded-t-2xl border-t border-border bg-card pb-[env(safe-area-inset-bottom)] pt-2"
+            : "w-full max-w-md gap-2 rounded-2xl border border-border bg-card/95 px-4 py-3 backdrop-blur-[14px]",
+        )}
         style={sheetStyle}
         aria-label={side === "left" ? "Левое меню" : "Правое меню"}
         {...sheetDragHandlers}
         onClick={(event) => event.stopPropagation()}
       >
-        <header className="relative flex min-h-12 items-start justify-between gap-4 px-6 pt-4">
-          <button type="button" className="sr-only" aria-label={`Закрыть панель: ${side === "left" ? "Левое меню" : "Правое меню"}`} onClick={() => closeSheet()}>
-            Закрыть
-          </button>
-          <div className="mobile-dock-overflow-drag-zone absolute left-1/2 top-0 flex h-6 w-32 -translate-x-1/2 touch-none cursor-grab items-start justify-center pt-1.5 active:cursor-grabbing">
-            <span className="mobile-dock-overflow-grabber h-1 w-11 rounded-full bg-muted-foreground/30" aria-hidden="true" />
-          </div>
-          <h2 className="m-0 text-lg font-semibold leading-tight">Больше</h2>
-        </header>
         {side === "left" ? (
-          <div className="min-h-0 px-2 pb-4">
-            <SidebarMenu>
-              <ActionMenuItem large icon={Settings} label="Настройки" active={section === "settings"} onClick={() => closeThen(onSettings)} />
-              <ActionMenuItem large icon={Archive} label="Архив" active={section === "archive"} onClick={() => closeThen(onArchive)} />
-              <ActionMenuItem large icon={LogOut} label="Выйти" onClick={() => closeThenAsync(onLogout)} />
-              <BraiCmdMenuItem large active={section === "brai-cmd"} onClick={() => closeThen(onBraiCmd)} />
-              <EngineMenuItem
-                large
-                active={section === "engine"}
-                appVersionState={appVersionState}
-                otaRefreshing={otaRefreshing}
-                otaState={otaState}
-                versionError={versionError}
-                versionRefreshing={versionRefreshing}
-                onClick={() => closeThen(onEngine)}
-              />
-            </SidebarMenu>
-          </div>
-        ) : (
-          <div className="grid min-h-0 grid-cols-4 gap-3 px-6 pb-6 pt-2">
-            {MOBILE_DOCK_PLACEHOLDER_ITEMS.map(({ icon: Icon, label }) => (
-              <button
-                key={label}
-                type="button"
-                className="grid h-14 place-items-center rounded-lg border border-border bg-card text-muted-foreground"
-                aria-label={`Заглушка: ${label}`}
-                disabled
-              >
-                <Icon className="h-6 w-6" aria-hidden="true" />
+          <>
+            <header className="relative flex min-h-12 items-start justify-between gap-4 px-6 pt-4">
+              <button type="button" className="sr-only" aria-label="Закрыть панель: Левое меню" onClick={() => closeSheet()}>
+                Закрыть
               </button>
+              <div className="mobile-dock-overflow-drag-zone absolute left-1/2 top-0 flex h-6 w-32 -translate-x-1/2 touch-none cursor-grab items-start justify-center pt-1.5 active:cursor-grabbing">
+                <span className="mobile-dock-overflow-grabber h-1 w-11 rounded-full bg-muted-foreground/30" aria-hidden="true" />
+              </div>
+              <h2 className="m-0 text-lg font-semibold leading-tight">Больше</h2>
+            </header>
+            <div className="min-h-0 px-2 pb-4">
+              <SidebarMenu>
+                <ActionMenuItem large icon={Settings} label="Настройки" active={section === "settings"} onClick={() => closeThen(onSettings)} />
+                <ActionMenuItem large icon={Archive} label="Архив" active={section === "archive"} onClick={() => closeThen(onArchive)} />
+                <ActionMenuItem large icon={LogOut} label="Выйти" onClick={() => closeThenAsync(onLogout)} />
+                <BraiCmdMenuItem large active={section === "brai-cmd"} onClick={() => closeThen(onBraiCmd)} />
+                <EngineMenuItem
+                  large
+                  active={section === "engine"}
+                  appVersionState={appVersionState}
+                  otaRefreshing={otaRefreshing}
+                  otaState={otaState}
+                  versionError={versionError}
+                  versionRefreshing={versionRefreshing}
+                  onClick={() => closeThen(onEngine)}
+                />
+              </SidebarMenu>
+            </div>
+          </>
+        ) : (
+          <div className="mobile-dock-overflow-icons flex min-h-0 items-center justify-between gap-2">
+            {MOBILE_DOCK_PLACEHOLDER_ITEMS.map(({ icon: Icon, label }) => (
+              <MobileDockOverflowActionButton key={label} icon={Icon} label={`Заглушка: ${label}`} disabled />
             ))}
+            <MobileDockOverflowActionButton icon={ChevronDown} label="Скрыть правое меню" onClick={() => closeSheet()} />
           </div>
         )}
       </aside>
     </div>
+  );
+}
+
+function MobileDockOverflowActionButton({
+  disabled,
+  icon: Icon,
+  label,
+  onClick,
+}: {
+  disabled?: boolean;
+  icon: LucideIcon;
+  label: string;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={cx(
+        "nav-button flex h-11 w-11 items-center justify-center rounded-full border-0 text-muted-foreground",
+        "bg-transparent",
+        disabled && "opacity-45",
+      )}
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      <Icon className="h-5 w-5" aria-hidden="true" />
+    </button>
   );
 }
 
