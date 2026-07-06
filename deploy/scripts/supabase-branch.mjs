@@ -22,12 +22,10 @@ const LEGACY_DATABASE_ENV_KEYS = new Set([
 if (command === "preview-env") {
   const branch = required(args, "branch");
   const envFile = required(args, "runtime-env");
-  const name = args.name || previewBranchName(branch);
-  const projectRef = requiredEnv("SUPABASE_PROJECT_REF");
-  ensureBranch(name, { projectRef, persistent: false, withData: false });
-  const details = waitForBranch(name, projectRef);
-  const env = branchEnv(name, projectRef);
-  const databaseUrl = env.DATABASE_URL ?? env.POSTGRES_URL ?? env.SUPABASE_DB_URL;
+  const name = args.name || (isSelfHosted() ? previewSchemaName(branch) : previewBranchName(branch));
+  const { databaseUrl, details } = isSelfHosted()
+    ? await ensureSelfHostedSchema(name)
+    : ensureCloudBranch(name, { persistent: false, withData: false });
   assertBranchReady(name, details, databaseUrl);
   upsertEnvFile(envFile, {
     BRAI_DATABASE_URL: databaseUrl,
@@ -39,12 +37,10 @@ if (command === "preview-env") {
   console.log(JSON.stringify({ ok: true, branch: name, id: branchId(details), status: branchStatus(details), envFile }, null, 2));
 } else if (command === "dev-env") {
   const envFile = required(args, "runtime-env");
-  const name = args.name || "brai-dev";
-  const projectRef = requiredEnv("SUPABASE_PROJECT_REF");
-  ensureBranch(name, { projectRef, persistent: true, withData: true });
-  const details = waitForBranch(name, projectRef);
-  const env = branchEnv(name, projectRef);
-  const databaseUrl = env.DATABASE_URL ?? env.POSTGRES_URL ?? env.SUPABASE_DB_URL;
+  const name = args.name || (isSelfHosted() ? "brai_dev" : "brai-dev");
+  const { databaseUrl, details } = isSelfHosted()
+    ? await ensureSelfHostedSchema(name)
+    : ensureCloudBranch(name, { persistent: true, withData: true });
   assertBranchReady(name, details, databaseUrl);
   upsertEnvFile(envFile, {
     BRAI_DATABASE_URL: databaseUrl,
@@ -54,22 +50,36 @@ if (command === "preview-env") {
   console.log(JSON.stringify({ ok: true, branch: name, envFile }, null, 2));
 } else if (command === "delete-preview") {
   const branch = required(args, "branch");
-  const name = args.name || previewBranchName(branch);
-  const projectRef = requiredEnv("SUPABASE_PROJECT_REF");
-  const get = runSupabase(["branches", "get", name, "--project-ref", projectRef], { allowFailure: true });
-  if (get.status !== 0) {
-    if (!isMissingBranch(get)) throw new Error(`Cannot verify Supabase preview branch before delete: ${get.stderr || get.stdout}`);
-    console.log(JSON.stringify({ ok: true, branch: name, deleted: false }, null, 2));
-    process.exit(0);
+  const name = args.name || (isSelfHosted() ? previewSchemaName(branch) : previewBranchName(branch));
+  if (isSelfHosted()) {
+    const deleted = await dropSelfHostedSchema(name);
+    console.log(JSON.stringify({ ok: true, branch: name, deleted }, null, 2));
+  } else {
+    const projectRef = requiredEnv("SUPABASE_PROJECT_REF");
+    const get = runSupabase(["branches", "get", name, "--project-ref", projectRef], { allowFailure: true });
+    if (get.status !== 0) {
+      if (!isMissingBranch(get)) throw new Error(`Cannot verify Supabase preview branch before delete: ${get.stderr || get.stdout}`);
+      console.log(JSON.stringify({ ok: true, branch: name, deleted: false }, null, 2));
+      process.exit(0);
+    }
+    runSupabase(["branches", "delete", name, "--project-ref", projectRef]);
+    console.log(JSON.stringify({ ok: true, branch: name, deleted: true }, null, 2));
   }
-  runSupabase(["branches", "delete", name, "--project-ref", projectRef]);
-  console.log(JSON.stringify({ ok: true, branch: name, deleted: true }, null, 2));
 } else if (command === "migrate") {
   const databaseUrl = args["postgres-url"] || process.env.BRAI_DATABASE_URL;
   await applyMigrations(databaseUrl);
   console.log(JSON.stringify({ ok: true, migrated: true }, null, 2));
 } else {
   throw new Error("usage: supabase-branch.mjs preview-env --branch <codex/...> --runtime-env <path> | dev-env --runtime-env <path> | delete-preview --branch <codex/...> | migrate --postgres-url <url>");
+}
+
+function ensureCloudBranch(name, { persistent, withData }) {
+  const projectRef = requiredEnv("SUPABASE_PROJECT_REF");
+  ensureBranch(name, { projectRef, persistent, withData });
+  const details = waitForBranch(name, projectRef);
+  const env = branchEnv(name, projectRef);
+  const databaseUrl = env.DATABASE_URL ?? env.POSTGRES_URL ?? env.SUPABASE_DB_URL;
+  return { databaseUrl, details };
 }
 
 function ensureBranch(name, { projectRef, persistent, withData }) {
@@ -79,6 +89,33 @@ function ensureBranch(name, { projectRef, persistent, withData }) {
   if (persistent) args.push("--persistent");
   if (withData) args.push("--with-data");
   runSupabase(args);
+}
+
+async function ensureSelfHostedSchema(name) {
+  const adminUrl = selfHostedDatabaseUrl();
+  const databaseUrl = databaseUrlWithSearchPath(adminUrl, name);
+  if (process.env.BRAI_SUPABASE_DRY_RUN === "true") {
+    return { databaseUrl, details: { id: name, status: "ready" } };
+  }
+  const pool = new Pool({ connectionString: adminUrl, ssl: postgresSsl(adminUrl) });
+  try {
+    await pool.query(`CREATE SCHEMA IF NOT EXISTS ${quoteIdentifier(name)}`);
+  } finally {
+    await pool.end();
+  }
+  return { databaseUrl, details: { id: name, status: "ready" } };
+}
+
+async function dropSelfHostedSchema(name) {
+  const adminUrl = selfHostedDatabaseUrl();
+  if (process.env.BRAI_SUPABASE_DRY_RUN === "true") return true;
+  const pool = new Pool({ connectionString: adminUrl, ssl: postgresSsl(adminUrl) });
+  try {
+    await pool.query(`DROP SCHEMA IF EXISTS ${quoteIdentifier(name)} CASCADE`);
+  } finally {
+    await pool.end();
+  }
+  return true;
 }
 
 function waitForBranch(name, projectRef) {
@@ -175,6 +212,25 @@ function runSupabase(args, { allowFailure = false } = {}) {
   return result;
 }
 
+function isSelfHosted() {
+  return /^(1|true|yes)$/i.test(String(process.env.SUPABASE_SELF_HOSTED ?? ""));
+}
+
+function selfHostedDatabaseUrl() {
+  return process.env.SUPABASE_SELF_HOSTED_DATABASE_URL
+    || process.env.BRAI_PROD_DATABASE_URL
+    || process.env.BRAI_DATABASE_URL
+    || requiredEnv("SUPABASE_SELF_HOSTED_DATABASE_URL");
+}
+
+function databaseUrlWithSearchPath(databaseUrl, schema) {
+  const url = new URL(databaseUrl);
+  const existing = url.searchParams.get("options");
+  const option = `-c search_path=${schema},public`;
+  url.searchParams.set("options", [existing, option].filter(Boolean).join(" "));
+  return url.toString();
+}
+
 function runSleep(attempt) {
   if (process.env.BRAI_SUPABASE_DRY_RUN === "true") return;
   const seconds = Math.min(10, Math.max(1, attempt));
@@ -256,6 +312,16 @@ function previewBranchName(branch) {
   const slug = branch.replace(/^codex\//, "").replace(/[^A-Za-z0-9._-]+/g, "-").slice(0, 32);
   const hash = crypto.createHash("sha1").update(branch).digest("hex").slice(0, 8);
   return `brai-preview-${slug}-${hash}`;
+}
+
+function previewSchemaName(branch) {
+  const slug = branch.replace(/^codex\//, "").replace(/[^A-Za-z0-9_]+/g, "_").replace(/^_+|_+$/g, "").toLowerCase().slice(0, 34);
+  const hash = crypto.createHash("sha1").update(branch).digest("hex").slice(0, 8);
+  return `brai_preview_${slug || "branch"}_${hash}`;
+}
+
+function quoteIdentifier(value) {
+  return `"${String(value).replaceAll('"', '""')}"`;
 }
 
 function shellQuote(value) {

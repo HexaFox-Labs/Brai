@@ -15,9 +15,12 @@ This archived runbook records the completed move from frozen SQLite to Supabase 
 - Production Supabase Studio: `https://supabase.brightos.world` through Caddy unified basic auth, proxying localhost-only Studio on `127.0.0.1:54323`.
 - Supabase deploy automation env: `/etc/brai/supabase-deploy.env`
 - Preview and Dev runtime envs: `/srv/projects/brai-envs/<environment>/brai-api.env`
-- GitHub secrets required by delivery workflows: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_REF`, `BRAI_PROD_DATABASE_URL`
+- GitHub delivery secrets: `BRAI_DEPLOY_SSH_KEY`; Supabase lifecycle secrets stay on the VPS.
 
-`/etc/brai/supabase-deploy.env` should contain only protected server-side values such as `SUPABASE_PROJECT_REF`, `SUPABASE_ACCESS_TOKEN`, and optional `SUPABASE_CLI`. Runtime DSNs belong in runtime env files or CI secrets, not in Git.
+`/etc/brai/supabase-deploy.env` should contain only protected server-side values. On this
+self-hosted Supabase server it uses `SUPABASE_SELF_HOSTED=true` and
+`SUPABASE_SELF_HOSTED_DATABASE_URL`; preview and Dev runtime env files receive schema-scoped
+`BRAI_DATABASE_URL` values. Runtime DSNs do not belong in Git.
 
 ## Current Active Contract
 

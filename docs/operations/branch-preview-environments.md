@@ -197,18 +197,19 @@ and deploy/preview artifact roots stay `2775` so future files inherit `brai-depl
 
 ### Supabase Runtime Maintenance
 
-Supabase branch lifecycle credentials live outside Git on the VPS, normally in:
+Supabase lifecycle configuration lives outside Git on the VPS. The brightos.world server runs
+self-hosted Supabase, so preview and Dev isolation use separate Postgres schemas with connection
+URLs carrying an explicit `search_path`:
 
 ```text
 /etc/brai/supabase-deploy.env
-SUPABASE_PROJECT_REF
-SUPABASE_ACCESS_TOKEN
-SUPABASE_CLI
+SUPABASE_SELF_HOSTED=true
+SUPABASE_SELF_HOSTED_DATABASE_URL
 ```
 
 Production runtime credentials live in `/etc/brai/brai-api.env`, including `BRAI_DATABASE_URL`.
 Preview and Dev runtime credentials live in `/srv/projects/brai-envs/<environment>/brai-api.env`
-and are deploy-writable so CI can update branch DSNs after Supabase branch creation.
+and are deploy-writable so CI can update schema-scoped DSNs after Supabase schema creation.
 
 Use [Supabase Postgres Cutover](supabase-postgres-cutover.md) only as the archived record of the
 completed cutover. Active production, Dev, and preview writes use Supabase Postgres only.
