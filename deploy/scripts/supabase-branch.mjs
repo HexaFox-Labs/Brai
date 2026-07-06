@@ -300,12 +300,30 @@ function upsertEnvFile(filePath, values) {
   if (!values.BRAI_DATABASE_URL) throw new Error("Supabase branch env did not include a database URL");
   const existing = fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8").split(/\r?\n/) : [];
   const keys = new Set(Object.keys(values));
-  const kept = existing.filter((line) => {
-    const key = line.match(/^\s*([A-Z0-9_]+)=/)?.[1];
-    return key ? !keys.has(key) && !LEGACY_DATABASE_ENV_KEYS.has(key) : line.trim() !== "";
-  });
+  const kept = existing.map((line) => normalizeEnvLine(line, keys)).filter(Boolean);
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, `${[...kept, ...Object.entries(values).map(([key, value]) => `${key}=${shellQuote(value)}`)].join("\n")}\n`);
+}
+
+function normalizeEnvLine(line, replacedKeys) {
+  if (line.trim() === "") return "";
+  if (/^\s*#/.test(line)) return line;
+  const match = line.match(/^\s*(?:export\s+)?([A-Z0-9_]+)=(.*)$/);
+  if (!match) return "";
+  const [, key, rawValue] = match;
+  if (replacedKeys.has(key) || LEGACY_DATABASE_ENV_KEYS.has(key)) return "";
+  return `${key}=${shellQuote(parseEnvValue(rawValue))}`;
+}
+
+function parseEnvValue(value) {
+  const trimmed = String(value).trim();
+  if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
+    return trimmed.slice(1, -1).replaceAll("'\\''", "'");
+  }
+  if (trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
+    return trimmed.slice(1, -1).replace(/\\(["\\$`])/g, "$1");
+  }
+  return trimmed;
 }
 
 function previewBranchName(branch) {
