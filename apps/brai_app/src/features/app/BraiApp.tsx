@@ -33,6 +33,7 @@ const INBOX_MOBILE_CREATE_DRAFT_STORAGE_KEY = "brai_inbox_mobile_create_draft";
 export function BraiApp({ initialSection = "actions" }: { initialSection?: SectionId }) {
   const app = useBraiAppState(initialSection);
   const [mobileDockMenu, setMobileDockMenu] = useState<"left" | "right" | null>(null);
+  const dockOverflowOpen = mobileDockMenu != null;
   const [actionsMobileCreateDraft, setActionsMobileCreateDraft] = useStoredMobileCreateDraft(ACTIONS_MOBILE_CREATE_DRAFT_STORAGE_KEY);
   const [inboxMobileCreateDraft, setInboxMobileCreateDraft] = useStoredMobileCreateDraft(INBOX_MOBILE_CREATE_DRAFT_STORAGE_KEY);
   const mobileViewport = useMountedMobileNavigationViewport();
@@ -117,6 +118,7 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
             onReorder={app.onReorderActions}
             mobileCreateDraft={actionsMobileCreateDraft}
             onMobileCreateDraftChange={setActionsMobileCreateDraft}
+            dockOverflowOpen={dockOverflowOpen}
             onMobileOverlayChange={app.setActionOverlayOpen}
             activeActivityId={app.timer.active_activity_id ?? null}
             activeActivityElapsedSeconds={app.timer.active_interval_elapsed_seconds ?? 0}
@@ -134,6 +136,7 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
             onDelete={app.onDeleteInboxItem}
             mobileCreateDraft={inboxMobileCreateDraft}
             onMobileCreateDraftChange={setInboxMobileCreateDraft}
+            dockOverflowOpen={dockOverflowOpen}
             onMobileOverlayChange={app.setActionOverlayOpen}
           />
         ) : screenSection === "archive" ? (
@@ -236,7 +239,7 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
       />
       <MobileDockOverflowButton
         side="left"
-        hidden={app.mobileMenuOpen || mobileDockMenu != null || app.actionOverlayOpen}
+        hidden={app.mobileMenuOpen || mobileDockMenu === "left" || app.actionOverlayOpen}
         onClick={() => setMobileDockMenu("left")}
       />
       <MobileDockOverflowButton

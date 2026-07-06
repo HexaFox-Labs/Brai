@@ -29,6 +29,7 @@ export function ActionsSection({
   onReorder,
   mobileCreateDraft,
   onMobileCreateDraftChange,
+  dockOverflowOpen,
   onMobileOverlayChange,
   autoFocusAddInput,
   activeActivityId,
@@ -49,6 +50,7 @@ export function ActionsSection({
   onReorder: (orderedIds: string[], movedAction: ActivityItem) => Promise<void>;
   mobileCreateDraft: MobileCreateDraft;
   onMobileCreateDraftChange: (draft: MobileCreateDraft) => void;
+  dockOverflowOpen: boolean;
   onStartActionFocus: (activityId: string) => Promise<void>;
   onStopActionFocus: (activityId?: string | null) => Promise<void>;
   onMobileOverlayChange: (open: boolean) => void;
@@ -394,7 +396,7 @@ export function ActionsSection({
         ) : null}
       </div>
 
-      {!mobileOverlayOpen ? (
+      {!mobileOverlayOpen && !dockOverflowOpen ? (
         <button
           type="button"
           className="actions-fab absolute bottom-[18px] right-[18px] z-[26] hidden h-[58px] w-[58px] place-items-center rounded-full border-0 bg-primary text-primary-foreground shadow-lg max-[860px]:grid"

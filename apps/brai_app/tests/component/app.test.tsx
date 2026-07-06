@@ -70,6 +70,23 @@ describe("BraiApp shell", () => {
     expect(screen.getByRole("button", { name: "Заглушка: Дата" })).toBeDisabled();
   });
 
+  it("keeps the left dock overflow available and hides the mobile FAB while the right overflow is open", async () => {
+    render(<BraiApp />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Открыть правое меню" }));
+
+    const leftOverflowButton = screen.getByRole("button", { name: "Открыть левое меню" });
+    expect(leftOverflowButton).not.toHaveClass("max-[860px]:invisible", "max-[860px]:opacity-0");
+    expect(screen.queryByRole("button", { name: "Добавить действие" })).not.toBeInTheDocument();
+    expect(document.querySelector(".mobile-dock-overflow-sheet")).toHaveAttribute("aria-label", "Правое меню");
+
+    fireEvent.click(leftOverflowButton);
+
+    await waitFor(() => expect(document.querySelector(".mobile-dock-overflow-sheet")).toHaveAttribute("aria-label", "Левое меню"));
+    expect(within(document.querySelector(".mobile-dock-overflow-sheet") as HTMLElement).getByRole("button", { name: "Настройки" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Добавить действие" })).not.toBeInTheDocument();
+  });
+
   it("keeps contextual actions before the rightmost sync status", async () => {
     render(<BraiApp />);
 

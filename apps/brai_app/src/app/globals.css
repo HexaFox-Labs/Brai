@@ -198,6 +198,16 @@ nextjs-portal {
   }
 }
 
+@keyframes mobile-dock-dim-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: var(--mobile-sheet-backdrop-opacity, 1);
+  }
+}
+
 ::view-transition-old(root),
 ::view-transition-new(root) {
   animation: none;

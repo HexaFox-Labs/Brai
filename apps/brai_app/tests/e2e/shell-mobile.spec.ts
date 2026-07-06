@@ -75,6 +75,9 @@ test("opens the right mobile dock overflow with placeholder items", async ({ pag
   await expect(sheet.getByRole("button", { name: "Заглушка: Флаг" })).toBeVisible();
   const closeButton = page.getByRole("button", { name: "Скрыть правое меню" });
   await expect(closeButton).toBeVisible();
+  const leftButton = page.getByRole("button", { name: "Открыть левое меню" });
+  await expect(leftButton).toBeVisible();
+  await expect(page.locator(".section-page-current .actions-fab")).toHaveCount(0);
 
   const viewport = page.viewportSize();
   const sheetBox = await sheet.boundingBox();
@@ -82,14 +85,22 @@ test("opens the right mobile dock overflow with placeholder items", async ({ pag
   const dimBox = await page.locator(".mobile-dock-overflow-dim").boundingBox();
   const rightButtonAfter = await closeButton.boundingBox();
   if (!viewport || !sheetBox || !dockBox || !dimBox || !rightButtonBefore || !rightButtonAfter) throw new Error("Missing dock overflow geometry");
+  const placeholderColor = await sheet.getByRole("button", { name: "Заглушка: Дата" }).evaluate((element) => getComputedStyle(element).color);
+  const inactiveDockColor = await page.locator(".mobile-nav .nav-button").nth(1).evaluate((element) => getComputedStyle(element).color);
+  expect(placeholderColor).toBe(inactiveDockColor);
   expect(sheetBox.width).toBeGreaterThanOrEqual(viewport.width - 1);
   expect(sheetBox.height).toBeLessThan(90);
   expect(sheetBox.y + sheetBox.height).toBeLessThanOrEqual(dockBox.y + 1);
   expect(dimBox.y + dimBox.height).toBeLessThanOrEqual(sheetBox.y + 1);
+  expect(dimBox.y + dimBox.height).toBeLessThanOrEqual(dockBox.y - sheetBox.height + 1);
   expect(Math.abs(rightButtonBefore.x - rightButtonAfter.x)).toBeLessThanOrEqual(1);
   expect(Math.abs(rightButtonBefore.y - rightButtonAfter.y)).toBeLessThanOrEqual(1);
+  await expect(page.locator(".mobile-dock-overflow-dim")).toHaveClass(/mobile-dock-dim-in/);
 
-  await closeButton.click();
+  await leftButton.click();
+  await expect(page.locator(".mobile-dock-overflow-sheet")).toHaveAttribute("aria-label", "Левое меню");
+  await expect(page.getByRole("button", { name: "Настройки" })).toBeVisible();
+  await page.locator(".mobile-dock-overflow-backdrop").click({ position: { x: 20, y: 120 } });
   await expect(page.locator(".mobile-dock-overflow-sheet")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Открыть правое меню" }).click();

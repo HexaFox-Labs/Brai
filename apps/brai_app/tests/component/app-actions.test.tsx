@@ -312,6 +312,7 @@ describe("BraiApp actions", () => {
           autoFocusAddInput={false}
           activeActivityId={null}
           activeActivityElapsedSeconds={0}
+          dockOverflowOpen={false}
           mobileCreateDraft={draft}
           onAutosaveDetails={vi.fn()}
           onCreate={onCreate}

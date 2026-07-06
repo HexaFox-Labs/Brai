@@ -302,8 +302,8 @@ export function MobileDockOverflowSheet({
       <div
         ref={backdropRef}
         className={cx(
-          "mobile-dock-overflow-dim absolute inset-x-0 top-0 bg-foreground/20 dark:bg-background/80",
-          side === "left" ? "bottom-0" : "pointer-events-auto bottom-[calc(7.5rem+env(safe-area-inset-bottom))]",
+          "mobile-dock-overflow-dim absolute inset-x-0 top-0 bg-foreground/20 motion-safe:animate-[mobile-dock-dim-in_180ms_ease-out] dark:bg-background/80",
+          side === "left" ? "bottom-0" : "pointer-events-auto bottom-[calc(7.75rem+env(safe-area-inset-bottom))]",
         )}
         style={backdropStyle}
         aria-hidden="true"
@@ -314,7 +314,7 @@ export function MobileDockOverflowSheet({
           "mobile-dock-overflow-sheet pointer-events-auto relative z-[1] grid min-w-0 overflow-hidden shadow-xl animate-[mobile-detail-sheet-in_180ms_ease-out] will-change-transform",
           side === "left"
             ? "max-h-[60dvh] w-full grid-rows-[auto_minmax(0,1fr)] rounded-t-2xl border-t border-border bg-card pb-[env(safe-area-inset-bottom)] pt-2"
-            : "w-full justify-center bg-transparent px-8 py-1 shadow-none",
+            : "h-16 w-full items-center justify-center border-y border-border/40 bg-background/95 px-8 py-1 shadow-none backdrop-blur-[14px] dark:bg-background/95",
         )}
         style={sheetStyle}
         aria-label={side === "left" ? "Левое меню" : "Правое меню"}
@@ -378,9 +378,8 @@ function MobileDockOverflowActionButton({
     <button
       type="button"
       className={cx(
-        "nav-button flex h-11 w-11 items-center justify-center rounded-full border-0 text-muted-foreground",
+        "nav-button flex h-11 w-11 items-center justify-center rounded-full border-0 text-neutral-500 dark:text-neutral-300",
         "bg-transparent",
-        disabled && "opacity-45",
       )}
       aria-label={label}
       disabled={disabled}
