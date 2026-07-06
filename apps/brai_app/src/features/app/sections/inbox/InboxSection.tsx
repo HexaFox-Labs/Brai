@@ -49,6 +49,7 @@ export function InboxSection({
   onDelete,
   mobileCreateDraft,
   onMobileCreateDraftChange,
+  dockOverflowOpen,
   onMobileOverlayChange,
 }: {
   state: InboxState;
@@ -60,6 +61,7 @@ export function InboxSection({
   onDelete: (item: InboxItem) => Promise<void>;
   mobileCreateDraft: MobileCreateDraft;
   onMobileCreateDraftChange: (draft: MobileCreateDraft) => void;
+  dockOverflowOpen: boolean;
   onMobileOverlayChange: (open: boolean) => void;
 }) {
   const [draft, setDraft] = useState("");
@@ -342,7 +344,7 @@ export function InboxSection({
         ) : null}
       </div>
 
-      {!mobileOverlayOpen ? (
+      {!mobileOverlayOpen && !dockOverflowOpen ? (
         <button
           type="button"
           className="actions-fab absolute bottom-[18px] right-[18px] z-[26] hidden h-[58px] w-[58px] place-items-center rounded-full border-0 bg-primary text-primary-foreground shadow-lg max-[860px]:grid"

@@ -1,11 +1,11 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { createMobileAction, dispatchElementTouch, dispatchTouch, dragTouch, horizontalCenterOffset, openProfileMenuItem, swipeActionRowLeft, swipeTouch } from "./shell-helpers";
 
-test("keeps the burger drawer empty and opens the action rail from the aligned three-dot button", async ({ page }, testInfo) => {
+test("keeps the burger drawer empty and opens the left overflow from the aligned three-dot button", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "mobile", "mobile-only drawer");
 
   await page.goto("/");
-  const railButton = await page.locator(".mobile-rail-menu-button").boundingBox();
+  const railButton = await page.getByRole("button", { name: "Открыть левое меню" }).boundingBox();
   const dockButton = await page.locator(".mobile-nav .nav-button").first().boundingBox();
   expect(Math.abs((railButton?.y ?? 0) + (railButton?.height ?? 0) / 2 - ((dockButton?.y ?? 0) + (dockButton?.height ?? 0) / 2))).toBeLessThanOrEqual(1.5);
 
@@ -17,27 +17,26 @@ test("keeps the burger drawer empty and opens the action rail from the aligned t
   await expect(page.locator(".mobile-menu-backdrop")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Открыть левое меню" }).click();
-  await expect(page.locator(".mobile-menu-backdrop")).toBeVisible();
-  await expect(page.locator(".mobile-profile-drawer")).not.toContainText("Workspace");
-  await expect(page.locator(".mobile-profile-drawer")).not.toContainText("Меню страницы");
-  await expect(page.locator(".mobile-profile-drawer")).not.toContainText("Действия");
-  await expect(page.locator(".mobile-profile-drawer")).not.toContainText("Platform");
-  await expect(page.locator(".mobile-profile-drawer")).not.toContainText("Time");
-  await expect(page.locator(".mobile-profile-drawer").getByRole("button", { name: /Engine/ })).toBeVisible();
+  await expect(page.locator(".mobile-dock-overflow-backdrop")).toBeVisible();
+  await expect(page.locator(".mobile-dock-overflow-sheet")).not.toContainText("Workspace");
+  await expect(page.locator(".mobile-dock-overflow-sheet")).not.toContainText("Меню страницы");
+  await expect(page.locator(".mobile-dock-overflow-sheet")).not.toContainText("Действия");
+  await expect(page.locator(".mobile-dock-overflow-sheet")).not.toContainText("Platform");
+  await expect(page.locator(".mobile-dock-overflow-sheet")).not.toContainText("Time");
+  await expect(page.locator(".mobile-dock-overflow-sheet").getByRole("button", { name: /Engine/ })).toBeVisible();
 
-  const drawer = await page.locator(".mobile-profile-drawer").boundingBox();
-  const engine = await page.locator(".mobile-profile-drawer").getByRole("button", { name: /Engine/ }).boundingBox();
+  const sheet = await page.locator(".mobile-dock-overflow-sheet").boundingBox();
   const viewport = page.viewportSize();
-  expect(drawer?.width ?? 0).toBeGreaterThan((viewport?.width ?? 0) * 0.78);
-  expect(drawer?.width ?? 0).toBeLessThan((viewport?.width ?? 0) * 0.82);
-  expect((viewport?.height ?? 0) - ((engine?.y ?? 0) + (engine?.height ?? 0))).toBeGreaterThanOrEqual(16);
+  expect(sheet?.width ?? 0).toBeGreaterThanOrEqual((viewport?.width ?? 0) - 1);
+  expect(sheet?.height ?? 999).toBeLessThan((viewport?.height ?? 0) * 0.6);
 
   await dispatchTouch(page, "touchstart", { x: 320, y: 220 });
   await dispatchTouch(page, "touchend", { x: 180, y: 224 });
   await expect(page.getByRole("heading", { name: "Действия", exact: true })).toBeVisible();
+  await expect(page.locator(".mobile-dock-overflow-sheet")).toBeVisible();
 
-  await page.locator(".mobile-menu-backdrop").click({ position: { x: 360, y: 120 } });
-  await expect(page.locator(".mobile-menu-backdrop")).toHaveCount(0);
+  await page.locator(".mobile-dock-overflow-backdrop").click({ position: { x: 360, y: 120 } });
+  await expect(page.locator(".mobile-dock-overflow-backdrop")).toHaveCount(0);
 });
 
 test("opens Settings from the mobile action rail", async ({ page }, testInfo) => {
@@ -45,7 +44,7 @@ test("opens Settings from the mobile action rail", async ({ page }, testInfo) =>
 
   await page.goto("/");
   await page.getByRole("button", { name: "Открыть левое меню" }).click();
-  await expect(page.locator(".mobile-profile-drawer")).not.toContainText("Workspace");
+  await expect(page.locator(".mobile-dock-overflow-sheet")).not.toContainText("Workspace");
 
   await expect(page.getByRole("button", { name: "Настройки" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Архив" })).toBeVisible();
@@ -56,9 +55,76 @@ test("opens Settings from the mobile action rail", async ({ page }, testInfo) =>
   await expect(page.getByRole("heading", { name: "Настройки" })).toBeVisible();
 
   await page.getByRole("button", { name: "Открыть левое меню" }).click();
-  await expect(page.locator(".mobile-profile-drawer")).not.toContainText("Workspace");
+  await expect(page.locator(".mobile-dock-overflow-sheet")).not.toContainText("Workspace");
   await expect(page.getByRole("button", { name: "Архив" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Engine/ })).toBeVisible();
+});
+
+test("opens the right mobile dock overflow with placeholder items", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile", "mobile-only dock overflow");
+
+  await page.goto("/");
+  const rightButton = page.getByRole("button", { name: "Открыть правое меню" });
+  const rightButtonBefore = await rightButton.boundingBox();
+  await rightButton.click();
+
+  const sheet = page.locator(".mobile-dock-overflow-sheet");
+  await expect(sheet).toBeVisible();
+  await expect(sheet).toHaveAttribute("aria-label", "Правое меню");
+  await expect(sheet.getByRole("button", { name: "Заглушка: Дата" })).toBeVisible();
+  await expect(sheet.getByRole("button", { name: "Заглушка: Флаг" })).toBeVisible();
+  const closeButton = page.getByRole("button", { name: "Скрыть правое меню" });
+  await expect(closeButton).toBeVisible();
+  const leftButton = page.getByRole("button", { name: "Открыть левое меню" });
+  await expect(leftButton).toBeVisible();
+  await expect(page.locator(".section-page-current .actions-fab")).toHaveCount(0);
+
+  const viewport = page.viewportSize();
+  const sheetBox = await sheet.boundingBox();
+  const dockBox = await page.locator(".main-dock").boundingBox();
+  const dimBox = await page.locator(".mobile-dock-overflow-dim").boundingBox();
+  const rightButtonAfter = await closeButton.boundingBox();
+  if (!viewport || !sheetBox || !dockBox || !dimBox || !rightButtonBefore || !rightButtonAfter) throw new Error("Missing dock overflow geometry");
+  const placeholderColor = await sheet.getByRole("button", { name: "Заглушка: Дата" }).evaluate((element) => getComputedStyle(element).color);
+  const inactiveDockColor = await page.locator(".mobile-nav .nav-button").nth(1).evaluate((element) => getComputedStyle(element).color);
+  expect(placeholderColor).toBe(inactiveDockColor);
+  expect(sheetBox.width).toBeGreaterThanOrEqual(viewport.width - 1);
+  expect(sheetBox.height).toBeLessThan(90);
+  expect(sheetBox.y + sheetBox.height).toBeLessThanOrEqual(dockBox.y + 1);
+  expect(dimBox.y + dimBox.height).toBeLessThanOrEqual(sheetBox.y + 1);
+  expect(dimBox.y + dimBox.height).toBeLessThanOrEqual(dockBox.y - sheetBox.height + 1);
+  expect(Math.abs(rightButtonBefore.x - rightButtonAfter.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(rightButtonBefore.y - rightButtonAfter.y)).toBeLessThanOrEqual(1);
+  await expect(page.locator(".mobile-dock-overflow-dim")).toHaveClass(/mobile-dock-dim-in/);
+
+  await leftButton.click();
+  await expect(page.locator(".mobile-dock-overflow-sheet")).toHaveAttribute("aria-label", "Левое меню");
+  await expect(page.getByRole("button", { name: "Настройки" })).toBeVisible();
+  await page.locator(".mobile-dock-overflow-backdrop").click({ position: { x: 20, y: 120 } });
+  await expect(page.locator(".mobile-dock-overflow-sheet")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Открыть правое меню" }).click();
+  await page.locator(".mobile-dock-overflow-dim").click({ position: { x: 20, y: 120 } });
+  await expect(page.locator(".mobile-dock-overflow-sheet")).toHaveCount(0);
+});
+
+test("opens the dock overflow above an existing mobile sheet", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile", "mobile-only dock overflow layering");
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Информация о действиях" }).click();
+  await expect(page.locator(".mobile-context-sheet")).toBeVisible();
+
+  await page.getByRole("button", { name: "Открыть правое меню" }).click();
+
+  await expect(page.locator(".mobile-context-sheet")).toBeVisible();
+  await expect(page.locator(".mobile-dock-overflow-sheet")).toBeVisible();
+  const sheetBox = await page.locator(".mobile-dock-overflow-sheet").boundingBox();
+  if (!sheetBox) throw new Error("Missing dock overflow geometry");
+  await expect.poll(async () => page.evaluate(({ x, y }) => Boolean(document.elementFromPoint(x, y)?.closest(".mobile-dock-overflow-sheet")), {
+    x: sheetBox.x + sheetBox.width / 2,
+    y: sheetBox.y + sheetBox.height / 2,
+  })).toBe(true);
 });
 
 test("opens mobile action input overlay from the floating plus button", async ({ page }, testInfo) => {
