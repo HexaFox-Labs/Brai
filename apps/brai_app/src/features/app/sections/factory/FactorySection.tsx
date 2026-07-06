@@ -2,19 +2,18 @@
 
 import type { CSSProperties, KeyboardEvent, PointerEvent } from "react";
 import { useEffect, useRef, useState } from "react";
-import { Bot, CheckCircle2, Clock3, FileJson, GitBranch, Terminal, X, XCircle } from "lucide-react";
+import { Bot, CheckCircle2, Clock3, Database, FileJson, GitBranch, Terminal, XCircle } from "lucide-react";
 import { Badge } from "@/shared/ui/badge";
-import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
 import { ScrollArea } from "@/shared/ui/scroll-area";
-import { installAndroidBackHandler } from "@/shared/platform/platform";
+import { MobileContextSheet } from "../../chrome/AppChrome";
 import { cx } from "../../appUtils";
-import { useMobileSheetDrag } from "../../hooks/useMobileSheetDrag";
-import { useMobileSheetTop } from "../../hooks/useMobileSheetTop";
 import { isMobileNavigationViewport } from "../../navigation/useSectionSwipeNavigation";
+import { DetailPanelTabBar } from "../DetailPanelTabs";
 import { ACTIONS_SPLIT_DEFAULT_PERCENT, ACTIONS_SPLIT_MIN_PERCENT, clampActionsSplitPercent } from "../actions/constants";
 
 type FactoryLogStatus = "done" | "failed";
+type FactoryDetailTab = "info" | "db" | "logs";
 
 type FactoryLog = {
   id: number;
@@ -117,10 +116,16 @@ const FACTORY_LOGS: FactoryLog[] = [
     },
   },
 ];
+const FACTORY_DETAIL_TABS: Array<{ id: FactoryDetailTab; label: string }> = [
+  { id: "info", label: "Инфо" },
+  { id: "db", label: "БД" },
+  { id: "logs", label: "Логи" },
+];
 
 export function FactorySection({ onMobileOverlayChange }: { onMobileOverlayChange: (open: boolean) => void }) {
   const [selectedLogId, setSelectedLogId] = useState<number | null>(null);
   const [mobileLogId, setMobileLogId] = useState<number | null>(null);
+  const [detailTab, setDetailTab] = useState<FactoryDetailTab>("info");
   const [splitPercent, setSplitPercent] = useState(ACTIONS_SPLIT_DEFAULT_PERCENT);
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const splitDragStyleRef = useRef<{ cursor: string; userSelect: string } | null>(null);
@@ -226,10 +231,10 @@ export function FactorySection({ onMobileOverlayChange }: { onMobileOverlayChang
           <span className="block h-full w-px bg-border transition-colors group-hover:bg-primary" aria-hidden="true" />
         </button>
 
-        <FactoryDetailPanel log={selectedLog} />
+        <FactoryDetailPanel activeTab={detailTab} log={selectedLog} onTabChange={setDetailTab} />
       </div>
 
-      {mobileLog ? <FactoryMobileDetail log={mobileLog} onClose={() => setMobileLogId(null)} /> : null}
+      {mobileLog ? <FactoryMobileDetail activeTab={detailTab} log={mobileLog} onClose={() => setMobileLogId(null)} onTabChange={setDetailTab} /> : null}
     </section>
   );
 }
@@ -276,12 +281,10 @@ function FactoryLogCard({ log, selected, onOpen }: { log: FactoryLog; selected: 
   );
 }
 
-function FactoryDetailPanel({ log }: { log: FactoryLog | null }) {
+function FactoryDetailPanel({ activeTab, log, onTabChange }: { activeTab: FactoryDetailTab; log: FactoryLog | null; onTabChange: (tab: FactoryDetailTab) => void }) {
   return (
     <aside className="grid h-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)] overflow-hidden pl-7 max-[860px]:hidden" aria-label="Подробности AI log" data-nav-swipe-exclusion>
-      <ScrollArea className="min-h-0">
-        {log ? <FactoryLogDetails log={log} /> : <FactoryEmptyPanel />}
-      </ScrollArea>
+      {log ? <FactoryLogDetails activeTab={activeTab} log={log} onTabChange={onTabChange} /> : <FactoryEmptyPanel />}
     </aside>
   );
 }
@@ -294,77 +297,33 @@ function FactoryEmptyPanel() {
   );
 }
 
-function FactoryMobileDetail({ log, onClose }: { log: FactoryLog; onClose: () => void }) {
-  const suppressPopRef = useRef(false);
-  const mobileSheetTop = useMobileSheetTop();
-  const { sheetDragHandlers, sheetRef, sheetStyle } = useMobileSheetDrag({ onClose });
+function FactoryMobileDetail({ activeTab, log, onClose, onTabChange }: { activeTab: FactoryDetailTab; log: FactoryLog; onClose: () => void; onTabChange: (tab: FactoryDetailTab) => void }) {
+  return (
+    <MobileContextSheet label="Подробности AI log" onClose={onClose} scroll={false} variant="detail">
+      <FactoryLogDetails activeTab={activeTab} log={log} mobile onTabChange={onTabChange} />
+    </MobileContextSheet>
+  );
+}
 
-  useEffect(() => {
-    if (window.history.state?.braiFactoryLog) {
-      window.history.replaceState({ ...window.history.state, braiFactoryLog: log.id }, "", window.location.href);
-    } else {
-      window.history.pushState({ ...window.history.state, braiFactoryLog: log.id }, "", window.location.href);
-    }
-
-    function onPopState() {
-      if (suppressPopRef.current) {
-        suppressPopRef.current = false;
-        return;
-      }
-      onClose();
-    }
-
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
-  }, [log.id, onClose]);
-
-  useEffect(() => installAndroidBackHandler(() => {
-    if (window.history.state?.braiFactoryLog === log.id) {
-      suppressPopRef.current = true;
-      window.history.back();
-    }
-    onClose();
-    return true;
-  }), [log.id, onClose]);
-
-  function close() {
-    if (window.history.state?.braiFactoryLog === log.id) {
-      suppressPopRef.current = true;
-      window.history.back();
-    }
-    onClose();
-  }
+function FactoryLogDetails({ activeTab, log, mobile = false, onTabChange }: { activeTab: FactoryDetailTab; log: FactoryLog; mobile?: boolean; onTabChange: (tab: FactoryDetailTab) => void }) {
+  const content =
+    activeTab === "db" ? <FactoryDbDetails log={log} /> : activeTab === "logs" ? <FactoryRawLogs log={log} /> : <FactoryInfoDetails log={log} />;
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-[80] hidden bg-foreground/25 max-[860px]:block dark:bg-background/80" style={{ top: mobileSheetTop } as CSSProperties} data-nav-swipe-exclusion>
-      <aside
-        ref={sheetRef}
-        className="absolute inset-x-0 bottom-0 grid max-h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-t-2xl border-t border-border bg-card pb-[env(safe-area-inset-bottom)] pt-2 shadow-xl animate-[mobile-detail-sheet-in_180ms_ease-out] will-change-transform"
-        style={sheetStyle}
-        aria-label="Подробности AI log"
-        {...sheetDragHandlers}
-      >
-        <div className="relative min-h-12 border-b border-border px-5">
-          <div className="absolute left-1/2 top-0 flex h-6 w-32 -translate-x-1/2 touch-none cursor-grab items-start justify-center pt-1.5 active:cursor-grabbing">
-            <span className="h-1.5 w-12 rounded-full bg-muted-foreground/30" aria-hidden="true" />
-          </div>
-          <Button type="button" variant="ghost" size="icon-sm" className="absolute right-4 top-2.5" aria-label="Закрыть подробности" onClick={close}>
-            <X aria-hidden="true" />
-          </Button>
-        </div>
-        <ScrollArea className="min-h-0" contentInset="balanced">
-          <FactoryLogDetails log={log} mobile />
-        </ScrollArea>
-      </aside>
+    <div className={cx("grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)]", mobile && "px-[18px]")}>
+      <DetailPanelTabBar activeTab={activeTab} className="mt-0" onChange={onTabChange} tabs={FACTORY_DETAIL_TABS} />
+      <ScrollArea className="min-h-0 w-full min-w-0" contentInset="none">
+        <div className="grid gap-4 py-4">{content}</div>
+      </ScrollArea>
     </div>
   );
 }
 
-function FactoryLogDetails({ log, mobile = false }: { log: FactoryLog; mobile?: boolean }) {
+function FactoryInfoDetails({ log }: { log: FactoryLog }) {
   const StatusIcon = log.status === "done" ? CheckCircle2 : XCircle;
 
   return (
-    <div className={cx("grid gap-4", mobile ? "py-4" : "pb-4")}>
+    <>
       <div className="grid gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant={log.status === "done" ? "secondary" : "destructive"}>
@@ -395,15 +354,41 @@ function FactoryLogDetails({ log, mobile = false }: { log: FactoryLog; mobile?: 
 
       <FactoryIoBlock title="Inputs" rows={log.json_data.inputs} />
       <FactoryIoBlock title="Outputs" rows={log.json_data.outputs} />
+    </>
+  );
+}
 
-      <section className="grid gap-2">
-        <div className="flex items-center gap-2 text-sm font-medium">
-          <FileJson className="size-4" aria-hidden="true" />
-          json_data
-        </div>
-        <pre className="max-h-72 overflow-auto rounded-md border border-border bg-muted/40 p-3 text-xs leading-relaxed text-muted-foreground">{JSON.stringify(log.json_data, null, 2)}</pre>
-      </section>
-    </div>
+function FactoryDbDetails({ log }: { log: FactoryLog }) {
+  return (
+    <section className="grid gap-2">
+      <div className="flex items-center gap-2 text-sm font-medium">
+        <Database className="size-4" aria-hidden="true" />
+        AI_logs
+      </div>
+      <DetailRows
+        rows={[
+          ["id", String(log.id)],
+          ["agent_id", log.agent_id],
+          ["agent_version", log.agent_version],
+          ["dt", formatFactoryTime(log.dt)],
+          ["status", log.status],
+          ["flow_id", log.flow_id ?? "—"],
+          ["flow_command", log.flow_command ?? "—"],
+        ]}
+      />
+    </section>
+  );
+}
+
+function FactoryRawLogs({ log }: { log: FactoryLog }) {
+  return (
+    <section className="grid gap-2">
+      <div className="flex items-center gap-2 text-sm font-medium">
+        <FileJson className="size-4" aria-hidden="true" />
+        json_data
+      </div>
+      <pre className="max-h-[60vh] overflow-auto rounded-md border border-border bg-muted/40 p-3 text-xs leading-relaxed text-muted-foreground">{JSON.stringify(log.json_data, null, 2)}</pre>
+    </section>
   );
 }
 
@@ -433,6 +418,21 @@ function FactoryIoBlock({ title, rows }: { title: string; rows: Array<{ ref: str
         ))}
       </div>
     </section>
+  );
+}
+
+function DetailRows({ rows }: { rows: Array<[string, string]> }) {
+  return (
+    <dl className="grid gap-0">
+      {rows.map(([label, value]) => (
+        <div key={label} className="grid gap-1 border-b border-border py-2 text-sm min-[640px]:grid-cols-[minmax(0,12rem)_minmax(0,1fr)] min-[640px]:gap-3">
+          <dt className="min-w-0">
+            <code className="break-words rounded bg-secondary px-1.5 py-0.5 text-xs text-foreground">{label}</code>
+          </dt>
+          <dd className="m-0 min-w-0 whitespace-pre-wrap break-words text-foreground">{value}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 
