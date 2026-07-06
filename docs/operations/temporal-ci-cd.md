@@ -48,7 +48,7 @@ Accepted PR conflict reconciliation does not add a separate Temporal gate. The a
 
 The preview slot registry remains `/srv/projects/brai-envs/preview-slots.json`; Temporal does not replace that lock or registry.
 
-Native-boundary preview deploys may build a slot-specific APK inside the existing `preview_deploy_started` to `preview_deploy_passed` gate. Accepted native work rebuilds the Preview A-E APK baseline during preview slot release after production deploy. These APK builds are required deploy/release substeps, not separate Temporal state transitions; failure still reports through `preview_deploy_failed`, `prod_deploy_failed`, or `slot_release_failed`.
+Native-boundary preview deploys may build a slot-specific APK inside the existing `preview_deploy_started` to `preview_deploy_passed` gate. Accepted native work rebuilds the production, Dev, and Preview A-E stable APK baselines during the production deploy from one static client export; preview slot release reuses the published stable slot APK when the release index and file are already present, and only rebuilds that slot as a fallback. These APK builds are required deploy/release substeps, not separate Temporal state transitions; failure still reports through `preview_deploy_failed`, `prod_deploy_failed`, or `slot_release_failed`.
 
 Accepted `deploy-prod` reruns are idempotent after a partial success: if the preview slot was already released, promotion may pass only when the production build ledger already records the accepted branch for the target commit, and the release rerun records `slot_released` for the already-free slot instead of leaving the workflow blocked.
 
@@ -114,7 +114,9 @@ version/ledger recording, deployment, and preview-slot cleanup. The production S
 requires baseline runtime tables and deployment ledger tables to be present.
 During the post-deploy accepted-preview release step, occupied preview OTA manifests are republished
 from each preview slot's own source checkout so their `otaVersion` follows the production build
-ledger without replacing preview content with production content. `prod_deploy_passed` completes the
+ledger without replacing preview content with production content. That refresh reuses the preview
+source checkout's existing static export and only rewrites runtime config, `version.json`, and OTA
+metadata. `prod_deploy_passed` completes the
 promotion workflow only after prior required steps have succeeded in GitHub Actions. Russian
 human-readable `build_versions` release notes are part of the existing version/ledger recording
 step; changing their text source does not add a new Temporal gate.

@@ -86,26 +86,45 @@ process.stdin.on("end", () => {
 });
 ' "$BRAI_BRANCH")
 if [[ -n "${SLOT_META[0]:-}" ]]; then
-  BASELINE_SOURCE="$ENVS_ROOT/prod/source"
-  if [[ ! -d "$BASELINE_SOURCE" ]]; then
-    echo "Cannot rebuild baseline preview APK without source: $BASELINE_SOURCE" >&2
-    exit 1
+  SLOT_LOWER="$(printf '%s' "${SLOT_META[0]}" | tr '[:upper:]' '[:lower:]')"
+  if node - "$DEPLOY_REPO/deploy/releases" "$SLOT_LOWER" <<'NODE'
+const fs = require("node:fs");
+const path = require("node:path");
+const [releaseDir, slot] = process.argv.slice(2);
+const indexPath = path.join(releaseDir, "releases.json");
+if (!fs.existsSync(indexPath)) process.exit(1);
+const section = JSON.parse(fs.readFileSync(indexPath, "utf8")).sections?.[slot];
+const version = Number(section?.apkVersion);
+const expectedFile = Number.isInteger(version) && version > 0 ? `brai-${slot}-v${version}.apk` : "";
+if (section?.apkBuildKind === "stable" && section?.file === expectedFile && fs.existsSync(path.join(releaseDir, expectedFile))) {
+  process.exit(0);
+}
+process.exit(1);
+NODE
+  then
+    echo "Stable Preview ${SLOT_META[0]} APK baseline already exists; skipping rebuild." >&2
+  else
+    BASELINE_SOURCE="$ENVS_ROOT/prod/source"
+    if [[ ! -d "$BASELINE_SOURCE" ]]; then
+      echo "Cannot rebuild baseline preview APK without source: $BASELINE_SOURCE" >&2
+      exit 1
+    fi
+    cd "$BASELINE_SOURCE"
+    export BRAI_BRANCH=""
+    export BRAI_COMMIT=""
+    export BRAI_ROOT="$BASELINE_SOURCE"
+    export BRAI_RELEASE_TARGET="$DEPLOY_REPO/deploy/releases"
+    if [[ -f "/etc/brai/brai-api.env" ]]; then
+      set -a
+      # shellcheck source=/dev/null
+      . /etc/brai/brai-api.env
+      set +a
+      export BRAI_PROD_DATABASE_URL="${BRAI_DATABASE_URL:-}"
+    fi
+    export BRAI_PROD_WEB_VERSION_JSON="$DEPLOY_REPO/deploy/web/version.json"
+    deploy/scripts/build-android-env-apk.sh "preview${SLOT_META[0]}" >&2
+    cd "$RELEASE_ROOT"
   fi
-  cd "$BASELINE_SOURCE"
-  export BRAI_BRANCH=""
-  export BRAI_COMMIT=""
-  export BRAI_ROOT="$BASELINE_SOURCE"
-  export BRAI_RELEASE_TARGET="$DEPLOY_REPO/deploy/releases"
-  if [[ -f "/etc/brai/brai-api.env" ]]; then
-    set -a
-    # shellcheck source=/dev/null
-    . /etc/brai/brai-api.env
-    set +a
-    export BRAI_PROD_DATABASE_URL="${BRAI_DATABASE_URL:-}"
-  fi
-  export BRAI_PROD_WEB_VERSION_JSON="$DEPLOY_REPO/deploy/web/version.json"
-  deploy/scripts/build-android-env-apk.sh "preview${SLOT_META[0]}" >&2
-  cd "$RELEASE_ROOT"
 fi
 if [[ "$RELEASE_BRANCH" == codex/* ]]; then
   SUPABASE_PREVIEW_BRANCH="$(bash deploy/scripts/preview-slots.sh status | node -e '

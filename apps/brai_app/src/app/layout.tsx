@@ -46,6 +46,8 @@ export default function RootLayout({
   return (
     <html lang="ru" data-theme="dark" className={`${GeistSans.variable} ${GeistMono.variable}`} suppressHydrationWarning>
       <head>
+        {/* eslint-disable-next-line @next/next/no-sync-scripts -- runtime config must load before the reused static bundle */}
+        <script src="/brai-runtime-config.js" />
         <style
           dangerouslySetInnerHTML={{
             __html: earlyPaintStyle,

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, type TouchEventHandler } from "react";
 import { Archive, CalendarDays, ChevronDown, ChevronUp, Command, Cpu, Download, Ellipsis, Flag, LogOut, Menu, Settings, Tag, type LucideIcon } from "lucide-react";
 import type { AppVersionState } from "@/shared/api/braiApi";
-import { APP_VERSION, ENVIRONMENT_BADGE_LABEL, isProductionEnvironment } from "@/shared/config/runtime";
+import { useAppVersion, useEnvironmentBadgeLabel } from "@/shared/config/runtime";
 import { installAndroidBackHandler } from "@/shared/platform/platform";
 import type { BraiOtaState } from "@/shared/platform/ota";
 import { Avatar, AvatarFallback } from "@/shared/ui/avatar";
@@ -92,9 +92,11 @@ export function DesktopRail({
 }
 
 function DesktopRailStatus({ syncStatus, pendingCount }: { syncStatus: SyncStatus; pendingCount: number }) {
+  const environmentLabel = useEnvironmentBadgeLabel();
+
   return (
     <div className="desktop-rail-status flex flex-col items-center gap-1 py-1">
-      {!isProductionEnvironment() && ENVIRONMENT_BADGE_LABEL ? <EnvironmentBadge label={ENVIRONMENT_BADGE_LABEL} /> : null}
+      {environmentLabel ? <EnvironmentBadge label={environmentLabel} /> : null}
       <StatusPill status={syncStatus} pendingCount={pendingCount} />
     </div>
   );
@@ -490,8 +492,9 @@ function EngineMenuItem({
   versionRefreshing: boolean;
   onClick: () => void;
 }) {
+  const appBuild = useAppVersion();
   const view = engineSectionView({
-    appBuild: APP_VERSION,
+    appBuild,
     appVersionState,
     otaRefreshing,
     otaState,

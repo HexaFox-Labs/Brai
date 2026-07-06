@@ -142,6 +142,7 @@ for slot in "${OCCUPIED_SLOTS[@]}"; do
     BRAI_PROD_DATABASE_URL="$PROD_POSTGRES_URL" \
     BRAI_PROD_WEB_VERSION_JSON="${BRAI_PROD_WEB_VERSION_JSON:-$ROOT/deploy/web/version.json}" \
     BRAI_RELEASE_TARGET="${BRAI_RELEASE_TARGET:-$ROOT/deploy/releases}" \
+    BRAI_BUILD_CLIENT=false \
       "$source_root/deploy/scripts/publish-environment-web-layer.sh" "preview-$slot_lower"
   )
 done
