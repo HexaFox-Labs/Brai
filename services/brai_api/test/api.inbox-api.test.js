@@ -339,24 +339,8 @@ test('Inbox AI processing describes images, normalizes text, and suggests a new 
   ], {
     inboxStorageRoot: storageRoot,
     inboxAutoProcess: true,
+    codexBin: fakeCodex(storageRoot),
     codexModel: 'test-model',
-    inboxImageDescriber: async ({ imagePaths }) => {
-      assert.equal(imagePaths.length, 1);
-      return 'На картинке экран Telegram с сообщением про презентацию.';
-    },
-    inboxNormalizer: async ({ item, imageDescription, classes }) => {
-      assert.equal(item.explanation_text, 'Сделать из этого задачу');
-      assert.match(imageDescription, /Telegram/);
-      assert.ok(classes.some((entry) => entry.key === 'task'));
-      return {
-        title: 'Подготовить презентацию',
-        description: 'Пользователь хочет поставить задачу подготовить презентацию по экрану Telegram.',
-        class_key: 'follow_up',
-        class_title: 'Follow-up',
-        class_description: 'Нужно вернуться к вопросу позднее.',
-        normalization: 'Транскрипт просит сделать задачу; скрин уточняет контекст.'
-      };
-    }
   });
 
   try {
@@ -407,6 +391,35 @@ function fakeFfmpeg(dir) {
   const file = path.join(dir, 'fake-ffmpeg');
   fs.writeFileSync(file, `#!/usr/bin/env node
 require('node:fs').writeFileSync(process.argv.at(-1), Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+`);
+  fs.chmodSync(file, 0o700);
+  return file;
+}
+
+function fakeCodex(expectedImageDir) {
+  const file = path.join(expectedImageDir, 'fake-codex');
+  fs.writeFileSync(file, `#!/usr/bin/env node
+const fs = require('node:fs');
+const path = require('node:path');
+const args = process.argv.slice(2);
+const execIndex = args.indexOf('exec');
+const imageIndex = args.indexOf('--image');
+if (imageIndex >= 0 && (execIndex < 0 || imageIndex < execIndex)) throw new Error('--image must be an exec option');
+if (imageIndex >= 0 && args[args.indexOf('--cd') + 1] !== ${JSON.stringify(expectedImageDir)}) throw new Error('--cd must point at image dir');
+const outputPath = args[args.indexOf('--output-last-message') + 1];
+if (!outputPath) throw new Error('missing output path');
+const output = imageIndex >= 0
+  ? 'На картинке экран Telegram с сообщением про презентацию.'
+  : JSON.stringify({
+      title: 'Подготовить презентацию',
+      description: 'Пользователь хочет поставить задачу подготовить презентацию по экрану Telegram.',
+      class_key: 'follow_up',
+      class_title: 'Follow-up',
+      class_description: 'Нужно вернуться к вопросу позднее.',
+      normalization: 'Транскрипт просит сделать задачу; скрин уточняет контекст.'
+    });
+fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+fs.writeFileSync(outputPath, output);
 `);
   fs.chmodSync(file, 0o700);
   return file;
