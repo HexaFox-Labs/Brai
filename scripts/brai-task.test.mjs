@@ -525,7 +525,7 @@ test("preview deploy requires Postgres and preserves artifact setgid", () => {
   assert.match(unit, /EnvironmentFile={{ brai_env_root }}\/{{ item.value.path }}\/brai-api.env/);
   assert.doesNotMatch(unit, /BRAI_LEGACY_SQLITE_PATH|EnvironmentFile=-/);
   assert.match(unit, /Group={{ brai_deploy_user }}/);
-  assert.match(unit, /SupplementaryGroups={{ brai_deploy_user }}/);
+  assert.match(unit, /SupplementaryGroups={{ brai_service_group }} {{ brai_deploy_user }}/);
   assert.match(unit, /UMask=0002/);
 });
 

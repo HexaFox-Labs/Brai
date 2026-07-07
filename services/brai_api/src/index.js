@@ -21,15 +21,16 @@ const betterAuthSecret = process.env.BETTER_AUTH_SECRET ?? sessionSecret;
 const betterAuthUrl = process.env.BETTER_AUTH_URL ?? null;
 const resendApiKey = process.env.RESEND_API_KEY ?? null;
 const authFromEmail = process.env.BRAI_AUTH_FROM ?? 'Brai <auth@mail.brightos.world>';
-const inboundApiKey = process.env.BRAI_INBOUND_API_KEY ?? process.env.BRAI_INBOUND_TOKEN;
-const inboundStorageRoot =
-  process.env.BRAI_INBOUND_STORAGE_ROOT ?? path.join(dataRoot, 'inbox-attachments');
+const inboxApiKey = process.env.BRAI_INBOX_API_KEY;
+const inboxStorageRoot =
+  process.env.BRAI_INBOX_STORAGE_ROOT ?? path.join(dataRoot, 'inbox-attachments');
 const vaultRoot = process.env.BRAI_VAULT_ROOT ?? '';
 const syncthingGuiAddress = process.env.BRAI_SYNCTHING_GUI_ADDRESS ?? '127.0.0.1:8384';
 const syncthingApiKey = process.env.BRAI_SYNCTHING_API_KEY ?? '';
 const syncthingFolderIdPrefix = process.env.BRAI_SYNCTHING_FOLDER_ID_PREFIX ?? 'vault-user-';
 const codexBin = process.env.BRAI_CODEX_BIN ?? 'codex';
 const codexModel = process.env.BRAI_CODEX_MODEL?.trim() || null;
+const codexFallbackModel = process.env.BRAI_CODEX_FALLBACK_MODEL?.trim() || null;
 const parsedCodexTimeoutMs = Number(process.env.BRAI_CODEX_TIMEOUT_MS);
 const codexTimeoutMs = Number.isFinite(parsedCodexTimeoutMs) ? parsedCodexTimeoutMs : null;
 const releaseDir =
@@ -62,14 +63,15 @@ const runtime = createBraiServer({
   resendApiKey,
   authFromEmail,
   releaseDir,
-  inboundApiKey,
-  inboundStorageRoot,
+  inboxApiKey,
+  inboxStorageRoot,
   vaultRoot,
   syncthingGuiAddress,
   syncthingApiKey,
   syncthingFolderIdPrefix,
   codexBin,
   codexModel,
+  codexFallbackModel,
   codexTimeoutMs,
   braiCmd: {
     config: braiCmdConfigFromEnv(process.env)
