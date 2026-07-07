@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import vm from "node:vm";
 import { describe, expect, it } from "vitest";
 
 const execFileAsync = promisify(execFile);
@@ -55,12 +56,51 @@ describe("mobile OTA publish scripts", () => {
       readFile(path.join(root, "deploy/mobile-update/bundles", bundleVersion, "bundle.zip")),
     ).resolves.toBeInstanceOf(Buffer);
     const webVersion = JSON.parse(await readFile(path.join(root, "deploy/web/version.json"), "utf8"));
+    const runtimeConfig = await readFile(path.join(root, "deploy/web/brai-runtime-config.js"), "utf8");
     expect(webVersion).toMatchObject({
       version: "9.9.9",
       versionParts: { major: 9, release: 9, build: 9 },
     });
+    expect(runtimeConfig).toContain("window.__BRAI_RUNTIME_CONFIG__");
+    expect(runtimeConfig).toContain('"appVersion": "9.9.9"');
     expect(manifest.otaVersion).toBe(bundleVersion);
     expect(manifest.targetApkVersion).toBe(2999);
+  });
+
+  it("writes safe client runtime config into the static export", async () => {
+    const root = await fixtureRoot("brai-runtime-config-");
+    await writeStaticExport(root, "runtime-config");
+
+    await execFileAsync("node", [path.join(workspaceRoot, "deploy/scripts/write-client-runtime-config.mjs")], {
+      env: {
+        ...process.env,
+        BRAI_ROOT: root,
+        BRAI_APP_VERSION: "9.9.9",
+        NEXT_PUBLIC_BRAI_ENVIRONMENT: "preview-a",
+        NEXT_PUBLIC_BRAI_PREVIEW_SLOT: "A",
+        NEXT_PUBLIC_BRAI_BRANCH: "codex/x</script>\u2028",
+        NEXT_PUBLIC_BRAI_COMMIT: "abc123",
+        NEXT_PUBLIC_BRAI_API: "/api",
+        NEXT_PUBLIC_BRAI_ANDROID_API: "https://a.test.brightos.world/api",
+        NEXT_PUBLIC_BRAI_OTA_CHANNEL: "a.test.brightos.world/mobile-update",
+      },
+    });
+
+    const source = await readFile(path.join(root, "apps/brai_app/out/brai-runtime-config.js"), "utf8");
+    expect(source).not.toContain("</script>");
+    expect(source).toContain("\\u003c/script>");
+    const context = { window: {} as { __BRAI_RUNTIME_CONFIG__?: Record<string, string> } };
+    vm.runInNewContext(source, context);
+    expect(context.window.__BRAI_RUNTIME_CONFIG__).toMatchObject({
+      appVersion: "9.9.9",
+      environment: "preview-a",
+      previewSlot: "A",
+      branch: "codex/x</script>\u2028",
+      commit: "abc123",
+      webApiBase: "/api",
+      androidApiBase: "https://a.test.brightos.world/api",
+      otaChannel: "a.test.brightos.world/mobile-update",
+    });
   });
 
   it("publishes browser web and Android OTA into environment-specific roots", async () => {
@@ -119,7 +159,11 @@ describe("mobile OTA publish scripts", () => {
 
     const target = path.join(root, "envs/preview-b");
     const manifest = JSON.parse(await readFile(path.join(target, "mobile-update/manifest.json"), "utf8"));
+    const runtimeConfig = await readFile(path.join(target, "web/brai-runtime-config.js"), "utf8");
     await expect(readFile(path.join(target, "web/index.html"), "utf8")).resolves.toContain("baseline");
+    expect(runtimeConfig).toContain('"environment": "preview-b"');
+    expect(runtimeConfig).toContain('"previewSlot": "B"');
+    expect(runtimeConfig).toContain('"androidApiBase": "https://b.test.brightos.world/api"');
     expect(manifest.otaVersion).toBe("9.9.9");
     expect(manifest.targetApkVersion).toBe(2999);
     expect(manifest.archiveUrl).toBe("https://b.test.brightos.world/mobile-update/bundles/9.9.9/bundle.zip");
@@ -354,8 +398,14 @@ describe("mobile OTA publish scripts", () => {
     expect(buildApk).toContain('--next-apk true --target-branch "$BRAI_BRANCH" --target-commit "$BRAI_COMMIT"');
     expect(buildApk).toContain('preview-slots.sh" next-apk-preview "$BRAI_BRANCH" "$BRAI_COMMIT" "$BRAI_APK_VERSION"');
     expect(buildApk.indexOf('if [[ "$ENVIRONMENT" == preview-*')).toBeLessThan(buildApk.indexOf('export BRAI_APK_VERSION='));
+    expect(buildApk).toContain('BUILD_CLIENT="${BRAI_BUILD_CLIENT:-true}"');
+    expect(buildApk).toContain('Missing static export for BRAI_BUILD_CLIENT=$BUILD_CLIENT');
+    expect(buildApk).toContain('write-client-runtime-config.mjs');
     expect(buildApk).toContain('record-shipped-apk-version.mjs');
     expect(buildNonproduction).toContain('for flavor in dev previewA previewB previewC previewD previewE; do');
+    expect(buildNonproduction).toContain('BRAI_BUILD_CLIENT=false "$SCRIPT_DIR/build-android-env-apk.sh" "$flavor"');
+    expect(releaseSlot).toContain('section?.apkBuildKind === "stable"');
+    expect(releaseSlot).toContain('Stable Preview ${SLOT_META[0]} APK baseline already exists; skipping rebuild.');
     expect(releaseSlot).toContain('deploy/scripts/build-android-env-apk.sh "preview${SLOT_META[0]}" >&2');
   });
 
@@ -664,6 +714,7 @@ describe("mobile OTA publish scripts", () => {
       "publish-mobile-bundle.sh",
       "publish-web.sh",
       "resolve-required-apk-version.mjs",
+      "write-client-runtime-config.mjs",
     ]) {
       await copyFile(path.join(workspaceRoot, "deploy/scripts", file), path.join(sourceRoot, "deploy/scripts", file));
       if (file.endsWith(".sh")) await chmod(path.join(sourceRoot, "deploy/scripts", file), 0o755);
@@ -694,7 +745,9 @@ describe("mobile OTA publish scripts", () => {
     });
 
     const manifest = JSON.parse(await readFile(path.join(envsRoot, "preview-b/mobile-update/manifest.json"), "utf8"));
+    const syncScript = await readFile(path.join(workspaceRoot, "deploy/scripts/sync-occupied-preview-ota-manifests.sh"), "utf8");
     await expect(readFile(path.join(envsRoot, "preview-b/web/index.html"), "utf8")).resolves.toContain("preview-b-content");
+    expect(syncScript).toContain("BRAI_BUILD_CLIENT=false");
     expect(manifest.otaVersion).toBe("0.0.68");
     expect(manifest.archiveUrl).toBe("https://b.test.brightos.world/mobile-update/bundles/0.0.68/bundle.zip");
   });

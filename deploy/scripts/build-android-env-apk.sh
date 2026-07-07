@@ -6,6 +6,7 @@ ROOT="${BRAI_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
 NODE_BIN="${NODE_BIN:-node}"
 NPM_BIN="${NPM_BIN:-npm}"
 FLAVOR="${1:-}"
+BUILD_CLIENT="${BRAI_BUILD_CLIENT:-true}"
 
 if [[ -z "$FLAVOR" ]]; then
   echo "usage: build-android-env-apk.sh production|dev|previewA|previewB|previewC|previewD|previewE" >&2
@@ -98,7 +99,16 @@ console.log(parsed.version || "");
   fi
 }
 
-(cd "$ROOT" && "$NPM_BIN" run app:build)
+OUT_DIR="$ROOT/apps/brai_app/out"
+if [[ "$BUILD_CLIENT" != "false" && "$BUILD_CLIENT" != "0" ]]; then
+  echo "Building Brai web layer for $FLAVOR APK..."
+  (cd "$ROOT" && "$NPM_BIN" run app:build)
+elif [[ ! -d "$OUT_DIR" ]]; then
+  echo "Missing static export for BRAI_BUILD_CLIENT=$BUILD_CLIENT: $OUT_DIR" >&2
+  exit 1
+else
+  echo "Skipping client build for $FLAVOR APK because BRAI_BUILD_CLIENT=$BUILD_CLIENT"
+fi
 "$NODE_BIN" -e '
 const fs = require("node:fs");
 const path = require("node:path");
@@ -115,6 +125,7 @@ Object.assign(parsed, {
 fs.writeFileSync(outVersionFile, `${JSON.stringify(parsed, null, 2)}\n`);
 ' "$ROOT" "$BRAI_APP_VERSION"
 verify_version_json "$ROOT/apps/brai_app/out/version.json" "$BRAI_APP_VERSION"
+"$NODE_BIN" "$SCRIPT_DIR/write-client-runtime-config.mjs"
 (cd "$ROOT" && "$NPM_BIN" run app:cap:sync)
 verify_version_json "$ROOT/apps/brai_app/android/app/src/main/assets/public/version.json" "$BRAI_APP_VERSION"
 if [[ -x "/srv/opt/android-build-env/build-android.sh" ]]; then

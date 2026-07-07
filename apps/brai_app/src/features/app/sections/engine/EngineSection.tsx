@@ -2,7 +2,7 @@
 
 import { RefreshCw } from "lucide-react";
 import type { AppVersionState } from "@/shared/api/braiApi";
-import { APP_VERSION } from "@/shared/config/runtime";
+import { useAppVersion } from "@/shared/config/runtime";
 import type { BraiOtaState } from "@/shared/platform/ota";
 import { platformName } from "@/shared/platform/platform";
 import { moscowTime } from "@/shared/time/format";
@@ -34,8 +34,9 @@ export function EngineSection({
   versionRefreshing: boolean;
   onRefreshEngine: () => Promise<void>;
 }) {
+  const appBuild = useAppVersion();
   const view = engineSectionView({
-    appBuild: APP_VERSION,
+    appBuild,
     appVersionState,
     otaRefreshing,
     otaState,

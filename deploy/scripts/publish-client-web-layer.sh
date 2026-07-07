@@ -14,6 +14,7 @@ NPM_BIN="${NPM_BIN:-npm}"
 NODE_BIN="${NODE_BIN:-node}"
 BUILD_CLIENT="${BRAI_BUILD_CLIENT:-true}"
 ENVIRONMENT="${NEXT_PUBLIC_BRAI_ENVIRONMENT:-${BRAI_ENVIRONMENT:-prod}}"
+OUT_DIR="$ROOT/apps/brai_app/out"
 
 mapfile -t APP_META < <("$NODE_BIN" -e '
 let version = process.env.BRAI_APP_VERSION || "";
@@ -32,6 +33,9 @@ export NODE_BIN="$NODE_BIN"
 if [[ "$BUILD_CLIENT" != "false" && "$BUILD_CLIENT" != "0" ]]; then
   echo "Building Brai web layer..."
   (cd "$ROOT" && "$NPM_BIN" run app:build)
+elif [[ ! -d "$OUT_DIR" ]]; then
+  echo "Missing static export for BRAI_BUILD_CLIENT=$BUILD_CLIENT: $OUT_DIR" >&2
+  exit 1
 else
   echo "Skipping client build because BRAI_BUILD_CLIENT=$BUILD_CLIENT"
 fi
@@ -51,6 +55,7 @@ Object.assign(parsed, {
 });
 fs.writeFileSync(outVersionFile, `${JSON.stringify(parsed, null, 2)}\n`);
 ' "$ROOT" "$VERSION"
+"$NODE_BIN" "$SCRIPT_DIR/write-client-runtime-config.mjs"
 
 echo "Publishing browser web assets..."
 "$SCRIPT_DIR/publish-web.sh"

@@ -3,7 +3,7 @@
 import type { CSSProperties, FormEvent, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { CheckCircle2, KeyRound, Loader2, Lock, Mail, TriangleAlert, WifiOff, X, type LucideIcon } from "lucide-react";
-import { ENVIRONMENT_BADGE_LABEL, isProductionEnvironment } from "@/shared/config/runtime";
+import { useEnvironmentBadgeLabel } from "@/shared/config/runtime";
 import { installAndroidBackHandler } from "@/shared/platform/platform";
 import type { SyncStatus } from "@/shared/types/timer";
 import { AnimatedThemeToggler } from "@/shared/ui/animated-theme-toggler";
@@ -42,6 +42,8 @@ export function ScreenHeader({
   leading?: ReactNode;
   trailing?: ReactNode;
 }) {
+  const environmentLabel = useEnvironmentBadgeLabel();
+
   return (
     <header className="topbar sticky top-[var(--sticky-top-offset)] z-[18] mb-2 grid min-h-14 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 bg-transparent py-2 max-[860px]:min-h-[50px] max-[860px]:gap-2.5 max-[860px]:py-1 max-[860px]:pb-2">
       <div className="topbar-leading hidden max-[860px]:flex" data-galaxy-interaction-block>{leading}</div>
@@ -56,7 +58,7 @@ export function ScreenHeader({
       </div>
       <div className="topbar-actions flex shrink-0 items-center gap-2.5 max-[860px]:max-w-[min(184px,50vw)] max-[460px]:max-w-[min(174px,50vw)]" data-galaxy-interaction-block>
         {trailing}
-        {!isProductionEnvironment() && ENVIRONMENT_BADGE_LABEL ? <EnvironmentBadge className="min-[861px]:hidden" label={ENVIRONMENT_BADGE_LABEL} /> : null}
+        {environmentLabel ? <EnvironmentBadge className="min-[861px]:hidden" label={environmentLabel} /> : null}
         <StatusPill className="min-[861px]:hidden" status={syncStatus} pendingCount={pendingCount} />
       </div>
     </header>
