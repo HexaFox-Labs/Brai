@@ -57,6 +57,7 @@ export function createBraiServer({
   inboxStorageRoot = path.join(dataRoot, 'inbox-attachments'),
   codexBin = 'codex',
   codexModel = null,
+  codexFallbackModel = null,
   codexTimeoutMs = null,
   inboxImageDescriber = null,
   inboxNormalizer = null,
@@ -108,6 +109,7 @@ export function createBraiServer({
           storageRoot: inboxStorageRoot,
           codexBin,
           codexModel,
+          codexFallbackModel,
           codexTimeoutMs,
           imageDescriber: inboxImageDescriber,
           normalizer: inboxNormalizer,
@@ -425,7 +427,9 @@ export function createBraiServer({
 
       if (req.method === 'POST' && url.pathname === '/v1/inbox/events/sync') {
         const requestNow = now();
+        const ownerUserId = scopedUserId();
         const body = await readJson(req, { limit: 256 * 1024 });
+        const inboxIdsToProcess = createdInboxIds(body.events);
         const result = store.syncInboxEvents({
           device: body.device,
           events: body.events,
@@ -434,8 +438,9 @@ export function createBraiServer({
         });
         const state = inboxState(store, requestNow);
         const responseBody = { ...result, state };
-        broadcast(sockets, { type: 'inbox_synced', inbox_state: state }, scopedUserId());
+        broadcast(sockets, { type: 'inbox_synced', inbox_state: state }, ownerUserId);
         sendJson(req, res, 200, responseBody);
+        for (const inboxId of inboxIdsToProcess) processInboxLater({ ownerUserId, inboxId });
         return;
       }
 
@@ -806,6 +811,16 @@ function broadcast(sockets, payload, targetUserId = null) {
       socket.send(message);
     }
   }
+}
+
+function createdInboxIds(events) {
+  const ids = new Set();
+  for (const event of Array.isArray(events) ? events : []) {
+    if (event?.type !== 'create') continue;
+    const id = typeof event.inbox_id === 'string' ? event.inbox_id.trim() : '';
+    if (id) ids.add(id);
+  }
+  return ids;
 }
 
 async function readJson(req, { limit = 4096 } = {}) {

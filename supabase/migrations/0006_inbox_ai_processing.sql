@@ -136,7 +136,7 @@ INSERT INTO agents (
 Описание картинки:
 {{image_description}}',
   60000,
-  'При ошибке использует локальный fallback: title из explanation_text, description из существующего текста и эвристический class key.',
+  'При ошибке пишет failed ai_log и оставляет Inbox-запись необработанной; допускается только retry другой моделью через runtime config.',
   'services/brai_api/src/inbox.js',
   now()::text
 )

@@ -23,8 +23,6 @@ const FACTORY_DETAIL_TABS: Array<{ id: FactoryDetailTab; label: string }> = [
 
 export function FactorySection({ onMobileOverlayChange }: { onMobileOverlayChange: (open: boolean) => void }) {
   const [logs, setLogs] = useState<AiLog[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadFailed, setLoadFailed] = useState(false);
   const [selectedLogId, setSelectedLogId] = useState<number | null>(null);
   const [mobileLogId, setMobileLogId] = useState<number | null>(null);
   const [detailTab, setDetailTab] = useState<FactoryDetailTab>("info");
@@ -46,10 +44,6 @@ export function FactorySection({ onMobileOverlayChange }: { onMobileOverlayChang
       .catch(() => {
         if (!mounted) return;
         setLogs([]);
-        setLoadFailed(true);
-      })
-      .finally(() => {
-        if (mounted) setLoading(false);
       });
     return () => {
       mounted = false;
@@ -126,22 +120,14 @@ export function FactorySection({ onMobileOverlayChange }: { onMobileOverlayChang
               </div>
               <Badge variant="outline">{logs.length}</Badge>
             </div>
-            {loading ? (
-              <p className="m-0 rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">Загрузка логов</p>
-            ) : loadFailed ? (
-              <p className="m-0 rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">Логи недоступны</p>
-            ) : logs.length === 0 ? (
-              <p className="m-0 rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">Логов пока нет</p>
-            ) : (
-              logs.map((log) => (
-                <FactoryLogCard
-                  key={log.id}
-                  log={log}
-                  selected={selectedLogId === log.id}
-                  onOpen={() => openLog(log)}
-                />
-              ))
-            )}
+            {logs.map((log) => (
+              <FactoryLogCard
+                key={log.id}
+                log={log}
+                selected={selectedLogId === log.id}
+                onOpen={() => openLog(log)}
+              />
+            ))}
           </div>
         </ScrollArea>
 
@@ -172,7 +158,7 @@ export function FactorySection({ onMobileOverlayChange }: { onMobileOverlayChang
 }
 
 function FactoryLogCard({ log, selected, onOpen }: { log: AiLog; selected: boolean; onOpen: () => void }) {
-  const output = formatLogValue(ioRows(log.json_data.outputs)[0]?.value ?? "Нет output");
+  const output = ioRows(log.json_data.outputs)[0]?.value;
   const StatusIcon = log.status === "done" ? CheckCircle2 : XCircle;
 
   return (
@@ -193,7 +179,7 @@ function FactoryLogCard({ log, selected, onOpen }: { log: AiLog; selected: boole
           {log.status}
         </Badge>
       </div>
-      <p className="m-0 line-clamp-2 text-sm text-muted-foreground">{output}</p>
+      {output == null ? null : <p className="m-0 line-clamp-2 text-sm text-muted-foreground">{formatLogValue(output)}</p>}
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         <span className="inline-flex items-center gap-1">
           <Clock3 className="size-3.5" aria-hidden="true" />
@@ -222,11 +208,7 @@ function FactoryDetailPanel({ activeTab, log, onTabChange }: { activeTab: Factor
 }
 
 function FactoryEmptyPanel() {
-  return (
-    <Card className="min-h-40 p-5">
-      <p className="m-0 text-sm font-normal text-muted-foreground">Выберите запись из AI_logs/, чтобы открыть производственные подробности.</p>
-    </Card>
-  );
+  return null;
 }
 
 function FactoryMobileDetail({ activeTab, log, onClose, onTabChange }: { activeTab: FactoryDetailTab; log: AiLog; onClose: () => void; onTabChange: (tab: FactoryDetailTab) => void }) {
@@ -253,6 +235,7 @@ function FactoryLogDetails({ activeTab, log, mobile = false, onTabChange }: { ac
 
 function FactoryInfoDetails({ log }: { log: AiLog }) {
   const StatusIcon = log.status === "done" ? CheckCircle2 : XCircle;
+  const duration = formatDuration(log.json_data.timings_ms?.total);
 
   return (
     <>
@@ -269,12 +252,12 @@ function FactoryInfoDetails({ log }: { log: AiLog }) {
       </div>
 
       <DetailGrid
-        items={[
-          ["flow_id", log.flow_id ?? "—"],
-          ["flow_command", log.flow_command ?? "—"],
-          ["model", log.json_data.usage?.model ?? "—"],
-          ["duration", formatDuration(log.json_data.timings_ms?.total)],
-        ]}
+        items={presentRows([
+          ["flow_id", log.flow_id],
+          ["flow_command", log.flow_command],
+          ["model", log.json_data.usage?.model],
+          ["duration", duration],
+        ])}
       />
 
       {log.flow_id ? (
@@ -298,15 +281,15 @@ function FactoryDbDetails({ log }: { log: AiLog }) {
         AI_logs
       </div>
       <DetailRows
-        rows={[
+        rows={presentRows([
           ["id", String(log.id)],
           ["agent_id", log.agent_id],
           ["agent_version", log.agent_version],
           ["dt", formatFactoryTime(log.dt)],
           ["status", log.status],
-          ["flow_id", log.flow_id ?? "—"],
-          ["flow_command", log.flow_command ?? "—"],
-        ]}
+          ["flow_id", log.flow_id],
+          ["flow_command", log.flow_command],
+        ])}
       />
     </section>
   );
@@ -338,6 +321,7 @@ function DetailGrid({ items }: { items: Array<[string, string]> }) {
 }
 
 function FactoryIoBlock({ title, rows }: { title: string; rows: Array<{ ref: string; value: unknown }> }) {
+  if (rows.length === 0) return null;
   return (
     <section className="grid gap-2">
       <h3 className="m-0 text-sm font-medium">{title}</h3>
@@ -368,6 +352,10 @@ function DetailRows({ rows }: { rows: Array<[string, string]> }) {
   );
 }
 
+function presentRows(rows: Array<[string, string | null | undefined]>): Array<[string, string]> {
+  return rows.filter((row): row is [string, string] => typeof row[1] === "string" && row[1].length > 0);
+}
+
 function ioRows(value: unknown): Array<{ ref: string; value: unknown }> {
   if (!Array.isArray(value)) return [];
   return value.flatMap((row) => {
@@ -379,7 +367,7 @@ function ioRows(value: unknown): Array<{ ref: string; value: unknown }> {
 
 function formatLogValue(value: unknown): string {
   if (typeof value === "string") return value;
-  if (value == null) return "—";
+  if (value == null) return "";
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   try {
     return JSON.stringify(value, null, 2);
@@ -389,7 +377,7 @@ function formatLogValue(value: unknown): string {
 }
 
 function formatDuration(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) ? `${value} ms` : "—";
+  return typeof value === "number" && Number.isFinite(value) ? `${value} ms` : null;
 }
 
 function formatFactoryTime(value: string) {

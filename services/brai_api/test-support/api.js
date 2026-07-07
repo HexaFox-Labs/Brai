@@ -52,6 +52,7 @@ export async function createFixture(times, options = {}) {
     prepareUserVault: options.prepareUserVault,
     codexBin: options.codexBin,
     codexModel: options.codexModel,
+    codexFallbackModel: options.codexFallbackModel,
     codexTimeoutMs: options.codexTimeoutMs,
     inboxImageDescriber: options.inboxImageDescriber,
     inboxNormalizer: options.inboxNormalizer,

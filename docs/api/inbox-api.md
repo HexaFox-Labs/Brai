@@ -98,6 +98,14 @@ Attachment storage root:
 BRAI_INBOX_STORAGE_ROOT=/srv/projects/brai/data/inbox-attachments
 ```
 
+Optional Codex model retry:
+
+```env
+BRAI_CODEX_FALLBACK_MODEL=gpt-5
+```
+
+Если основная модель не вернула валидный результат, server может один раз повторить запрос другой моделью. Локальной эвристической нормализации нет: при ошибке запись остаётся `is_normalized = false`, а ошибка видна в `ai_logs`.
+
 Attachments доступны через:
 
 ```text

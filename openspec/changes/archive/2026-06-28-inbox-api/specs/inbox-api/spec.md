@@ -21,7 +21,7 @@ Brai SHALL support `POST /v1/in/inbox` for the first Inbox connector.
 - **AND** optional description content is stored in the Inbox description field
 - **AND** optional legacy `image_base64`/`image_mime` or `attachments[]` files are saved as attachments
 - **AND** each attachment path is stored in the Inbox attachment links
-- **AND** the Inbox title uses a local fallback until AI processing updates it
+- **AND** the Inbox title initially uses the raw text until AI processing updates it
 
 #### Scenario: Inbox payload includes metadata
 - **WHEN** an external app sends optional `source`, `source_key`, `response_required`, `record_type_id`, or `idempotency_key`

@@ -30,6 +30,7 @@ const syncthingApiKey = process.env.BRAI_SYNCTHING_API_KEY ?? '';
 const syncthingFolderIdPrefix = process.env.BRAI_SYNCTHING_FOLDER_ID_PREFIX ?? 'vault-user-';
 const codexBin = process.env.BRAI_CODEX_BIN ?? 'codex';
 const codexModel = process.env.BRAI_CODEX_MODEL?.trim() || null;
+const codexFallbackModel = process.env.BRAI_CODEX_FALLBACK_MODEL?.trim() || null;
 const parsedCodexTimeoutMs = Number(process.env.BRAI_CODEX_TIMEOUT_MS);
 const codexTimeoutMs = Number.isFinite(parsedCodexTimeoutMs) ? parsedCodexTimeoutMs : null;
 const releaseDir =
@@ -70,6 +71,7 @@ const runtime = createBraiServer({
   syncthingFolderIdPrefix,
   codexBin,
   codexModel,
+  codexFallbackModel,
   codexTimeoutMs,
   braiCmd: {
     config: braiCmdConfigFromEnv(process.env)

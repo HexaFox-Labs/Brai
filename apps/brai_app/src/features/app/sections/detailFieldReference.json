@@ -64,7 +64,7 @@
       {
         "name": "title",
         "meaning": "Заголовок входящего",
-        "filledBy": "UI вводит; Inbox API сначала ставит fallback из text, затем inbox.normalizer может уточнить"
+        "filledBy": "UI вводит; Inbox API сначала ставит сырой text, затем inbox.normalizer может уточнить"
       },
       {
         "name": "description_text",

@@ -134,7 +134,7 @@ export async function receiveInbox({
     store.createInboxApiItem({
       eventId,
       inboxId,
-      title: fallbackTitle(text),
+      title: initialTitle(text),
       descriptionText,
       explanationText: text,
       attachmentLinks,
@@ -163,6 +163,7 @@ export async function processInboxItem({
   storageRoot,
   codexBin,
   codexModel,
+  codexFallbackModel,
   codexTimeoutMs,
   imageDescriber,
   normalizer,
@@ -183,11 +184,22 @@ export async function processInboxItem({
         agent: imageAgent,
         codexBin,
         codexModel,
+        codexFallbackModel,
         codexTimeoutMs,
         imageDescriber,
         imagePaths
       });
       imageDescription = imageResult.text;
+      recordInboxImageAiLog(store, {
+        agent: imageAgent,
+        dt: nowDate.toISOString(),
+        status: imageResult.status,
+        inboxId,
+        imagePaths,
+        imageDescription,
+        error: imageResult.error
+      });
+      if (imageResult.status !== 'done') return { ok: false, reason: 'image_description_failed' };
       store.createInboxNormalizationEvent({
         inboxId,
         payload: {
@@ -198,15 +210,6 @@ export async function processInboxItem({
         },
         nowIso: nowDate.toISOString()
       });
-      recordInboxImageAiLog(store, {
-        agent: imageAgent,
-        dt: nowDate.toISOString(),
-        status: imageResult.status,
-        inboxId,
-        imagePaths,
-        imageDescription,
-        error: imageResult.error
-      });
     }
 
     const freshItem = store.getInboxItem(inboxId) ?? item;
@@ -216,12 +219,27 @@ export async function processInboxItem({
       agent: normalizerAgent,
       codexBin,
       codexModel,
+      codexFallbackModel,
       codexTimeoutMs,
       normalizer,
       item: freshItem,
       classes,
       imageDescription
     });
+    if (normalizeResult.status !== 'done') {
+      recordInboxNormalizerAiLog(store, {
+        agent: normalizerAgent,
+        dt: nowDate.toISOString(),
+        status: normalizeResult.status,
+        inboxId,
+        item: freshItem,
+        classes,
+        imageDescription,
+        output: normalizeResult.output,
+        error: normalizeResult.error
+      });
+      return { ok: false, reason: 'normalizer_failed' };
+    }
     const knownClass = classes.find((entry) => entry.key === normalizeResult.classKey);
     if (!knownClass) {
       store.upsertInboxClass({
@@ -444,13 +462,14 @@ function throwStatus(message, status) {
   throw error;
 }
 
-async function describeImages({ agent, codexBin, codexModel, codexTimeoutMs, imageDescriber, imagePaths }) {
+async function describeImages({ agent, codexBin, codexModel, codexFallbackModel, codexTimeoutMs, imageDescriber, imagePaths }) {
   try {
     const text = imageDescriber
       ? await imageDescriber({ imagePaths })
-      : await codexText({
+      : await codexTextWithModelRetry({
         codexBin,
         codexModel: codexModel ?? optionalText(agent?.llm_model),
+        codexFallbackModel,
         promptTemplate: optionalBodyText(agent?.llm_prompt_template) ?? DEFAULT_IMAGE_PROMPT_TEMPLATE,
         timeoutMs: Number.isFinite(codexTimeoutMs) ? codexTimeoutMs : agent?.llm_timeout_ms,
         images: imagePaths
@@ -462,14 +481,14 @@ async function describeImages({ agent, codexBin, codexModel, codexTimeoutMs, ima
   }
 }
 
-async function normalizeInbox({ agent, codexBin, codexModel, codexTimeoutMs, normalizer, item, classes, imageDescription }) {
-  const fallback = fallbackNormalization(item, classes, imageDescription);
+async function normalizeInbox({ agent, codexBin, codexModel, codexFallbackModel, codexTimeoutMs, normalizer, item, classes, imageDescription }) {
   try {
     const output = normalizer
       ? await normalizer({ item, classes, imageDescription })
-      : await codexText({
+      : await codexTextWithModelRetry({
         codexBin,
         codexModel: codexModel ?? optionalText(agent?.llm_model),
+        codexFallbackModel,
         promptTemplate: renderNormalizerPrompt(
           optionalBodyText(agent?.llm_prompt_template) ?? DEFAULT_NORMALIZER_PROMPT_TEMPLATE,
           item,
@@ -479,55 +498,35 @@ async function normalizeInbox({ agent, codexBin, codexModel, codexTimeoutMs, nor
         timeoutMs: Number.isFinite(codexTimeoutMs) ? codexTimeoutMs : agent?.llm_timeout_ms
       });
     const parsed = typeof output === 'string' ? parseNormalizerJson(output) : output;
-    const normalized = cleanNormalization(parsed, fallback);
+    const normalized = cleanNormalization(parsed);
     return { ...normalized, status: 'done', error: '' };
   } catch (error) {
-    return { ...fallback, status: 'failed', error: errorText(error) };
+    return {
+      status: 'failed',
+      error: errorText(error),
+      output: {
+        title: '',
+        description: '',
+        classKey: '',
+        normalization: ''
+      }
+    };
   }
 }
 
-function cleanNormalization(value, fallback) {
-  return {
-    title: cleanTitle(value?.title) || fallback.title,
-    description: cleanText(value?.description) || fallback.description,
-    classKey: cleanClassKey(value?.class_key ?? value?.classKey) || fallback.classKey,
+function cleanNormalization(value) {
+  const normalized = {
+    title: cleanTitle(value?.title),
+    description: cleanText(value?.description),
+    classKey: cleanClassKey(value?.class_key ?? value?.classKey),
     classTitle: cleanText(value?.class_title ?? value?.classTitle),
     classDescription: cleanText(value?.class_description ?? value?.classDescription),
-    normalization: cleanText(value?.normalization) || fallback.normalization
+    normalization: cleanText(value?.normalization)
   };
-}
-
-function fallbackNormalization(item, classes, imageDescription) {
-  const text = item.explanation_text || item.title || 'Входящее';
-  const description = cleanText(item.description_md) || text;
-  const classKey = heuristicClassKey(`${text}\n${description}\n${imageDescription}`, classes);
-  return {
-    title: fallbackTitle(text),
-    description,
-    classKey,
-    classTitle: '',
-    classDescription: '',
-    normalization: [
-      'Fallback-разбор Inbox.',
-      imageDescription ? `Описание картинки: ${imageDescription}` : '',
-      `Транскрипт: ${text}`
-    ].filter(Boolean).join('\n\n')
-  };
-}
-
-function heuristicClassKey(text, classes) {
-  const lower = text.toLocaleLowerCase('ru');
-  const candidates = [
-    [/задач|сдела|проверь|напомн|дедлайн|созвон|встреч/, 'task'],
-    [/иде[яю]|придум|можно бы|концеп/, 'idea'],
-    [/хочу|желан|купить|надо бы/, 'wish'],
-    [/сохран|библиотек|прочит|книг|ссылка|материал/, 'library'],
-    [/замет|note|наблюден/, 'note']
-  ];
-  for (const [pattern, key] of candidates) {
-    if (pattern.test(lower) && classes.some((entry) => entry.key === key)) return key;
+  if (!normalized.title || !normalized.description || !normalized.classKey || !normalized.normalization) {
+    throw new Error('invalid_normalizer_output');
   }
-  return classes.some((entry) => entry.key === 'other') ? 'other' : (classes[0]?.key ?? 'other');
+  return normalized;
 }
 
 function renderNormalizerPrompt(template, item, classes, imageDescription) {
@@ -572,7 +571,7 @@ function recordInboxNormalizerAiLog(store, { agent, dt, status, inboxId, item, c
     agentVersion: agent?.version ?? '',
     dt,
     status,
-    aiTitle: status === 'done' ? 'Разобрал Inbox-запись' : 'Fallback разбора Inbox-записи',
+    aiTitle: status === 'done' ? 'Разобрал Inbox-запись' : 'Не разобрал Inbox-запись',
     flowId: inboxId,
     flowCommand: 'normalize',
     jsonData: {
@@ -591,14 +590,13 @@ function recordInboxNormalizerAiLog(store, { agent, dt, status, inboxId, item, c
         { ref: 'inbox.normalization_text', value: output.normalization }
       ],
       metadata: {
-        error: error || null,
-        fallback_used: status === 'failed'
+        error: error || null
       }
     }
   });
 }
 
-function fallbackTitle(text) {
+function initialTitle(text) {
   return cleanTitle(text.split(/\s+/).slice(0, 7).join(' ')) || 'Входящее';
 }
 
@@ -627,6 +625,20 @@ function normalizeBlocks({ imageDescription, analysis }) {
     imageDescription ? `## Описание картинки\n\n${imageDescription}` : '',
     analysis ? `## Разбор\n\n${analysis}` : ''
   ].filter(Boolean).join('\n\n').trim();
+}
+
+async function codexTextWithModelRetry({ codexFallbackModel = null, ...input }) {
+  const models = [input.codexModel ?? null];
+  if (codexFallbackModel && codexFallbackModel !== input.codexModel) models.push(codexFallbackModel);
+  let lastError = null;
+  for (const model of models) {
+    try {
+      return await codexText({ ...input, codexModel: model });
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError ?? new Error('codex_inbox_failed');
 }
 
 function codexText({ codexBin = 'codex', codexModel = null, promptTemplate, timeoutMs = 3000, images = [] } = {}) {
