@@ -503,10 +503,15 @@ test("production deploy resolves ledger version through the shared resolver", ()
 
 test("preview deploy requires Postgres and preserves artifact setgid", () => {
   const script = fs.readFileSync(new URL("../deploy/scripts/deploy-branch.sh", import.meta.url), "utf8");
+  const ciDeploy = fs.readFileSync(new URL("../deploy/scripts/ci-ssh-deploy.sh", import.meta.url), "utf8");
   const playbook = fs.readFileSync(new URL("../deploy/ansible/brai.yml", import.meta.url), "utf8");
   const unit = fs.readFileSync(new URL("../deploy/ansible/templates/brai-api.service.j2", import.meta.url), "utf8");
   assert.match(script, /umask 0002/);
   assert.match(script, /BRAI_DATABASE_URL is required/);
+  assert.match(ciDeploy, /postgres-smoke\.mjs "\$BRAI_DATABASE_URL"/);
+  assert.match(script, /check_api_service_contract/);
+  assert.match(script, /BRAI_INBOUND_STORAGE_ROOT/);
+  assert.match(script, /BRAI_INBOX_STORAGE_ROOT/);
   assert.match(script, /wait_for_preview_api/);
   assert.match(script, /Preview API health check failed/);
   const recordIndex = script.indexOf("record-deployment.mjs");

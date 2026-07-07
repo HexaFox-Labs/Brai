@@ -189,6 +189,9 @@ elif [[ "$ENVIRONMENT" != "prod" ]]; then
   exit 1
 fi
 : "${BRAI_DATABASE_URL:?BRAI_DATABASE_URL is required after Supabase env setup}"
+if [[ "$ENVIRONMENT" != "prod" ]]; then
+  node deploy/scripts/postgres-smoke.mjs "$BRAI_DATABASE_URL"
+fi
 if [[ "$BRAI_NATIVE_APK_CHANGE" == "true" ]]; then
   if [[ "$ENVIRONMENT" == preview-* ]]; then
     FLAVOR="preview$BRAI_PREVIEW_SLOT"

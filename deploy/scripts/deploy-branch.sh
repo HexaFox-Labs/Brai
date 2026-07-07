@@ -83,6 +83,29 @@ wait_for_preview_api() {
   return 1
 }
 
+check_api_service_contract() {
+  command -v systemctl >/dev/null 2>&1 || return 0
+  local unit
+  unit="$("${BRAI_SUDO:-sudo}" systemctl cat "$SERVICE_NAME" 2>/dev/null || true)"
+  [[ -n "$unit" ]] || return 0
+  if grep -q "BRAI_INBOUND_STORAGE_ROOT" <<<"$unit"; then
+    echo "$SERVICE_NAME uses obsolete BRAI_INBOUND_STORAGE_ROOT; use BRAI_INBOX_STORAGE_ROOT" >&2
+    return 1
+  fi
+  if ! grep -q "BRAI_INBOX_STORAGE_ROOT" <<<"$unit"; then
+    echo "$SERVICE_NAME has no BRAI_INBOX_STORAGE_ROOT" >&2
+    return 1
+  fi
+  if ! grep -Eq "^(Group|SupplementaryGroups)=.*[=[:space:]]brai([[:space:]]|$)" <<<"$unit"; then
+    echo "$SERVICE_NAME does not include the brai runtime group" >&2
+    return 1
+  fi
+  if ! grep -Eq "^(Group|SupplementaryGroups)=.*brai-deploy" <<<"$unit"; then
+    echo "$SERVICE_NAME does not include the brai-deploy group" >&2
+    return 1
+  fi
+}
+
 normalize_preview_artifacts() {
   local failed=0
   chmod 2775 "$TARGET_ROOT" 2>/dev/null || true
@@ -174,6 +197,7 @@ if [[ "$ENVIRONMENT" != "prod" ]]; then
 fi
 
 if command -v systemctl >/dev/null 2>&1 && [[ "${BRAI_RESTART_SERVICE:-true}" != "false" ]]; then
+  check_api_service_contract
   echo "Restarting $SERVICE_NAME..."
   "${BRAI_SUDO:-sudo}" systemctl restart "$SERVICE_NAME"
   wait_for_preview_api
