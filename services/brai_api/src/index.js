@@ -7,6 +7,10 @@ import { createBraiServer } from './server.js';
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const serviceRoot = path.resolve(dirname, '..');
 const port = Number(process.env.PORT ?? 3020);
+if (process.env.BRAI_INBOUND_STORAGE_ROOT) {
+  console.error('BRAI_INBOUND_STORAGE_ROOT is obsolete; use BRAI_INBOX_STORAGE_ROOT');
+  process.exit(1);
+}
 const databaseUrl = process.env.BRAI_DATABASE_URL?.trim() || null;
 if (!databaseUrl || !isPostgresUrl(databaseUrl)) {
   console.error('BRAI_DATABASE_URL must be a postgres:// or postgresql:// URL');
