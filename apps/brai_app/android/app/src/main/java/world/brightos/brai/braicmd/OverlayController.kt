@@ -99,7 +99,7 @@ class OverlayController(private val service: BraiAccessibilityService) {
                 else -> "Текст сохранен, зажмите кнопку для вставки"
             }
             Toast.makeText(service, toast, Toast.LENGTH_LONG).show()
-            if (state.recordings > 0) pendingRetry.schedule()
+            if (state.recordings > 0 && !config.onboardingQueuePaused) pendingRetry.schedule()
         } else if (state is RecorderState.InboxDelivered) {
             pendingRetry.cancel()
             showStatusBubble("Отправлено", "Во входящих")

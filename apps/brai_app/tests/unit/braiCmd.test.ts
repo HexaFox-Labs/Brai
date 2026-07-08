@@ -1,8 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const plugin = vi.hoisted(() => ({
+  ensureAccess: vi.fn(),
   getState: vi.fn(),
   openSettings: vi.fn(),
+  retryQueue: vi.fn(),
+  setAccessKey: vi.fn(),
+  setQueuePausedMode: vi.fn(),
   setVoiceOnlyMode: vi.fn(),
 }));
 
@@ -13,18 +17,26 @@ vi.mock("@capacitor/core", () => ({
 describe("Brai CMD bridge", () => {
   beforeEach(() => {
     vi.resetModules();
+    plugin.ensureAccess.mockReset();
     plugin.getState.mockReset();
     plugin.openSettings.mockReset();
+    plugin.retryQueue.mockReset();
+    plugin.setAccessKey.mockReset();
+    plugin.setQueuePausedMode.mockReset();
     plugin.setVoiceOnlyMode.mockReset();
     vi.unstubAllGlobals();
   });
 
   it("does nothing outside Android native shell", async () => {
     vi.stubGlobal("Capacitor", undefined);
-    const { getBraiCmdState, setBraiCmdVoiceOnlyMode } = await import("@/shared/platform/braiCmd");
+    const { ensureBraiCmdAccess, getBraiCmdState, retryBraiCmdQueue, setBraiCmdAccessKey, setBraiCmdQueuePausedMode, setBraiCmdVoiceOnlyMode } = await import("@/shared/platform/braiCmd");
 
     await expect(getBraiCmdState()).resolves.toBeNull();
+    await expect(ensureBraiCmdAccess("Test")).resolves.toBeNull();
+    await expect(setBraiCmdAccessKey("token", "Test")).resolves.toBeNull();
     await expect(setBraiCmdVoiceOnlyMode(true)).resolves.toBeNull();
+    await expect(setBraiCmdQueuePausedMode(true)).resolves.toBeNull();
+    await expect(retryBraiCmdQueue()).resolves.toBeNull();
     expect(plugin.getState).not.toHaveBeenCalled();
     expect(plugin.setVoiceOnlyMode).not.toHaveBeenCalled();
   });
@@ -53,5 +65,26 @@ describe("Brai CMD bridge", () => {
 
     await expect(setBraiCmdVoiceOnlyMode(true)).resolves.toMatchObject({ voiceOnlyMode: true });
     expect(plugin.setVoiceOnlyMode).toHaveBeenCalledWith({ enabled: true });
+  });
+
+  it("prepares access and queue controls through Android native bridge", async () => {
+    vi.stubGlobal("Capacitor", {
+      isNativePlatform: () => true,
+      getPlatform: () => "android",
+    });
+    plugin.ensureAccess.mockResolvedValue({ accessGranted: true });
+    plugin.setAccessKey.mockResolvedValue({ accessGranted: true });
+    plugin.setQueuePausedMode.mockResolvedValue({ queuePausedMode: true });
+    plugin.retryQueue.mockResolvedValue({ queuePausedMode: false });
+    const { ensureBraiCmdAccess, retryBraiCmdQueue, setBraiCmdAccessKey, setBraiCmdQueuePausedMode } = await import("@/shared/platform/braiCmd");
+
+    await expect(ensureBraiCmdAccess("Fixture User")).resolves.toMatchObject({ accessGranted: true });
+    await expect(setBraiCmdAccessKey("fixture-access-key", "Fixture User")).resolves.toMatchObject({ accessGranted: true });
+    await expect(setBraiCmdQueuePausedMode(true)).resolves.toMatchObject({ queuePausedMode: true });
+    await expect(retryBraiCmdQueue()).resolves.toMatchObject({ queuePausedMode: false });
+    expect(plugin.ensureAccess).toHaveBeenCalledWith({ displayName: "Fixture User" });
+    expect(plugin.setAccessKey).toHaveBeenCalledWith({ token: "fixture-access-key", displayName: "Fixture User" });
+    expect(plugin.setQueuePausedMode).toHaveBeenCalledWith({ enabled: true });
+    expect(plugin.retryQueue).toHaveBeenCalledWith();
   });
 });

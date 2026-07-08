@@ -52,7 +52,56 @@ public final class BraiCmdPlugin extends Plugin {
     @PluginMethod
     public void setVoiceOnlyMode(PluginCall call) {
         ConfigStore config = new ConfigStore(getContext());
-        config.setOnboardingVoiceOnly(call.getBoolean("enabled", false));
+        boolean enabled = call.getBoolean("enabled", false);
+        config.setOnboardingVoiceOnly(enabled);
+        if (!enabled) config.setOnboardingQueuePaused(false);
+        call.resolve(stateJson());
+    }
+
+    @PluginMethod
+    public void ensureAccess(PluginCall call) {
+        ConfigStore config = new ConfigStore(getContext());
+        String displayName = cleanDisplayName(call.getString("displayName", ""));
+        if (!displayName.isBlank()) config.setDisplayName(displayName);
+        if (!config.getAuthToken().isBlank()) {
+            call.resolve(stateJson());
+            return;
+        }
+        new Thread(() -> {
+            try {
+                String requestedName = config.getDisplayName().isBlank() ? "Brai" : config.getDisplayName();
+                NetworkClient client = new NetworkClient(getContext());
+                AccessResponse access = client.requestAccess(requestedName);
+                if (access.getToken().isBlank()) throw new IllegalStateException("Сервер не вернул токен");
+                config.setAuthToken(access.getToken());
+                config.setDisplayName(access.getDisplayName().isBlank() ? requestedName : access.getDisplayName());
+                client.healthCheck();
+            } catch (Throwable error) {
+                config.setAuthToken("");
+            }
+            call.resolve(stateJson());
+        }).start();
+    }
+
+    @PluginMethod
+    public void setAccessKey(PluginCall call) {
+        ConfigStore config = new ConfigStore(getContext());
+        config.setAuthToken(call.getString("token", ""));
+        String displayName = cleanDisplayName(call.getString("displayName", ""));
+        if (!displayName.isBlank()) config.setDisplayName(displayName);
+        call.resolve(stateJson());
+    }
+
+    @PluginMethod
+    public void setQueuePausedMode(PluginCall call) {
+        ConfigStore config = new ConfigStore(getContext());
+        config.setOnboardingQueuePaused(call.getBoolean("enabled", false));
+        call.resolve(stateJson());
+    }
+
+    @PluginMethod
+    public void retryQueue(PluginCall call) {
+        RecordingService.Companion.retryPending(getContext());
         call.resolve(stateJson());
     }
 
@@ -102,6 +151,7 @@ public final class BraiCmdPlugin extends Plugin {
         state.put("native", true);
         state.put("accessGranted", !config.getAuthToken().isBlank());
         state.put("voiceOnlyMode", config.getOnboardingVoiceOnly());
+        state.put("queuePausedMode", config.getOnboardingQueuePaused());
         state.put("settingsDeclared", hasActivity(BraiCmdSettingsActivity.class));
         state.put("accessibilityServiceDeclared", hasService(BraiAccessibilityService.class));
         state.put("recordingServiceDeclared", hasService(RecordingService.class));
@@ -174,6 +224,10 @@ public final class BraiCmdPlugin extends Plugin {
             }
         }
         return false;
+    }
+
+    private String cleanDisplayName(String value) {
+        return value == null ? "" : value.trim();
     }
 
     private void startSettingsActivity(Intent intent) {

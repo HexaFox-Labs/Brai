@@ -123,6 +123,15 @@ class RecordingService : Service() {
         }
         ConversationContextStore.save(pendingFile, conversationContext)
         ScreenshotContextStore.move(recordingFile, pendingFile)
+        if (ConfigStore(this).onboardingQueuePaused) {
+            postPendingState(
+                message = "Запись сохранена в очереди. Отправка временно остановлена для проверки.",
+                reason = PendingReason.Network
+            )
+            stopRecordingForeground()
+            stopSelf()
+            return
+        }
         uploadFreshRecording(pendingFile)
     }
 
@@ -514,7 +523,8 @@ class RecordingService : Service() {
 
         fun retryPending(context: Context) {
             val state = BraiCmdBus.latest
-            if (uploadInProgress.get() ||
+            if (ConfigStore(context).onboardingQueuePaused ||
+                uploadInProgress.get() ||
                 state is RecorderState.Recording ||
                 state is RecorderState.Uploading ||
                 !hasPendingRecordings(context)

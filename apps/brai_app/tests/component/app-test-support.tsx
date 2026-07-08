@@ -9,8 +9,12 @@ const otaPlugin = vi.hoisted(() => ({
 }));
 
 const cmdPlugin = vi.hoisted(() => ({
+  ensureAccess: vi.fn(),
   getState: vi.fn(),
   openSettings: vi.fn(),
+  retryQueue: vi.fn(),
+  setAccessKey: vi.fn(),
+  setQueuePausedMode: vi.fn(),
   setVoiceOnlyMode: vi.fn(),
 }));
 
@@ -48,10 +52,18 @@ export function setupBraiAppTest() {
     otaPlugin.checkForUpdates.mockReset();
     otaPlugin.markReady.mockReset();
     cmdPlugin.openSettings.mockReset();
+    cmdPlugin.ensureAccess.mockReset();
     cmdPlugin.getState.mockReset();
+    cmdPlugin.retryQueue.mockReset();
+    cmdPlugin.setAccessKey.mockReset();
+    cmdPlugin.setQueuePausedMode.mockReset();
     cmdPlugin.setVoiceOnlyMode.mockReset();
     cmdPlugin.openSettings.mockResolvedValue({});
+    cmdPlugin.ensureAccess.mockResolvedValue({ accessGranted: true });
     cmdPlugin.getState.mockResolvedValue({ accessGranted: true });
+    cmdPlugin.retryQueue.mockResolvedValue({ queuePausedMode: false });
+    cmdPlugin.setAccessKey.mockResolvedValue({ accessGranted: true });
+    cmdPlugin.setQueuePausedMode.mockResolvedValue({ queuePausedMode: true });
     cmdPlugin.setVoiceOnlyMode.mockResolvedValue({ voiceOnlyMode: true });
     actionsWidgetPlugin.acknowledgeStatusChanges.mockReset();
     actionsWidgetPlugin.addListener.mockReset();

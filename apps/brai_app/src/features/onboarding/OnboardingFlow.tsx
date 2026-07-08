@@ -20,6 +20,7 @@ import {
   ShieldCheck,
   Sparkles,
   TextCursorInput,
+  Trash2,
   UserRound,
   WifiOff,
   type LucideIcon,
@@ -32,7 +33,7 @@ import {
   requestAndroidMicrophone,
   requestAndroidNotifications,
 } from "@/shared/platform/androidCapabilities";
-import { getBraiCmdState, setBraiCmdVoiceOnlyMode } from "@/shared/platform/braiCmd";
+import { ensureBraiCmdAccess, retryBraiCmdQueue, setBraiCmdAccessKey, setBraiCmdQueuePausedMode, setBraiCmdVoiceOnlyMode } from "@/shared/platform/braiCmd";
 import { isNativeShell, platformName } from "@/shared/platform/platform";
 import { Alert, AlertDescription, AlertTitle } from "@/shared/ui/alert";
 import { AnimatedShinyText } from "@/shared/ui/animated-shiny-text";
@@ -89,7 +90,6 @@ export function OnboardingFlow({
   const [providerKey, setProviderKey] = useState("");
   const [localUrl, setLocalUrl] = useState("");
   const [trainingText, setTrainingText] = useState("");
-  const [queuedText, setQueuedText] = useState("");
   const [insertedText, setInsertedText] = useState("");
   const isAndroid = isNativeShell() && platformName() === "android";
   const progress = stepProgress(state.step);
@@ -115,6 +115,20 @@ export function OnboardingFlow({
     }, 80);
     return () => window.clearTimeout(timeout);
   }, [state.step]);
+
+  useEffect(() => {
+    if (!isAndroid) return;
+    if (state.step === "training-offline") {
+      void setBraiCmdQueuePausedMode(true);
+      return;
+    }
+    if (state.step === "training-queue") {
+      void setBraiCmdQueuePausedMode(false).then(() => retryBraiCmdQueue());
+      const interval = window.setInterval(() => void retryBraiCmdQueue(), 2500);
+      return () => window.clearInterval(interval);
+    }
+    void setBraiCmdQueuePausedMode(false);
+  }, [isAndroid, state.step]);
 
   async function refreshCapabilities() {
     const next = await getAndroidCapabilities();
@@ -142,6 +156,7 @@ export function OnboardingFlow({
   }
 
   function completeSetup() {
+    void setBraiCmdQueuePausedMode(false);
     void setBraiCmdVoiceOnlyMode(false);
     const nextState = { ...state, complete: true, step: "login-check" as const, history: [...state.history, state.step] };
     saveOnboardingState(nextState);
@@ -172,11 +187,12 @@ export function OnboardingFlow({
     }
   }
 
-  function submitAccessKey(key: string) {
+  async function submitAccessKey(key: string) {
     if (key.trim().length < 8) {
       setError("Введите полный ключ доступа.");
       return;
     }
+    await setBraiCmdAccessKey(key.trim(), state.name.trim());
     go("setup-start");
   }
 
@@ -267,11 +283,12 @@ export function OnboardingFlow({
   }
 
   async function startTraining() {
+    setTrainingText("");
+    setInsertedText("");
     if (isAndroid) {
-      const cmdState = await getBraiCmdState();
-      if (cmdState?.accessGranted === false) {
-        setError("Сначала откройте Brai CMD и получите доступ. После возврата нажмите «Обучение» еще раз.");
-        await onOpenNativeCmdSettings();
+      const access = await ensureBraiCmdAccess(state.name.trim() || "Brai");
+      if (!access?.accessGranted) {
+        setError("Не удалось подготовить доступ Brai CMD. Проверьте подключение и нажмите «Обучение» еще раз.");
         return;
       }
       await setBraiCmdVoiceOnlyMode(true);
@@ -448,8 +465,8 @@ export function OnboardingFlow({
 
     if (state.step === "training-start") return <InfoScreen icon={CheckCircle2} title="Готово к обучению" text="Базовая настройка завершена. Осталось проверить голосовой сценарий в четыре шага."><PrimaryButton onClick={startTraining}>Обучение</PrimaryButton><Button variant="outline" onClick={completeSetup}>Пропустить</Button></InfoScreen>;
     if (state.step === "training-dictate") return <TrainingDictate value={trainingText} onChange={setTrainingText} onNext={() => trainingText.trim() ? go("training-offline") : setError("Надиктуйте фразу через плавающую кнопку Brai CMD.")} />;
-    if (state.step === "training-offline") return <TrainingOffline value={queuedText} onChange={setQueuedText} onNext={() => queuedText.trim() ? go("training-queue") : setError("Надиктуйте сообщение через плавающую кнопку Brai CMD.")} />;
-    if (state.step === "training-queue") return <TrainingQueue value={insertedText} queued={queuedText} onChange={setInsertedText} onNext={() => insertedText.trim() ? go("training-storage") : setError("Вставьте результат через плавающую кнопку Brai CMD.")} />;
+    if (state.step === "training-offline") return <TrainingOffline onNext={() => go("training-queue")} />;
+    if (state.step === "training-queue") return <TrainingQueue value={insertedText} onChange={setInsertedText} onNext={() => insertedText.trim() ? go("training-storage") : setError("Вставьте результат через плавающую кнопку Brai CMD.")} />;
     if (state.step === "training-storage") return <InfoScreen icon={FileAudio} title="Хранилище аудиозаписей" text="Аудиозаписи могут храниться в защищенной очереди устройства до отправки на расшифровку. После успешной обработки они очищаются согласно настройкам Brai CMD."><PrimaryButton onClick={() => go("voice-ready")}>Продолжить</PrimaryButton></InfoScreen>;
 
     if (state.step === "voice-ready") return <InfoScreen icon={CheckCircle2} title="Голосовое управление настроено" text="Brai CMD готов принимать голос, работать с очередью и вставлять результат в поле."><PrimaryButton onClick={completeSetup}>Готово</PrimaryButton></InfoScreen>;
@@ -701,25 +718,19 @@ function TrainingDictate({ onChange, onNext, value }: { value: string; onChange:
   );
 }
 
-function TrainingOffline({ onChange, onNext, value }: { value: string; onChange: (value: string) => void; onNext: () => void }) {
+function TrainingOffline({ onNext }: { onNext: () => void }) {
   return (
     <div className="grid gap-4">
-      <InfoBlock icon={WifiOff} title="Шаг 2: очередь без связи" text="Имитируем отсутствие связи: надиктованное сообщение должно попасть в очередь." />
-      <VoiceOnlyTextarea value={value} placeholder="Здесь появится сообщение для очереди" ariaLabel="Текст в очереди" onChange={onChange} />
-      {value.trim() ? <PrimaryButton onClick={onNext}>Сообщение в очереди</PrimaryButton> : null}
+      <InfoBlock icon={WifiOff} title="Шаг 2: очередь без связи" text="Отправка временно отключена. Нажмите плавающую кнопку, надиктуйте фразу и остановите запись: Android должен показать, что запись сохранена в очереди." />
+      <PrimaryButton onClick={onNext}>Запись в очереди</PrimaryButton>
     </div>
   );
 }
 
-function TrainingQueue({ onChange, onNext, queued, value }: { queued: string; value: string; onChange: (value: string) => void; onNext: () => void }) {
+function TrainingQueue({ onChange, onNext, value }: { value: string; onChange: (value: string) => void; onNext: () => void }) {
   return (
     <div className="grid gap-4">
-      <InfoBlock icon={Send} title="Шаг 3: расшифровка из очереди" text="Данные из очереди отправляются на расшифровку. После обработки вставьте результат в поле." />
-      <Alert>
-        <FileAudio aria-hidden="true" />
-        <AlertTitle>В очереди</AlertTitle>
-        <AlertDescription>{queued}</AlertDescription>
-      </Alert>
+      <InfoBlock icon={Send} title="Шаг 3: вставка из очереди" text="Повторная отправка уже запущена и повторяется каждые несколько секунд. Когда текст будет готов, зажмите плавающую кнопку и вставьте результат в поле." />
       <VoiceOnlyTextarea value={value} placeholder="Здесь появится результат из очереди" ariaLabel="Результат из очереди" onChange={onChange} />
       {value.trim() ? <PrimaryButton onClick={onNext}>Данные вставлены</PrimaryButton> : null}
     </div>
@@ -728,19 +739,38 @@ function TrainingQueue({ onChange, onNext, queued, value }: { queued: string; va
 
 function VoiceOnlyTextarea({ ariaLabel, onChange, placeholder, value }: { ariaLabel: string; placeholder: string; value: string; onChange: (value: string) => void }) {
   return (
-    <Textarea
-      data-onboarding-training-input
-      autoFocus
-      value={value}
-      placeholder={placeholder}
-      aria-label={ariaLabel}
-      onChange={(event) => onChange(event.target.value)}
-      onKeyDown={(event) => {
-        if (event.key === "Tab" || event.key === "Escape") return;
-        event.preventDefault();
-      }}
-      onPaste={(event) => event.preventDefault()}
-    />
+    <div className="relative">
+      <Textarea
+        data-onboarding-training-input
+        autoFocus
+        autoCapitalize="none"
+        autoCorrect="off"
+        className="min-h-32 resize-none pr-14"
+        inputMode="none"
+        spellCheck={false}
+        value={value}
+        placeholder={placeholder}
+        aria-label={ariaLabel}
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Tab" || event.key === "Escape") return;
+          event.preventDefault();
+        }}
+        onPaste={(event) => event.preventDefault()}
+      />
+      {value ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="absolute right-2 top-2 rounded-full text-muted-foreground hover:text-foreground"
+          aria-label="Очистить поле"
+          onClick={() => onChange("")}
+        >
+          <Trash2 className="size-4" aria-hidden="true" />
+        </Button>
+      ) : null}
+    </div>
   );
 }
 
