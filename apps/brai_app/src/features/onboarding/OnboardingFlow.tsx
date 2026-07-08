@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
+import { Children, createContext, type FormEvent, type ReactNode, useContext, useEffect, useRef, useState } from "react";
 import { useReducedMotion } from "motion/react";
 import {
   ArrowRight,
@@ -10,6 +10,7 @@ import {
   ChevronLeft,
   Cloud,
   Command,
+  CircleX,
   FileAudio,
   KeyRound,
   Lock,
@@ -38,14 +39,12 @@ import {
 } from "@/shared/platform/androidCapabilities";
 import { ensureBraiCmdAccess, listenBraiCmdOnboardingEvents, retryBraiCmdQueue, setBraiCmdAccessKey, setBraiCmdQueuePausedMode, setBraiCmdVoiceOnlyMode } from "@/shared/platform/braiCmd";
 import { installAndroidBackHandler, isNativeShell, platformName } from "@/shared/platform/platform";
-import { Alert, AlertDescription, AlertTitle } from "@/shared/ui/alert";
 import { AnimatedShinyText } from "@/shared/ui/animated-shiny-text";
 import { Button } from "@/shared/ui/button";
+import { Card } from "@/shared/ui/card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/shared/ui/field";
 import { GlareHover } from "@/shared/ui/glare-hover";
 import { Input } from "@/shared/ui/input";
-import { Progress } from "@/shared/ui/progress";
-import { ScrollArea } from "@/shared/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 import { Textarea } from "@/shared/ui/textarea";
 import { cx } from "../app/appUtils";
@@ -53,7 +52,6 @@ import {
   initialOnboardingState,
   loadOnboardingState,
   saveOnboardingState,
-  stepProgress,
   type OnboardingState,
   type OnboardingStep,
   type ProfileVersion,
@@ -71,16 +69,34 @@ type OnboardingFlowProps = {
   onOpenNativeCmdSettings: () => Promise<boolean>;
 };
 
-type CheckStatus = "idle" | "checking" | "ready";
+type CheckStatus = "idle" | "checking" | "ready" | "error";
+type ChromeStatusTone = "neutral" | "ok" | "bad";
+
+const OnboardingChromeContext = createContext<{
+  canBack: boolean;
+  onBack: () => void;
+  screenIcon: LucideIcon;
+  statusText: string;
+  statusTone: ChromeStatusTone;
+  transitionActive: boolean;
+}>({
+  canBack: false,
+  onBack: () => undefined,
+  screenIcon: Sparkles,
+  statusText: "",
+  statusTone: "neutral",
+  transitionActive: false,
+});
 
 const startButtonDelayMs = process.env.NODE_ENV === "test" ? 0 : 3000;
-const screenTransitionDelayMs = process.env.NODE_ENV === "test" ? 0 : 140;
+const screenTransitionDelayMs = process.env.NODE_ENV === "test" ? 0 : 280;
 const logoClassName = "h-auto w-64 sm:w-80";
 const startLogoGlareDelayMs = 1000;
 const startLogoGlareDurationMs = 1000;
 const providerOptions = ["Groq", "OpenAI", "Deepgram", "AssemblyAI"] as const;
 const manualConfirmDelayMs = 3000;
 const verificationMinVisibleMs = process.env.NODE_ENV === "test" ? 1 : 1000;
+const failedCheckVisibleMs = process.env.NODE_ENV === "test" ? 100 : 2000;
 const startButtonCss = `
 @keyframes brai-onboarding-start-button {
   0% { opacity: 0; pointer-events: none; }
@@ -126,6 +142,7 @@ export function OnboardingFlow({
   const [manualConfirmReadyStep, setManualConfirmReadyStep] = useState<OnboardingStep | null>(null);
   const [checkingStep, setCheckingStep] = useState<OnboardingStep | null>(null);
   const [readyStep, setReadyStep] = useState<OnboardingStep | null>(null);
+  const [failedCheckStep, setFailedCheckStep] = useState<OnboardingStep | null>(null);
   const [trainingDictated, setTrainingDictated] = useState(false);
   const [queueSaved, setQueueSaved] = useState(false);
   const [queueInserted, setQueueInserted] = useState(false);
@@ -134,9 +151,9 @@ export function OnboardingFlow({
   const stateRef = useRef<OnboardingState>(state);
   const manualConfirmTimerRef = useRef<number | null>(null);
   const transitionTimerRef = useRef<number | null>(null);
+  const transitionFrameRef = useRef<number | null>(null);
+  const failedCheckTimerRef = useRef<number | null>(null);
   const isAndroid = isNativeShell() && platformName() === "android";
-  const progress = stepProgress(state.step);
-  const screen = screenMeta(state.step);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => setState(loadInitialOnboardingState(authRequired)), 0);
@@ -151,6 +168,8 @@ export function OnboardingFlow({
   useEffect(() => () => {
     if (manualConfirmTimerRef.current != null) window.clearTimeout(manualConfirmTimerRef.current);
     if (transitionTimerRef.current != null) window.clearTimeout(transitionTimerRef.current);
+    if (transitionFrameRef.current != null) window.cancelAnimationFrame(transitionFrameRef.current);
+    if (failedCheckTimerRef.current != null) window.clearTimeout(failedCheckTimerRef.current);
   }, []);
 
   useEffect(() => {
@@ -160,11 +179,11 @@ export function OnboardingFlow({
 
   useEffect(() => installAndroidBackHandler(() => {
     const current = stateRef.current;
-    const previous = current.history.at(-1);
+    const previous = previousOnboardingStep(current);
     if (previous) {
       setError("");
       setMessage("");
-      const next = { ...current, step: previous, history: current.history.slice(0, -1) };
+      const next = { ...current, step: previous.step, history: current.history.slice(0, previous.historyIndex) };
       saveOnboardingState(next);
       stateRef.current = next;
       setState(next);
@@ -242,13 +261,17 @@ export function OnboardingFlow({
       return;
     }
     if (transitionTimerRef.current != null) window.clearTimeout(transitionTimerRef.current);
+    if (transitionFrameRef.current != null) window.cancelAnimationFrame(transitionFrameRef.current);
     setScreenTransitioning(true);
     transitionTimerRef.current = window.setTimeout(() => {
       saveOnboardingState(next);
       stateRef.current = next;
       setState(next);
-      setScreenTransitioning(false);
       transitionTimerRef.current = null;
+      transitionFrameRef.current = window.requestAnimationFrame(() => {
+        setScreenTransitioning(false);
+        transitionFrameRef.current = null;
+      });
     }, screenTransitionDelayMs);
   }
 
@@ -257,6 +280,7 @@ export function OnboardingFlow({
     setMessage("");
     setCheckingStep(null);
     setReadyStep(null);
+    clearFailedCheck();
     setManualConfirmReadyStep(null);
     if (manualConfirmTimerRef.current != null) {
       window.clearTimeout(manualConfirmTimerRef.current);
@@ -268,26 +292,27 @@ export function OnboardingFlow({
 
   function back() {
     const current = stateRef.current;
-    const previous = current.history.at(-1);
+    const previous = previousOnboardingStep(current);
     if (!previous) return;
     setError("");
     setMessage("");
     setCheckingStep(null);
     setReadyStep(null);
+    clearFailedCheck();
     setManualConfirmReadyStep(null);
-    transitionTo({ ...current, step: previous, history: current.history.slice(0, -1) });
+    transitionTo({ ...current, step: previous.step, history: current.history.slice(0, previous.historyIndex) });
   }
 
   function completeSetup() {
     void setBraiCmdQueuePausedMode(false);
     void setBraiCmdVoiceOnlyMode(false);
-    const nextState = { ...state, complete: true, step: "login-check" as const, history: [...state.history, state.step] };
-    saveOnboardingState(nextState);
-    setState(nextState);
+    const current = stateRef.current;
+    transitionTo({ ...current, complete: true, step: "login-check", history: [...current.history, current.step] });
   }
 
   function checkStatus(step: OnboardingStep): CheckStatus {
     if (checkingStep === step) return "checking";
+    if (failedCheckStep === step) return "error";
     if (readyStep === step) return "ready";
     return "idle";
   }
@@ -295,6 +320,15 @@ export function OnboardingFlow({
   function resetCheck(step: OnboardingStep) {
     if (readyStep === step) setReadyStep(null);
     if (checkingStep === step) setCheckingStep(null);
+    if (failedCheckStep === step) clearFailedCheck();
+  }
+
+  function clearFailedCheck() {
+    setFailedCheckStep(null);
+    if (failedCheckTimerRef.current != null) {
+      window.clearTimeout(failedCheckTimerRef.current);
+      failedCheckTimerRef.current = null;
+    }
   }
 
   function unlockManualConfirmAfterDelay(step: OnboardingStep) {
@@ -309,6 +343,7 @@ export function OnboardingFlow({
   async function runVerification(step: OnboardingStep, verify: () => Promise<boolean>, errorText: string) {
     setError("");
     setMessage("");
+    clearFailedCheck();
     setCheckingStep(step);
     const startedAt = Date.now();
     let ok = false;
@@ -322,6 +357,11 @@ export function OnboardingFlow({
       setReadyStep(step);
     } else {
       setError(errorText);
+      setFailedCheckStep(step);
+      failedCheckTimerRef.current = window.setTimeout(() => {
+        setFailedCheckStep((current) => current === step ? null : current);
+        failedCheckTimerRef.current = null;
+      }, failedCheckVisibleMs);
     }
     setCheckingStep(null);
   }
@@ -467,6 +507,16 @@ export function OnboardingFlow({
   }
 
   const body = renderStep();
+  const previousStep = previousOnboardingStep(state);
+  const statusText = error || message || statusPromptForStep(state.step);
+  const chrome = {
+    canBack: Boolean(previousStep),
+    onBack: back,
+    screenIcon: screenIconForStep(state.step),
+    statusText,
+    statusTone: error ? "bad" as const : message ? "ok" as const : "neutral" as const,
+    transitionActive: screenTransitioning,
+  };
 
   function renderStep(): ReactNode {
     if (state.step === "start") {
@@ -506,12 +556,12 @@ export function OnboardingFlow({
 
     if (state.step === "name") {
       return (
-        <form className="flex min-h-0 flex-1 flex-col" onSubmit={(event) => {
+        <form className="flex min-h-0 flex-1 flex-col overflow-hidden" onSubmit={(event) => {
           event.preventDefault();
           if (!state.name.trim()) return setError("Введите имя.");
           go("setup-start");
         }}>
-          <div className="my-auto grid gap-5 py-6">
+          <div className="grid min-h-0 flex-1 content-center gap-5 overflow-hidden py-4">
             <InfoBlock icon={UserRound} title="Как к вам обращаться?" text="Имя нужно для приветствия и будущих голосовых подсказок." />
             <Input value={state.name} placeholder="Ваше имя" aria-label="Имя" onChange={(event) => update({ name: event.target.value })} />
           </div>
@@ -535,10 +585,14 @@ export function OnboardingFlow({
 
     if (state.step === "cloud-password") {
       return (
-        <StepScreen actions={null}>
-          <InfoBlock icon={Lock} title="Вход в облачный профиль" text="Пока для входа нужен только пароль." />
-          <OnboardingAuthForm busy={busy} mode="password" onLogin={submitCloudLogin} onRequestOtp={onRequestOtp} onVerifyOtp={onVerifyOtp} />
-        </StepScreen>
+        <OnboardingAuthForm
+          busy={busy}
+          intro={<InfoBlock icon={Lock} title="Вход в облачный профиль" text="Пока для входа нужен только пароль." />}
+          mode="password"
+          onLogin={submitCloudLogin}
+          onRequestOtp={onRequestOtp}
+          onVerifyOtp={onVerifyOtp}
+        />
       );
     }
 
@@ -637,7 +691,7 @@ export function OnboardingFlow({
     if (state.step === "microphone") return <PermissionScreen icon={Mic} title="Микрофон" text="Микрофон нужен для голосового ввода и команд."><PrimaryButton onClick={requestMic}>Разрешить микрофон</PrimaryButton></PermissionScreen>;
     if (state.step === "notifications") return <PermissionScreen icon={Bell} title="Уведомления" text="Уведомления нужны для фоновой записи, очереди и статуса отправки."><PrimaryButton onClick={requestNotifications}>Разрешить уведомления</PrimaryButton></PermissionScreen>;
 
-    if (state.step === "training-start") return <InfoScreen icon={CheckCircle2} title="Готово к обучению" text="Базовая настройка завершена. Осталось проверить голосовой сценарий в четыре шага."><PrimaryButton onClick={startTraining}>Обучение</PrimaryButton><SecondaryButton onClick={completeSetup}>Пропустить</SecondaryButton></InfoScreen>;
+    if (state.step === "training-start") return <InfoScreen icon={CheckCircle2} title="Готово к обучению" text="Базовая настройка завершена. Осталось проверить голосовой сценарий в четыре шага."><SecondaryButton onClick={completeSetup}>Пропустить</SecondaryButton><PrimaryButton onClick={startTraining}>Обучение</PrimaryButton></InfoScreen>;
     if (state.step === "training-dictate") return <TrainingDictate confirmed={trainingDictated} value={trainingText} onChange={(value) => {
       setTrainingText(value);
       if (!value.trim()) setTrainingDictated(false);
@@ -651,7 +705,7 @@ export function OnboardingFlow({
 
     if (state.step === "voice-ready") return <InfoScreen icon={CheckCircle2} title="Голосовое управление настроено" text="Brai CMD готов принимать голос, работать с очередью и вставлять результат в поле."><PrimaryButton onClick={completeSetup}>Готово</PrimaryButton></InfoScreen>;
     if (state.step === "login-check") return <InfoScreen icon={Lock} title="Проверяем вход" text="Если профиль уже открыт, вы попадете в кабинет. Если нет — доступ будет ограничен входом и настройками."><PrimaryButton onClick={() => authRequired ? go("locked") : onDone()}>Продолжить</PrimaryButton></InfoScreen>;
-    if (state.step === "locked") return <InfoScreen icon={Lock} title="Нужен вход" text="Пока вы не вошли, доступны только вход и настройки Brai CMD."><PrimaryButton onClick={() => go("login")}>Войти</PrimaryButton><SecondaryButton onClick={openCmdSettings}>Настройки Brai CMD</SecondaryButton></InfoScreen>;
+    if (state.step === "locked") return <InfoScreen icon={Lock} title="Нужен вход" text="Пока вы не вошли, доступны только вход и настройки Brai CMD."><SecondaryButton onClick={openCmdSettings}>Настройки Brai CMD</SecondaryButton><PrimaryButton onClick={() => go("login")}>Войти</PrimaryButton></InfoScreen>;
     if (state.step === "login") return <OnboardingAuthForm busy={busy} mode={authMode} onLogin={onLogin} onRequestOtp={onRequestOtp} onVerifyOtp={onVerifyOtp} />;
     if (state.step === "cmd-settings") {
       return (
@@ -670,87 +724,70 @@ export function OnboardingFlow({
 
   if (state.step === "start") {
     return (
-      <main className={cx("fixed inset-0 overflow-hidden bg-black text-foreground transition-opacity duration-150 ease-out", screenTransitioning ? "opacity-0" : "opacity-100")} data-onboarding-flow data-theme="dark" style={{ colorScheme: "dark" }}>
-        <style>{startButtonCss}</style>
-        <div className="absolute inset-0 grid place-items-center">
-          <GlareHover
-            width="auto"
-            height="auto"
-            background="transparent"
-            borderColor="transparent"
-            borderRadius="0"
-            glareAngle={18}
-            glareOpacity={1}
-            glareSize={64}
-            glareMaskImage="/brand/brai-logo-transparent.svg"
-            transitionDuration={startLogoGlareDurationMs}
-            autoPlayDelayMs={reduceMotion ? undefined : startLogoGlareDelayMs}
-            interactive={false}
-            playOnce
+      <OnboardingChromeContext.Provider value={chrome}>
+        <main className={cx("fixed inset-0 overflow-hidden bg-black text-foreground transition-opacity duration-300 ease-out", screenTransitioning ? "opacity-0" : "opacity-100")} data-onboarding-flow data-theme="dark" style={{ colorScheme: "dark" }}>
+          <style>{startButtonCss}</style>
+          <div className="absolute inset-0 grid place-items-center">
+            <GlareHover
+              width="auto"
+              height="auto"
+              background="transparent"
+              borderColor="transparent"
+              borderRadius="0"
+              glareAngle={18}
+              glareOpacity={1}
+              glareSize={64}
+              glareMaskImage="/brand/brai-logo-transparent.svg"
+              transitionDuration={startLogoGlareDurationMs}
+              autoPlayDelayMs={reduceMotion ? undefined : startLogoGlareDelayMs}
+              interactive={false}
+              playOnce
+            >
+              <Image
+                className={cx(logoClassName, reduceMotion ? "" : "animate-in fade-in-0 zoom-in-95 duration-1000")}
+                src="/brand/brai-logo-transparent.svg"
+                alt="Brai"
+                width="779"
+                height="368"
+                priority
+                draggable={false}
+              />
+            </GlareHover>
+          </div>
+          <div
+            className={cx(
+              "absolute inset-x-6 bottom-[calc(env(safe-area-inset-bottom)+1.5rem)] mx-auto max-w-md",
+              startButtonDelayMs === 0 ? "pointer-events-auto" : "pointer-events-none",
+            )}
+            style={{
+              opacity: startButtonDelayMs === 0 ? 1 : 0,
+              animation: startButtonDelayMs === 0 ? undefined : `brai-onboarding-start-button 300ms ease-out ${startButtonDelayMs}ms both`,
+            }}
           >
-            <Image
-              className={cx(logoClassName, reduceMotion ? "" : "animate-in fade-in-0 zoom-in-95 duration-1000")}
-              src="/brand/brai-logo-transparent.svg"
-              alt="Brai"
-              width="779"
-              height="368"
-              priority
-              draggable={false}
-            />
-          </GlareHover>
-        </div>
-        <div
-          className={cx(
-            "absolute inset-x-6 bottom-[calc(env(safe-area-inset-bottom)+2rem)] mx-auto max-w-md",
-            startButtonDelayMs === 0 ? "pointer-events-auto" : "pointer-events-none",
-          )}
-          style={{
-            opacity: startButtonDelayMs === 0 ? 1 : 0,
-            animation: startButtonDelayMs === 0 ? undefined : `brai-onboarding-start-button 300ms ease-out ${startButtonDelayMs}ms both`,
-          }}
-        >
-          <ShinyButton onClick={() => go("welcome-1")}>Приступить</ShinyButton>
-        </div>
-      </main>
+            <ShinyButton onClick={() => go("welcome-1")}>Приступить</ShinyButton>
+          </div>
+        </main>
+      </OnboardingChromeContext.Provider>
     );
   }
 
   return (
-    <main className="fixed inset-0 grid min-h-0 bg-black text-foreground" data-onboarding-flow data-theme="dark" style={{ colorScheme: "dark" }}>
-      <ScrollArea className="min-h-0" contentInset="none">
+    <OnboardingChromeContext.Provider value={chrome}>
+      <main className="fixed inset-0 min-h-0 overflow-hidden bg-black text-foreground" data-onboarding-flow data-theme="dark" style={{ colorScheme: "dark" }}>
         <div
           key={state.step}
           className={cx(
-            "mx-auto flex min-h-dvh w-full max-w-md flex-col gap-5 px-6 pb-0 pt-[calc(env(safe-area-inset-top)+2.75rem)] sm:max-w-2xl sm:px-6 sm:pt-8",
-            "transition-all duration-150 ease-out",
-            screenTransitioning ? "pointer-events-none translate-y-1 opacity-0" : "translate-y-0 opacity-100 animate-in fade-in-0 slide-in-from-bottom-1 duration-200",
+            "mx-auto flex h-dvh w-full max-w-md flex-col px-6 pb-0 pt-[calc(env(safe-area-inset-top)+1.5rem)] sm:max-w-2xl sm:px-6 sm:pt-6",
+            "transition-opacity duration-300 ease-out",
+            screenTransitioning ? "pointer-events-none opacity-0" : "opacity-100",
           )}
         >
-          <header className="grid grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-start gap-2">
-            <Button className="justify-self-start" size="icon-sm" variant="ghost" aria-label="Назад" disabled={state.history.length === 0} onClick={back}>
-              <ChevronLeft aria-hidden="true" />
-            </Button>
-            <div className="min-w-0">
-              <p className="m-0 text-xs font-medium uppercase text-muted-foreground">Ввод в эксплуатацию</p>
-              <h1 className="m-0 truncate text-lg font-semibold">{screen.title}</h1>
-            </div>
-            <span className="justify-self-end text-sm font-medium text-primary">{Math.max(progress, 1)}%</span>
-          </header>
-          <div className="relative">
-            <Progress value={progress} aria-label="Прогресс настройки" />
-            {error || message ? (
-              <div className="pointer-events-none absolute inset-x-0 top-7 z-10">
-                {error ? <StatusAlert tone="bad" title="Нужно проверить" text={error} /> : <StatusAlert tone="ok" title="Готово" text={message} />}
-              </div>
-            ) : null}
-          </div>
-          {screen.description ? <p className="m-0 text-sm text-muted-foreground">{screen.description}</p> : null}
-          <section className="flex min-h-0 flex-1 flex-col pb-0 pt-4">
+          <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
             {body}
           </section>
         </div>
-      </ScrollArea>
-    </main>
+      </main>
+    </OnboardingChromeContext.Provider>
   );
 }
 
@@ -760,15 +797,18 @@ function ShinyButton({ children, onClick }: { children: ReactNode; onClick: () =
 
 function CheckActionButton({ disabled, onClick, status }: { disabled?: boolean; onClick: () => void | Promise<void>; status: CheckStatus }) {
   const checking = status === "checking";
+  const failed = status === "error";
   const ready = status === "ready";
   return (
     <PrimaryButton
-      disabled={disabled || checking}
-      icon={checking ? LoaderCircle : ready ? CheckCircle2 : ShieldCheck}
+      disabled={disabled || checking || failed}
+      icon={checking ? LoaderCircle : failed ? CircleX : ready ? CheckCircle2 : ShieldCheck}
       iconClassName={checking ? "animate-spin" : undefined}
+      tone={failed ? "danger" : "default"}
+      trailingArrow={false}
       onClick={onClick}
     >
-      {checking ? "Проверка" : ready ? "Продолжить" : "Проверить"}
+      {checking ? "Проверка" : failed ? "Ошибка" : ready ? "Продолжить" : "Проверить"}
     </PrimaryButton>
   );
 }
@@ -776,63 +816,96 @@ function CheckActionButton({ disabled, onClick, status }: { disabled?: boolean; 
 type ActionButtonProps = React.ComponentProps<typeof Button> & {
   icon?: LucideIcon | null;
   iconClassName?: string;
+  tone?: "default" | "danger";
+  trailingArrow?: boolean;
 };
 
-function PrimaryButton({ children, className, disabled, icon: Icon = ArrowRight, iconClassName, ...props }: ActionButtonProps) {
+function PrimaryButton({ children, className, disabled, icon, iconClassName, tone = "default", trailingArrow = true, ...props }: ActionButtonProps) {
+  const { screenIcon: ContextIcon, transitionActive } = useContext(OnboardingChromeContext);
+  const Icon = icon === undefined ? ContextIcon : icon;
+  const danger = tone === "danger";
   return (
     <Button
       size="lg"
       variant="outline"
       className={cx(
-        "min-h-12 w-full overflow-hidden rounded-full border-primary/35 bg-primary/10 px-6 text-base font-semibold shadow-lg shadow-primary/10 transition-all duration-200 hover:bg-primary/15 active:scale-[0.98] active:border-primary/60 active:bg-primary/20 active:shadow-primary/20 disabled:border-muted/30 disabled:bg-muted/20 disabled:opacity-60 disabled:shadow-none disabled:hover:bg-muted/20 disabled:active:scale-100",
+        "group min-h-12 w-full overflow-hidden rounded-full px-5 text-base font-semibold shadow-lg transition-all duration-200 active:scale-[0.98] disabled:shadow-none disabled:active:scale-100",
+        danger
+          ? "border-destructive/45 bg-destructive/10 text-destructive shadow-destructive/10 disabled:border-destructive/45 disabled:bg-destructive/10 disabled:opacity-100"
+          : "border-primary/35 bg-primary/10 text-foreground shadow-primary/10 hover:bg-primary/15 active:border-primary/60 active:bg-primary/20 active:shadow-primary/20 disabled:border-muted/30 disabled:bg-muted/20 disabled:opacity-60 disabled:hover:bg-muted/20",
+        transitionActive && !disabled ? "scale-[0.98] border-primary/60 bg-primary/20 shadow-primary/20" : "",
         className,
       )}
       disabled={disabled}
       {...props}
     >
       {Icon ? <Icon className={cx("size-4 transition-all", iconClassName)} aria-hidden="true" /> : null}
-      <AnimatedShinyText shimmerWidth={140} className={cx("mx-0 text-base font-semibold", disabled ? "text-muted-foreground dark:text-muted-foreground" : "text-foreground/90 dark:text-foreground")}>
+      <AnimatedShinyText shimmerWidth={140} className={cx("min-w-0 flex-1 text-center text-base font-semibold", danger ? "text-destructive dark:text-destructive" : disabled ? "text-muted-foreground dark:text-muted-foreground" : "text-foreground/90 dark:text-foreground")}>
+        {children}
+      </AnimatedShinyText>
+      {trailingArrow ? <ArrowRight className={cx("size-4 transition-transform duration-200 group-active:translate-x-1", transitionActive && !disabled ? "translate-x-1" : "")} aria-hidden="true" /> : null}
+    </Button>
+  );
+}
+
+function SecondaryButton({ children, className, icon: Icon, iconClassName, ...props }: ActionButtonProps) {
+  const { transitionActive } = useContext(OnboardingChromeContext);
+  return (
+    <Button
+      variant="outline"
+      className={cx("min-h-12 w-full rounded-full border-primary/20 bg-transparent px-5 text-base font-semibold transition-all duration-200 hover:bg-primary/10 active:scale-[0.98] active:border-primary/40 active:bg-primary/15 disabled:opacity-50 disabled:active:scale-100", transitionActive ? "scale-[0.98] bg-primary/10" : "", className)}
+      {...props}
+    >
+      {Icon ? <Icon className={cx("size-4 transition-all", iconClassName)} aria-hidden="true" /> : null}
+      <AnimatedShinyText shimmerWidth={120} className="min-w-0 flex-1 text-center text-base font-semibold text-foreground/85 dark:text-foreground/90">
         {children}
       </AnimatedShinyText>
     </Button>
   );
 }
 
-function SecondaryButton({ children, className, icon: Icon, iconClassName, ...props }: ActionButtonProps) {
-  return (
-    <Button
-      variant="outline"
-      className={cx("min-h-12 w-full rounded-full border-primary/20 bg-transparent text-base font-semibold transition-all duration-200 hover:bg-primary/10 active:scale-[0.98] active:border-primary/40 active:bg-primary/15 disabled:opacity-50 disabled:active:scale-100", className)}
-      {...props}
-    >
-      {Icon ? <Icon className={cx("size-4 transition-all", iconClassName)} aria-hidden="true" /> : null}
-      {children}
-    </Button>
-  );
-}
-
 function StepScreen({ actions, children }: { actions?: ReactNode; children: ReactNode }) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="my-auto grid gap-6 py-6">{children}</div>
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="grid min-h-0 flex-1 content-center gap-5 overflow-hidden py-4">{children}</div>
       {actions ? <StepActions>{actions}</StepActions> : null}
     </div>
   );
 }
 
 function StepActions({ children }: { children: ReactNode }) {
-  return <div className="grid gap-3 pb-[calc(env(safe-area-inset-bottom)+2rem)] pt-6">{children}</div>;
+  const { canBack, onBack, statusText, statusTone } = useContext(OnboardingChromeContext);
+  const actions = Children.toArray(children).filter(Boolean);
+  const mainAction = actions.at(-1);
+  const extraActions = actions.slice(0, -1);
+
+  if (!statusText && !mainAction && !canBack) return null;
+
+  return (
+    <div className="grid shrink-0 gap-3 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] pt-3">
+      {statusText ? <StatusCard text={statusText} tone={statusTone} /> : null}
+      {extraActions.length ? <div className="grid gap-2">{extraActions}</div> : null}
+      <div className={cx("grid gap-3", canBack && mainAction ? "grid-cols-[3rem_minmax(0,1fr)]" : canBack ? "grid-cols-[3rem]" : "grid-cols-1")}>
+        {canBack ? (
+          <Button type="button" variant="outline" className="size-12 rounded-full border-primary/20 bg-transparent p-0 transition-all duration-200 hover:bg-primary/10 active:scale-[0.96] active:bg-primary/15" aria-label="Назад" onClick={onBack}>
+            <ChevronLeft className="size-5" aria-hidden="true" />
+          </Button>
+        ) : null}
+        {mainAction}
+      </div>
+    </div>
+  );
 }
 
 function InfoBlock({ icon: Icon, title, text }: { icon: LucideIcon; title: string; text: string }) {
   return (
     <div className="grid gap-4">
-      <span className="grid size-12 place-items-center rounded-full border border-primary/25 bg-primary/10 text-primary">
+      <span className="grid size-11 place-items-center rounded-full border border-primary/25 bg-primary/10 text-primary">
         <Icon className="size-5" aria-hidden="true" />
       </span>
       <div className="grid gap-2">
         <h2 className="m-0 text-2xl font-semibold leading-tight">{title}</h2>
-        <p className="m-0 text-sm leading-6 text-muted-foreground">{text}</p>
+        <p className="m-0 text-sm leading-5 text-muted-foreground">{text}</p>
       </div>
     </div>
   );
@@ -851,17 +924,20 @@ function InfoScreen({ children, eyebrow, icon, text, title }: { children: ReactN
 
 function ChoiceScreen({ choices, text, title }: { choices: Array<{ icon: LucideIcon; title: string; text: string; onClick: () => void }>; text: string; title: string }) {
   return (
-    <div className="my-auto grid gap-5 py-6">
-      <InfoBlock icon={Radio} title={title} text={text} />
-      <div className="grid gap-3 sm:grid-cols-2">
-        {choices.map((choice) => (
-          <button key={choice.title} type="button" className="grid min-h-36 content-start gap-3 rounded-lg border border-primary/20 bg-primary/5 p-4 text-left transition-all duration-200 hover:bg-primary/10 active:scale-[0.98] active:border-primary/40 active:bg-primary/15 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40" onClick={choice.onClick}>
-            <choice.icon className="size-5 text-primary" aria-hidden="true" />
-            <span className="text-base font-semibold">{choice.title}</span>
-            <span className="text-sm leading-5 text-muted-foreground">{choice.text}</span>
-          </button>
-        ))}
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="grid min-h-0 flex-1 content-center gap-4 overflow-hidden py-4">
+        <InfoBlock icon={Radio} title={title} text={text} />
+        <div className="grid gap-3 sm:grid-cols-2">
+          {choices.map((choice) => (
+            <button key={choice.title} type="button" className="grid min-h-28 content-start gap-2 rounded-lg border border-primary/20 bg-primary/5 p-3 text-left transition-all duration-200 hover:bg-primary/10 active:scale-[0.98] active:border-primary/40 active:bg-primary/15 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40" onClick={choice.onClick}>
+              <choice.icon className="size-5 text-primary" aria-hidden="true" />
+              <span className="text-base font-semibold">{choice.title}</span>
+              <span className="text-sm leading-5 text-muted-foreground">{choice.text}</span>
+            </button>
+          ))}
+        </div>
       </div>
+      <StepActions>{null}</StepActions>
     </div>
   );
 }
@@ -885,11 +961,11 @@ function DemoPlaceholder({ label }: { label: string }) {
 function AccessKeyForm({ onSubmit }: { onSubmit: (key: string) => void }) {
   const [key, setKey] = useState("");
   return (
-    <form className="flex min-h-0 flex-1 flex-col" onSubmit={(event) => {
+    <form className="flex min-h-0 flex-1 flex-col overflow-hidden" onSubmit={(event) => {
       event.preventDefault();
       onSubmit(key);
     }}>
-      <div className="my-auto grid gap-4 py-6">
+      <div className="grid min-h-0 flex-1 content-center gap-4 overflow-hidden py-4">
         <InfoBlock icon={KeyRound} title="Ключ доступа" text="Введите ключ self-hosted профиля, чтобы связать приложение с вашим сервером." />
         <Input value={key} type="password" aria-label="Ключ доступа" placeholder="Ключ доступа" onChange={(event) => setKey(event.target.value)} />
       </div>
@@ -900,12 +976,14 @@ function AccessKeyForm({ onSubmit }: { onSubmit: (key: string) => void }) {
 
 function OnboardingAuthForm({
   busy,
+  intro,
   mode,
   onLogin,
   onRequestOtp,
   onVerifyOtp,
 }: {
   busy: boolean;
+  intro?: ReactNode;
   mode: "otp" | "password";
   onLogin: (password: string) => Promise<void>;
   onRequestOtp: (email: string) => Promise<void>;
@@ -939,64 +1017,74 @@ function OnboardingAuthForm({
 
   if (mode === "password") {
     return (
-      <form className="grid gap-4" onSubmit={submitPassword}>
-        <FieldGroup>
-          <Field>
-            <FieldLabel htmlFor="onboarding-password">Пароль</FieldLabel>
-            <Input
-              id="onboarding-password"
-              value={password}
-              type="password"
-              autoComplete="current-password"
-              aria-label="Пароль"
-              disabled={busy}
-              onChange={(event) => setPassword(event.target.value)}
-            />
-          </Field>
-        </FieldGroup>
-        <PrimaryButton disabled={busy || !password}>Открыть</PrimaryButton>
+      <form className="flex min-h-0 flex-1 flex-col overflow-hidden" onSubmit={submitPassword}>
+        <div className="grid min-h-0 flex-1 content-center gap-4 overflow-hidden py-4">
+          {intro}
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="onboarding-password">Пароль</FieldLabel>
+              <Input
+                id="onboarding-password"
+                value={password}
+                type="password"
+                autoComplete="current-password"
+                aria-label="Пароль"
+                disabled={busy}
+                onChange={(event) => setPassword(event.target.value)}
+              />
+            </Field>
+          </FieldGroup>
+        </div>
+        <StepActions>
+          <PrimaryButton disabled={busy || !password}>Открыть</PrimaryButton>
+        </StepActions>
       </form>
     );
   }
 
   return (
-    <form className="grid gap-4" onSubmit={submitOtp}>
-      <FieldGroup>
-        <Field>
-          <FieldLabel htmlFor="onboarding-email">Email</FieldLabel>
-          <Input
-            id="onboarding-email"
-            value={email}
-            type="email"
-            autoComplete="email"
-            inputMode="email"
-            placeholder="email"
-            aria-label="Email"
-            disabled={busy || otpSent}
-            onChange={(event) => setEmail(event.target.value)}
-          />
-          <FieldDescription>{otpSent ? "Код уже отправлен. Введите его ниже." : "Отправим одноразовый код для входа."}</FieldDescription>
-        </Field>
-        {otpSent ? (
-          <Field data-invalid={Boolean(error)}>
-            <FieldLabel htmlFor="onboarding-otp">Код</FieldLabel>
+    <form className="flex min-h-0 flex-1 flex-col overflow-hidden" onSubmit={submitOtp}>
+      <div className="grid min-h-0 flex-1 content-center gap-4 overflow-hidden py-4">
+        {intro}
+        <FieldGroup>
+          <Field>
+            <FieldLabel htmlFor="onboarding-email">Email</FieldLabel>
             <Input
-              id="onboarding-otp"
-              value={otp}
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              placeholder="код"
-              aria-label="Код из письма"
-              aria-invalid={Boolean(error)}
-              disabled={busy}
-              onChange={(event) => setOtp(event.target.value)}
+              id="onboarding-email"
+              value={email}
+              type="email"
+              autoComplete="email"
+              inputMode="email"
+              placeholder="email"
+              aria-label="Email"
+              disabled={busy || otpSent}
+              onChange={(event) => setEmail(event.target.value)}
             />
-            {error ? <FieldDescription className="text-destructive">{error}</FieldDescription> : null}
+            <FieldDescription>{otpSent ? "Код уже отправлен. Введите его ниже." : "Отправим одноразовый код для входа."}</FieldDescription>
           </Field>
-        ) : null}
-      </FieldGroup>
-      <PrimaryButton disabled={busy || !email || (otpSent && !otp)}>{otpSent ? "Проверить код" : "Получить код"}</PrimaryButton>
+          {otpSent ? (
+            <Field data-invalid={Boolean(error)}>
+              <FieldLabel htmlFor="onboarding-otp">Код</FieldLabel>
+              <Input
+                id="onboarding-otp"
+                value={otp}
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                placeholder="код"
+                aria-label="Код из письма"
+                aria-invalid={Boolean(error)}
+                disabled={busy}
+                onChange={(event) => setOtp(event.target.value)}
+              />
+              {error ? <FieldDescription className="text-destructive">{error}</FieldDescription> : null}
+            </Field>
+          ) : null}
+        </FieldGroup>
+      </div>
+      <StepActions>
+        <PrimaryButton disabled={busy || !email || (otpSent && !otp)}>{otpSent ? "Проверить код" : "Получить код"}</PrimaryButton>
+      </StepActions>
     </form>
   );
 }
@@ -1042,7 +1130,7 @@ function VoiceOnlyTextarea({ ariaLabel, onChange, placeholder, value }: { ariaLa
         autoFocus
         autoCapitalize="none"
         autoCorrect="off"
-        className="min-h-32 resize-none pr-14"
+        className="min-h-28 resize-none pr-14"
         spellCheck={false}
         value={value}
         placeholder={placeholder}
@@ -1065,14 +1153,16 @@ function VoiceOnlyTextarea({ ariaLabel, onChange, placeholder, value }: { ariaLa
   );
 }
 
-function StatusAlert({ text, title, tone }: { title: string; text: string; tone: "ok" | "bad" }) {
-  const Icon = tone === "ok" ? CheckCircle2 : Lock;
+function StatusCard({ text, tone }: { text: string; tone: ChromeStatusTone }) {
   return (
-    <Alert variant={tone === "bad" ? "destructive" : "default"}>
-      <Icon aria-hidden="true" />
-      <AlertTitle>{title}</AlertTitle>
-      <AlertDescription>{text}</AlertDescription>
-    </Alert>
+    <Card
+      className={cx(
+        "h-14 justify-center rounded-2xl px-4 py-2 text-sm leading-5 shadow-none",
+        tone === "bad" ? "border-destructive/35 bg-destructive/10 text-destructive" : tone === "ok" ? "border-primary/30 bg-primary/10 text-foreground" : "border-primary/15 bg-card/60 text-muted-foreground",
+      )}
+    >
+      <p className="m-0 line-clamp-2">{text}</p>
+    </Card>
   );
 }
 
@@ -1085,12 +1175,34 @@ function isValidUrl(value: string): boolean {
   }
 }
 
-function screenMeta(step: OnboardingStep): { title: string; description?: string } {
-  if (step === "locked") return { title: "Доступ ограничен", description: "До входа в профиль показываем только вход и настройки." };
-  if (step === "cmd-settings") return { title: "Настройки Brai CMD" };
-  if (step.startsWith("training")) return { title: "Обучение" };
-  if (step === "voice-choice" || step === "provider-key" || step === "local-server" || step === "cloud-privacy") return { title: "Голосовой модуль" };
-  if (step === "overlay" || step.startsWith("accessibility") || step === "microphone" || step === "notifications") return { title: "Разрешения" };
-  if (step.startsWith("welcome")) return { title: "Приветствие" };
-  return { title: "Настройка Brai" };
+function previousOnboardingStep(state: OnboardingState): { step: OnboardingStep; historyIndex: number } | null {
+  for (let historyIndex = state.history.length - 1; historyIndex >= 0; historyIndex -= 1) {
+    const step = state.history[historyIndex];
+    if (step !== "start") return { step, historyIndex };
+  }
+  return null;
+}
+
+function screenIconForStep(step: OnboardingStep): LucideIcon {
+  if (step === "locked" || step === "login" || step === "login-check") return Lock;
+  if (step.startsWith("training")) return step === "training-offline" ? WifiOff : step === "training-storage" ? FileAudio : Mic;
+  if (step === "voice-choice" || step === "provider-key") return KeyRound;
+  if (step === "local-server") return Server;
+  if (step === "cloud-privacy") return Cloud;
+  if (step === "overlay") return MonitorUp;
+  if (step.startsWith("accessibility")) return ShieldCheck;
+  if (step === "microphone") return Mic;
+  if (step === "notifications") return Bell;
+  if (step === "name") return UserRound;
+  return Sparkles;
+}
+
+function statusPromptForStep(step: OnboardingStep): string {
+  if (step === "provider-key") return "Выберите поставщика, введите ключ и нажмите Проверить.";
+  if (step === "local-server") return "Введите URL локального сервера и нажмите Проверить.";
+  if (step === "overlay") return "Включите разрешение поверх экрана и нажмите Проверить.";
+  if (step === "accessibility-blocked") return "Откройте специальные возможности, получите отказ и подтвердите шаг.";
+  if (step === "accessibility-restricted") return "Разрешите ограниченные настройки в карточке приложения.";
+  if (step === "accessibility-enable") return "Включите специальные возможности Brai и нажмите Проверить.";
+  return "";
 }

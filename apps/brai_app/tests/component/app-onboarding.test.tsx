@@ -25,6 +25,7 @@ describe("BraiApp onboarding", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Приступить" }));
     expect(screen.getByText("Brai рядом с вашим экраном")).toBeInTheDocument();
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Далее" }));
     fireEvent.click(screen.getByRole("button", { name: "Далее" }));
@@ -36,34 +37,24 @@ describe("BraiApp onboarding", () => {
     expect(screen.getByRole("button", { name: /Есть профиль/ })).toBeInTheDocument();
   });
 
-  it("keeps unauthenticated users inside the limited access screen after setup", async () => {
+  it("keeps unauthenticated users inside the limited access screen", async () => {
     window.localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({
-      complete: true,
+      complete: false,
       history: [],
       name: "Test",
       path: "new",
       profileVersion: null,
-      step: "login-check",
+      step: "locked",
       voiceMode: "provider",
     }));
-    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      if (url.endsWith("/auth/session")) {
-        return new Response(JSON.stringify({ authenticated: false }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
-      }
-      throw new Error(`unexpected protected request: ${url}`);
-    });
 
     render(<BraiApp />);
 
-    await waitFor(() => expect(screen.getByText("Нужен вход")).toBeInTheDocument(), { timeout: 5000 });
+    expect(await screen.findByText("Нужен вход")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Войти" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Настройки Brai CMD" })).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Добавить" })).not.toBeInTheDocument();
-  }, 10000);
+  });
 
   it("offers cloud and local voice recognition for a new setup", async () => {
     window.localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({
@@ -143,6 +134,8 @@ describe("BraiApp onboarding", () => {
     fireEvent.click(checkButton);
     expect(screen.getByRole("button", { name: "Проверка" })).toBeDisabled();
     expect(await screen.findByText("Разрешение поверх экрана еще не включено.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ошибка" })).toBeDisabled();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Проверить" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "Проверить" }));
     expect(await screen.findByRole("button", { name: "Продолжить" })).toBeInTheDocument();
   });
