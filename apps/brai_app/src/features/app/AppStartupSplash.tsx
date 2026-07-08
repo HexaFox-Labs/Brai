@@ -2,47 +2,27 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
+import { useReducedMotion } from "motion/react";
+import { GlareHover } from "@/shared/ui/glare-hover";
 
 export const SPLASH_MIN_VISIBLE_MS = 3000;
 export const SPLASH_MAX_VISIBLE_MS = 5000;
+const SPLASH_GLARE_DELAY_MS = 1000;
+const SPLASH_GLARE_DURATION_MS = 1000;
 const IS_TEST_RUNTIME = process.env.NODE_ENV === "test";
-const LOGO_FRAME_CLASS = "relative aspect-[779/368] w-64 max-w-[78vw] sm:w-80";
 const SPLASH_TIMEOUT_CSS = `
-@keyframes brai-startup-logo-in {
-  0% { opacity: 0; }
-  100% { opacity: 1; }
-}
-
-@keyframes brai-startup-logo-shimmer {
-  0%, 35% { opacity: 0; transform: translateX(-140%); }
-  55% { opacity: .32; }
-  80%, 100% { opacity: 0; transform: translateX(140%); }
-}
-
 @keyframes brai-startup-splash-timeout {
   0%, 99% { opacity: 1; pointer-events: auto; visibility: visible; }
   100% { opacity: 0; pointer-events: none; visibility: hidden; }
 }
-
-.brai-startup-logo-frame {
-  opacity: 0;
-  animation: brai-startup-logo-in 700ms ease-out 120ms both;
-}
-
-.brai-startup-logo-frame::after {
-  content: "";
-  position: absolute;
-  inset: -8%;
-  pointer-events: none;
-  background: linear-gradient(105deg, transparent 35%, rgba(255,255,255,.28) 50%, transparent 65%);
-  animation: brai-startup-logo-shimmer 2600ms ease-in-out 900ms infinite;
-}
 `;
 
 export function AppStartupSplash({ ready }: { ready: boolean }) {
+  const reduceMotion = Boolean(useReducedMotion()) || IS_TEST_RUNTIME;
   const [elapsed, setElapsed] = useState(false);
   const [expired, setExpired] = useState(false);
   const show = !expired && (!ready || !elapsed);
+  const logoClassName = reduceMotion ? "h-auto w-64 sm:w-80" : "h-auto w-64 animate-in fade-in-0 zoom-in-95 duration-1000 sm:w-80";
 
   useEffect(() => {
     const minTimeout = window.setTimeout(() => setElapsed(true), SPLASH_MIN_VISIBLE_MS);
@@ -62,17 +42,31 @@ export function AppStartupSplash({ ready }: { ready: boolean }) {
         data-startup-splash
         aria-label="Brai"
       >
-        <div className={`${LOGO_FRAME_CLASS} brai-startup-logo-frame overflow-hidden`}>
+        <GlareHover
+          width="auto"
+          height="auto"
+          background="transparent"
+          borderColor="transparent"
+          borderRadius="0"
+          glareAngle={18}
+          glareOpacity={1}
+          glareSize={64}
+          glareMaskImage="/brand/brai-logo-transparent.svg"
+          transitionDuration={SPLASH_GLARE_DURATION_MS}
+          autoPlayDelayMs={reduceMotion ? undefined : SPLASH_GLARE_DELAY_MS}
+          interactive={false}
+          playOnce
+        >
           <Image
-            className="object-contain"
+            className={logoClassName}
             src="/brand/brai-logo-transparent.svg"
+            width="779"
+            height="368"
             alt="Brai"
-            fill
-            sizes="(min-width: 640px) 20rem, 16rem"
             priority={!IS_TEST_RUNTIME}
             draggable={false}
           />
-        </div>
+        </GlareHover>
       </div>
     </>
   ) : null;

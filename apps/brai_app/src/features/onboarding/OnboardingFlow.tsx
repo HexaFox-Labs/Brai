@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
+import { useReducedMotion } from "motion/react";
 import {
   ArrowRight,
   Bell,
@@ -41,6 +42,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/shared/ui/alert";
 import { AnimatedShinyText } from "@/shared/ui/animated-shiny-text";
 import { Button } from "@/shared/ui/button";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/shared/ui/field";
+import { GlareHover } from "@/shared/ui/glare-hover";
 import { Input } from "@/shared/ui/input";
 import { Progress } from "@/shared/ui/progress";
 import { ScrollArea } from "@/shared/ui/scroll-area";
@@ -72,39 +74,17 @@ type OnboardingFlowProps = {
 type CheckStatus = "idle" | "checking" | "ready";
 
 const startButtonDelayMs = process.env.NODE_ENV === "test" ? 0 : 3000;
-const logoFrameClass = "relative aspect-[779/368] w-64 max-w-[78vw] sm:w-80";
+const screenTransitionDelayMs = process.env.NODE_ENV === "test" ? 0 : 140;
+const logoClassName = "h-auto w-64 sm:w-80";
+const startLogoGlareDelayMs = 1000;
+const startLogoGlareDurationMs = 1000;
 const providerOptions = ["Groq", "OpenAI", "Deepgram", "AssemblyAI"] as const;
 const manualConfirmDelayMs = 3000;
 const verificationMinVisibleMs = process.env.NODE_ENV === "test" ? 1 : 1000;
 const startButtonCss = `
-@keyframes brai-onboarding-logo-in {
-  0% { opacity: 0; }
-  100% { opacity: 1; }
-}
-
-@keyframes brai-onboarding-logo-shimmer {
-  0%, 35% { opacity: 0; transform: translateX(-140%); }
-  55% { opacity: .32; }
-  80%, 100% { opacity: 0; transform: translateX(140%); }
-}
-
 @keyframes brai-onboarding-start-button {
   0% { opacity: 0; pointer-events: none; }
   100% { opacity: 1; pointer-events: auto; }
-}
-
-.brai-onboarding-logo-frame {
-  opacity: 0;
-  animation: brai-onboarding-logo-in 700ms ease-out 120ms both;
-}
-
-.brai-onboarding-logo-frame::after {
-  content: "";
-  position: absolute;
-  inset: -8%;
-  pointer-events: none;
-  background: linear-gradient(105deg, transparent 35%, rgba(255,255,255,.28) 50%, transparent 65%);
-  animation: brai-onboarding-logo-shimmer 2600ms ease-in-out 900ms infinite;
 }
 `;
 
@@ -133,6 +113,7 @@ export function OnboardingFlow({
   onRequestOtp,
   onVerifyOtp,
 }: OnboardingFlowProps) {
+  const reduceMotion = Boolean(useReducedMotion()) || process.env.NODE_ENV === "test";
   const [state, setState] = useState<OnboardingState>(initialOnboardingState);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -148,9 +129,11 @@ export function OnboardingFlow({
   const [trainingDictated, setTrainingDictated] = useState(false);
   const [queueSaved, setQueueSaved] = useState(false);
   const [queueInserted, setQueueInserted] = useState(false);
+  const [screenTransitioning, setScreenTransitioning] = useState(false);
   const stepRef = useRef<OnboardingStep>(state.step);
   const stateRef = useRef<OnboardingState>(state);
   const manualConfirmTimerRef = useRef<number | null>(null);
+  const transitionTimerRef = useRef<number | null>(null);
   const isAndroid = isNativeShell() && platformName() === "android";
   const progress = stepProgress(state.step);
   const screen = screenMeta(state.step);
@@ -167,6 +150,7 @@ export function OnboardingFlow({
 
   useEffect(() => () => {
     if (manualConfirmTimerRef.current != null) window.clearTimeout(manualConfirmTimerRef.current);
+    if (transitionTimerRef.current != null) window.clearTimeout(transitionTimerRef.current);
   }, []);
 
   useEffect(() => {
@@ -250,6 +234,24 @@ export function OnboardingFlow({
     });
   }
 
+  function transitionTo(next: OnboardingState) {
+    if (screenTransitionDelayMs === 0) {
+      saveOnboardingState(next);
+      stateRef.current = next;
+      setState(next);
+      return;
+    }
+    if (transitionTimerRef.current != null) window.clearTimeout(transitionTimerRef.current);
+    setScreenTransitioning(true);
+    transitionTimerRef.current = window.setTimeout(() => {
+      saveOnboardingState(next);
+      stateRef.current = next;
+      setState(next);
+      setScreenTransitioning(false);
+      transitionTimerRef.current = null;
+    }, screenTransitionDelayMs);
+  }
+
   function go(step: OnboardingStep, next?: Partial<OnboardingState>) {
     setError("");
     setMessage("");
@@ -260,13 +262,20 @@ export function OnboardingFlow({
       window.clearTimeout(manualConfirmTimerRef.current);
       manualConfirmTimerRef.current = null;
     }
-    update({ ...next, step, history: [...state.history, state.step] });
+    const current = stateRef.current;
+    transitionTo({ ...current, ...next, step, history: [...current.history, current.step] });
   }
 
   function back() {
-    const previous = state.history.at(-1);
+    const current = stateRef.current;
+    const previous = current.history.at(-1);
     if (!previous) return;
-    update({ step: previous, history: state.history.slice(0, -1) });
+    setError("");
+    setMessage("");
+    setCheckingStep(null);
+    setReadyStep(null);
+    setManualConfirmReadyStep(null);
+    transitionTo({ ...current, step: previous, history: current.history.slice(0, -1) });
   }
 
   function completeSetup() {
@@ -661,20 +670,34 @@ export function OnboardingFlow({
 
   if (state.step === "start") {
     return (
-      <main className="fixed inset-0 overflow-hidden bg-black text-foreground" data-onboarding-flow data-theme="dark" style={{ colorScheme: "dark" }}>
+      <main className={cx("fixed inset-0 overflow-hidden bg-black text-foreground transition-opacity duration-150 ease-out", screenTransitioning ? "opacity-0" : "opacity-100")} data-onboarding-flow data-theme="dark" style={{ colorScheme: "dark" }}>
         <style>{startButtonCss}</style>
         <div className="absolute inset-0 grid place-items-center">
-          <div className={cx("brai-onboarding-logo-frame overflow-hidden", logoFrameClass)}>
+          <GlareHover
+            width="auto"
+            height="auto"
+            background="transparent"
+            borderColor="transparent"
+            borderRadius="0"
+            glareAngle={18}
+            glareOpacity={1}
+            glareSize={64}
+            glareMaskImage="/brand/brai-logo-transparent.svg"
+            transitionDuration={startLogoGlareDurationMs}
+            autoPlayDelayMs={reduceMotion ? undefined : startLogoGlareDelayMs}
+            interactive={false}
+            playOnce
+          >
             <Image
-              className="object-contain"
+              className={cx(logoClassName, reduceMotion ? "" : "animate-in fade-in-0 zoom-in-95 duration-1000")}
               src="/brand/brai-logo-transparent.svg"
               alt="Brai"
-              fill
-              sizes="(min-width: 640px) 20rem, 16rem"
+              width="779"
+              height="368"
               priority
               draggable={false}
             />
-          </div>
+          </GlareHover>
         </div>
         <div
           className={cx(
@@ -695,7 +718,14 @@ export function OnboardingFlow({
   return (
     <main className="fixed inset-0 grid min-h-0 bg-black text-foreground" data-onboarding-flow data-theme="dark" style={{ colorScheme: "dark" }}>
       <ScrollArea className="min-h-0" contentInset="none">
-        <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col gap-5 px-6 pb-0 pt-[calc(env(safe-area-inset-top)+2.75rem)] sm:max-w-2xl sm:px-6 sm:pt-8">
+        <div
+          key={state.step}
+          className={cx(
+            "mx-auto flex min-h-dvh w-full max-w-md flex-col gap-5 px-6 pb-0 pt-[calc(env(safe-area-inset-top)+2.75rem)] sm:max-w-2xl sm:px-6 sm:pt-8",
+            "transition-all duration-150 ease-out",
+            screenTransitioning ? "pointer-events-none translate-y-1 opacity-0" : "translate-y-0 opacity-100 animate-in fade-in-0 slide-in-from-bottom-1 duration-200",
+          )}
+        >
           <header className="grid grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-start gap-2">
             <Button className="justify-self-start" size="icon-sm" variant="ghost" aria-label="Назад" disabled={state.history.length === 0} onClick={back}>
               <ChevronLeft aria-hidden="true" />
@@ -754,7 +784,7 @@ function PrimaryButton({ children, className, disabled, icon: Icon = ArrowRight,
       size="lg"
       variant="outline"
       className={cx(
-        "min-h-12 w-full overflow-hidden rounded-full border-primary/35 bg-primary/10 px-6 text-base font-semibold shadow-lg shadow-primary/10 transition-all duration-200 hover:bg-primary/15 disabled:border-muted/30 disabled:bg-muted/20 disabled:opacity-60 disabled:shadow-none disabled:hover:bg-muted/20",
+        "min-h-12 w-full overflow-hidden rounded-full border-primary/35 bg-primary/10 px-6 text-base font-semibold shadow-lg shadow-primary/10 transition-all duration-200 hover:bg-primary/15 active:scale-[0.98] active:border-primary/60 active:bg-primary/20 active:shadow-primary/20 disabled:border-muted/30 disabled:bg-muted/20 disabled:opacity-60 disabled:shadow-none disabled:hover:bg-muted/20 disabled:active:scale-100",
         className,
       )}
       disabled={disabled}
@@ -772,7 +802,7 @@ function SecondaryButton({ children, className, icon: Icon, iconClassName, ...pr
   return (
     <Button
       variant="outline"
-      className={cx("min-h-12 w-full rounded-full border-primary/20 bg-transparent text-base font-semibold transition-all duration-200 hover:bg-primary/10 disabled:opacity-50", className)}
+      className={cx("min-h-12 w-full rounded-full border-primary/20 bg-transparent text-base font-semibold transition-all duration-200 hover:bg-primary/10 active:scale-[0.98] active:border-primary/40 active:bg-primary/15 disabled:opacity-50 disabled:active:scale-100", className)}
       {...props}
     >
       {Icon ? <Icon className={cx("size-4 transition-all", iconClassName)} aria-hidden="true" /> : null}
@@ -825,7 +855,7 @@ function ChoiceScreen({ choices, text, title }: { choices: Array<{ icon: LucideI
       <InfoBlock icon={Radio} title={title} text={text} />
       <div className="grid gap-3 sm:grid-cols-2">
         {choices.map((choice) => (
-          <button key={choice.title} type="button" className="grid min-h-36 content-start gap-3 rounded-lg border border-primary/20 bg-primary/5 p-4 text-left transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40" onClick={choice.onClick}>
+          <button key={choice.title} type="button" className="grid min-h-36 content-start gap-3 rounded-lg border border-primary/20 bg-primary/5 p-4 text-left transition-all duration-200 hover:bg-primary/10 active:scale-[0.98] active:border-primary/40 active:bg-primary/15 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40" onClick={choice.onClick}>
             <choice.icon className="size-5 text-primary" aria-hidden="true" />
             <span className="text-base font-semibold">{choice.title}</span>
             <span className="text-sm leading-5 text-muted-foreground">{choice.text}</span>
