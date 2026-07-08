@@ -13,6 +13,8 @@ describe("BraiApp onboarding", () => {
     render(<BraiApp />);
 
     expect(await screen.findByRole("button", { name: "Приступить" })).toBeInTheDocument();
+    expect(screen.queryByText("ВВОД В ЭКСПЛУАТАЦИЮ")).not.toBeInTheDocument();
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Добавить" })).not.toBeInTheDocument();
   });
 
@@ -62,4 +64,39 @@ describe("BraiApp onboarding", () => {
     expect(screen.getByRole("button", { name: "Настройки Brai CMD" })).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Добавить" })).not.toBeInTheDocument();
   }, 10000);
+
+  it("offers local voice recognition for a new self-hosted setup", async () => {
+    window.localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({
+      complete: false,
+      history: [],
+      name: "Test",
+      path: "new",
+      profileVersion: "self-hosted",
+      step: "voice-choice",
+      voiceMode: null,
+    }));
+
+    render(<BraiApp />);
+
+    expect(await screen.findByText("Как распознавать голос?")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Локальная модель/ })).toBeInTheDocument();
+  });
+
+  it("does not pass voice training from manually typed text", async () => {
+    window.localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({
+      complete: false,
+      history: ["training-start"],
+      name: "Test",
+      path: "new",
+      profileVersion: "self-hosted",
+      step: "training-dictate",
+      voiceMode: "local",
+    }));
+
+    render(<BraiApp />);
+
+    const input = await screen.findByRole("textbox", { name: "Результат голосового ввода" });
+    fireEvent.change(input, { target: { value: "ручной текст" } });
+    expect(screen.getByRole("button", { name: "Да, вставилось" })).toBeDisabled();
+  });
 });

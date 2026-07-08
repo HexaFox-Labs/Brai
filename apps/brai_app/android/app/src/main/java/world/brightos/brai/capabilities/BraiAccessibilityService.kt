@@ -12,11 +12,11 @@ import android.os.PowerManager
 import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
-import android.view.accessibility.AccessibilityWindowInfo
 import android.widget.Toast
 import world.brightos.brai.braicmd.AccessibilityContextReader
 import world.brightos.brai.braicmd.AccessibilityTextInserter
 import world.brightos.brai.braicmd.BraiCmdBus
+import world.brightos.brai.braicmd.BraiCmdPlugin
 import world.brightos.brai.braicmd.OverlayController
 import world.brightos.brai.braicmd.PendingReason
 import world.brightos.brai.braicmd.PendingTranscript
@@ -140,6 +140,7 @@ class BraiAccessibilityService : AccessibilityService() {
 
         if (autoInsertTranscriptFile == transcript.file.name) autoInsertTranscriptFile = null
         PendingTranscriptStore.delete(transcript)
+        BraiCmdPlugin.notifyOnboardingEvent("voiceTextInserted", text)
         val pendingTranscripts = PendingTranscriptStore.list(this).size
         if (!RecordingService.hasPendingRecordings(this) && pendingTranscripts == 0) {
             BraiCmdBus.post(RecorderState.Idle)
@@ -167,7 +168,7 @@ class BraiAccessibilityService : AccessibilityService() {
         }
         val editable = findEditableNode() ?: refreshedFocusedNode()
         focusedNode = editable
-        if (editable != null && isKeyboardVisible()) {
+        if (editable != null) {
             overlay.showIfAllowed()
         } else {
             overlay.hideInputButton()
@@ -250,9 +251,6 @@ class BraiAccessibilityService : AccessibilityService() {
             retryingAutoInsert = false
         }
     }
-
-    private fun isKeyboardVisible(): Boolean =
-        windows.any { window -> window.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD }
 
     private fun isDeviceInteractive(): Boolean {
         val power = getSystemService(Context.POWER_SERVICE) as PowerManager

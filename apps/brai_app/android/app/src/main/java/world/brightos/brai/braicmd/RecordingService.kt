@@ -124,6 +124,7 @@ class RecordingService : Service() {
         ConversationContextStore.save(pendingFile, conversationContext)
         ScreenshotContextStore.move(recordingFile, pendingFile)
         if (ConfigStore(this).onboardingQueuePaused) {
+            BraiCmdPlugin.notifyOnboardingEvent("queueSaved", null)
             postPendingState(
                 message = "Запись сохранена в очереди. Отправка временно остановлена для проверки.",
                 reason = PendingReason.Network

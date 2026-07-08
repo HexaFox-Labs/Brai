@@ -8,6 +8,8 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.view.accessibility.AccessibilityManager;
 
@@ -32,6 +34,21 @@ import world.brightos.brai.capabilities.BraiAccessibilityService;
     }
 )
 public final class BraiCmdPlugin extends Plugin {
+    private static final String EVENT_ONBOARDING = "onboardingEvent";
+    private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
+    private static volatile BraiCmdPlugin activePlugin;
+
+    @Override
+    public void load() {
+        activePlugin = this;
+    }
+
+    @Override
+    protected void handleOnDestroy() {
+        if (activePlugin == this) activePlugin = null;
+        super.handleOnDestroy();
+    }
+
     @PluginMethod
     public void getState(PluginCall call) {
         call.resolve(stateJson());
@@ -236,5 +253,18 @@ public final class BraiCmdPlugin extends Plugin {
             return;
         }
         getContext().startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+    }
+
+    public static void notifyOnboardingEvent(String type, String text) {
+        BraiCmdPlugin plugin = activePlugin;
+        if (plugin == null) return;
+        MAIN_HANDLER.post(() -> plugin.notifyOnboardingEventNow(type, text));
+    }
+
+    private void notifyOnboardingEventNow(String type, String text) {
+        JSObject event = new JSObject();
+        event.put("type", type);
+        if (text != null) event.put("text", text);
+        notifyListeners(EVENT_ONBOARDING, event);
     }
 }

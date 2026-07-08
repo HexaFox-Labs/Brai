@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const plugin = vi.hoisted(() => ({
+  addListener: vi.fn(),
   ensureAccess: vi.fn(),
   getState: vi.fn(),
   openSettings: vi.fn(),
@@ -17,6 +18,7 @@ vi.mock("@capacitor/core", () => ({
 describe("Brai CMD bridge", () => {
   beforeEach(() => {
     vi.resetModules();
+    plugin.addListener.mockReset();
     plugin.ensureAccess.mockReset();
     plugin.getState.mockReset();
     plugin.openSettings.mockReset();
@@ -29,15 +31,17 @@ describe("Brai CMD bridge", () => {
 
   it("does nothing outside Android native shell", async () => {
     vi.stubGlobal("Capacitor", undefined);
-    const { ensureBraiCmdAccess, getBraiCmdState, retryBraiCmdQueue, setBraiCmdAccessKey, setBraiCmdQueuePausedMode, setBraiCmdVoiceOnlyMode } = await import("@/shared/platform/braiCmd");
+    const { ensureBraiCmdAccess, getBraiCmdState, listenBraiCmdOnboardingEvents, retryBraiCmdQueue, setBraiCmdAccessKey, setBraiCmdQueuePausedMode, setBraiCmdVoiceOnlyMode } = await import("@/shared/platform/braiCmd");
 
     await expect(getBraiCmdState()).resolves.toBeNull();
     await expect(ensureBraiCmdAccess("Test")).resolves.toBeNull();
+    await expect(listenBraiCmdOnboardingEvents(vi.fn())).resolves.toBeNull();
     await expect(setBraiCmdAccessKey("token", "Test")).resolves.toBeNull();
     await expect(setBraiCmdVoiceOnlyMode(true)).resolves.toBeNull();
     await expect(setBraiCmdQueuePausedMode(true)).resolves.toBeNull();
     await expect(retryBraiCmdQueue()).resolves.toBeNull();
     expect(plugin.getState).not.toHaveBeenCalled();
+    expect(plugin.addListener).not.toHaveBeenCalled();
     expect(plugin.setVoiceOnlyMode).not.toHaveBeenCalled();
   });
 
@@ -86,5 +90,19 @@ describe("Brai CMD bridge", () => {
     expect(plugin.setAccessKey).toHaveBeenCalledWith({ token: "fixture-access-key", displayName: "Fixture User" });
     expect(plugin.setQueuePausedMode).toHaveBeenCalledWith({ enabled: true });
     expect(plugin.retryQueue).toHaveBeenCalledWith();
+  });
+
+  it("listens to onboarding events on Android native bridge", async () => {
+    vi.stubGlobal("Capacitor", {
+      isNativePlatform: () => true,
+      getPlatform: () => "android",
+    });
+    const remove = vi.fn();
+    plugin.addListener.mockResolvedValue({ remove });
+    const listener = vi.fn();
+    const { listenBraiCmdOnboardingEvents } = await import("@/shared/platform/braiCmd");
+
+    await expect(listenBraiCmdOnboardingEvents(listener)).resolves.toEqual({ remove });
+    expect(plugin.addListener).toHaveBeenCalledWith("onboardingEvent", listener);
   });
 });

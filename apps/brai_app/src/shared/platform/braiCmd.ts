@@ -1,4 +1,4 @@
-import { registerPlugin } from "@capacitor/core";
+import { registerPlugin, type PluginListenerHandle } from "@capacitor/core";
 import { isNativeShell, platformName } from "@/shared/platform/platform";
 
 type BraiCmdPlugin = {
@@ -9,6 +9,7 @@ type BraiCmdPlugin = {
   setVoiceOnlyMode(options: { enabled: boolean }): Promise<BraiCmdState>;
   setQueuePausedMode(options: { enabled: boolean }): Promise<BraiCmdState>;
   retryQueue(): Promise<BraiCmdState>;
+  addListener(eventName: "onboardingEvent", listenerFunc: (event: BraiCmdOnboardingEvent) => void): Promise<PluginListenerHandle>;
 };
 
 const BraiCmd = registerPlugin<BraiCmdPlugin>("BraiCmd");
@@ -18,6 +19,11 @@ export type BraiCmdState = {
   accessGranted?: boolean;
   voiceOnlyMode?: boolean;
   queuePausedMode?: boolean;
+};
+
+export type BraiCmdOnboardingEvent = {
+  type?: "voiceTextInserted" | "queueSaved";
+  text?: string;
 };
 
 export async function getBraiCmdState(): Promise<BraiCmdState | null> {
@@ -80,6 +86,17 @@ export async function retryBraiCmdQueue(): Promise<BraiCmdState | null> {
   if (!isNativeAndroid()) return null;
   try {
     return await BraiCmd.retryQueue();
+  } catch {
+    return null;
+  }
+}
+
+export async function listenBraiCmdOnboardingEvents(
+  onEvent: (event: BraiCmdOnboardingEvent) => void,
+): Promise<PluginListenerHandle | null> {
+  if (!isNativeAndroid()) return null;
+  try {
+    return await BraiCmd.addListener("onboardingEvent", onEvent);
   } catch {
     return null;
   }

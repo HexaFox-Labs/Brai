@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { type FormEvent, type ReactNode, useEffect, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import {
   Bell,
   CheckCircle2,
@@ -33,8 +33,8 @@ import {
   requestAndroidMicrophone,
   requestAndroidNotifications,
 } from "@/shared/platform/androidCapabilities";
-import { ensureBraiCmdAccess, retryBraiCmdQueue, setBraiCmdAccessKey, setBraiCmdQueuePausedMode, setBraiCmdVoiceOnlyMode } from "@/shared/platform/braiCmd";
-import { isNativeShell, platformName } from "@/shared/platform/platform";
+import { ensureBraiCmdAccess, listenBraiCmdOnboardingEvents, retryBraiCmdQueue, setBraiCmdAccessKey, setBraiCmdQueuePausedMode, setBraiCmdVoiceOnlyMode } from "@/shared/platform/braiCmd";
+import { installAndroidBackHandler, isNativeShell, platformName } from "@/shared/platform/platform";
 import { Alert, AlertDescription, AlertTitle } from "@/shared/ui/alert";
 import { AnimatedShinyText } from "@/shared/ui/animated-shiny-text";
 import { Button } from "@/shared/ui/button";
@@ -67,6 +67,13 @@ type OnboardingFlowProps = {
 };
 
 const cloudHealthPath = "/v1/brai-cmd/health";
+const startButtonDelayMs = process.env.NODE_ENV === "test" ? 0 : 3000;
+const startButtonCss = `
+@keyframes brai-onboarding-start-button {
+  0%, 99% { opacity: 0; pointer-events: none; }
+  100% { opacity: 1; pointer-events: auto; }
+}
+`;
 
 export function shouldShowOnboarding(authRequired: boolean): boolean {
   const state = loadOnboardingState();
@@ -90,7 +97,13 @@ export function OnboardingFlow({
   const [providerKey, setProviderKey] = useState("");
   const [localUrl, setLocalUrl] = useState("");
   const [trainingText, setTrainingText] = useState("");
+  const [offlineText, setOfflineText] = useState("");
   const [insertedText, setInsertedText] = useState("");
+  const [trainingDictated, setTrainingDictated] = useState(false);
+  const [queueSaved, setQueueSaved] = useState(false);
+  const [queueInserted, setQueueInserted] = useState(false);
+  const stepRef = useRef<OnboardingStep>(state.step);
+  const stateRef = useRef<OnboardingState>(state);
   const isAndroid = isNativeShell() && platformName() === "android";
   const progress = stepProgress(state.step);
   const screen = screenMeta(state.step);
@@ -107,6 +120,26 @@ export function OnboardingFlow({
   useEffect(() => {
     if (state.complete && !authRequired) onDone();
   }, [authRequired, onDone, state.complete]);
+
+  useEffect(() => {
+    stateRef.current = state;
+    stepRef.current = state.step;
+  }, [state]);
+
+  useEffect(() => installAndroidBackHandler(() => {
+    const current = stateRef.current;
+    const previous = current.history.at(-1);
+    if (previous) {
+      setError("");
+      setMessage("");
+      const next = { ...current, step: previous, history: current.history.slice(0, -1) };
+      saveOnboardingState(next);
+      stateRef.current = next;
+      setState(next);
+      return true;
+    }
+    return true;
+  }), []);
 
   useEffect(() => {
     if (state.step !== "training-dictate" && state.step !== "training-offline" && state.step !== "training-queue") return;
@@ -129,6 +162,32 @@ export function OnboardingFlow({
     }
     void setBraiCmdQueuePausedMode(false);
   }, [isAndroid, state.step]);
+
+  useEffect(() => {
+    if (!isAndroid) return;
+    let remove: (() => void) | undefined;
+    void listenBraiCmdOnboardingEvents((event) => {
+      const step = stepRef.current;
+      if (event.type === "voiceTextInserted") {
+        if (step === "training-dictate") {
+          setTrainingDictated(true);
+          if (event.text?.trim()) setTrainingText(event.text);
+        }
+        if (step === "training-queue") {
+          setQueueInserted(true);
+          if (event.text?.trim()) setInsertedText(event.text);
+        }
+      }
+      if (event.type === "queueSaved" && step === "training-offline") {
+        setQueueSaved(true);
+      }
+    }).then((handle) => {
+      remove = () => {
+        void handle?.remove();
+      };
+    });
+    return () => remove?.();
+  }, [isAndroid]);
 
   async function refreshCapabilities() {
     const next = await getAndroidCapabilities();
@@ -164,7 +223,7 @@ export function OnboardingFlow({
   }
 
   function choosePath(path: "new" | "existing") {
-    go(path === "new" ? "name" : "profile-version", { path });
+    go(path === "new" ? "name" : "profile-version", { path, profileVersion: path === "new" ? "self-hosted" : null });
   }
 
   function chooseProfileVersion(profileVersion: ProfileVersion) {
@@ -284,7 +343,11 @@ export function OnboardingFlow({
 
   async function startTraining() {
     setTrainingText("");
+    setOfflineText("");
     setInsertedText("");
+    setTrainingDictated(false);
+    setQueueSaved(false);
+    setQueueInserted(false);
     if (isAndroid) {
       const access = await ensureBraiCmdAccess(state.name.trim() || "Brai");
       if (!access?.accessGranted) {
@@ -305,15 +368,7 @@ export function OnboardingFlow({
 
   function renderStep(): ReactNode {
     if (state.step === "start") {
-      return (
-        <div className="grid justify-items-center gap-8 text-center">
-          <Image className="h-auto w-72 max-w-full" src="/brand/brai-logo-transparent.svg" width="779" height="368" alt="Brai" priority draggable={false} />
-          <div className="grid w-full gap-4">
-            <p className="m-0 text-sm text-muted-foreground">Приложение скачано, но еще не подготовлено к работе.</p>
-            <ShinyButton onClick={() => go("welcome-1")}>Приступить</ShinyButton>
-          </div>
-        </div>
-      );
+      return null;
     }
 
     if (state.step.startsWith("welcome-")) {
@@ -349,14 +404,16 @@ export function OnboardingFlow({
 
     if (state.step === "name") {
       return (
-        <form className="grid gap-5" onSubmit={(event) => {
+        <form className="flex min-h-0 flex-1 flex-col" onSubmit={(event) => {
           event.preventDefault();
           if (!state.name.trim()) return setError("Введите имя.");
           go("setup-start");
         }}>
-          <InfoBlock icon={UserRound} title="Как к вам обращаться?" text="Имя нужно для приветствия и будущих голосовых подсказок." />
-          <Input value={state.name} placeholder="Ваше имя" aria-label="Имя" onChange={(event) => update({ name: event.target.value })} />
-          <PrimaryButton>Продолжить</PrimaryButton>
+          <div className="my-auto grid gap-5 py-6">
+            <InfoBlock icon={UserRound} title="Как к вам обращаться?" text="Имя нужно для приветствия и будущих голосовых подсказок." />
+            <Input value={state.name} placeholder="Ваше имя" aria-label="Имя" onChange={(event) => update({ name: event.target.value })} />
+          </div>
+          <StepActions><PrimaryButton>Продолжить</PrimaryButton></StepActions>
         </form>
       );
     }
@@ -376,10 +433,10 @@ export function OnboardingFlow({
 
     if (state.step === "cloud-password") {
       return (
-        <div className="grid gap-4">
+        <StepScreen actions={null}>
           <InfoBlock icon={Lock} title="Вход в облачный профиль" text="Пока для входа нужен только пароль." />
           <OnboardingAuthForm busy={busy} mode="password" onLogin={submitCloudLogin} onRequestOtp={onRequestOtp} onVerifyOtp={onVerifyOtp} />
-        </div>
+        </StepScreen>
       );
     }
 
@@ -425,22 +482,20 @@ export function OnboardingFlow({
 
     if (state.step === "provider-key") {
       return (
-        <div className="grid gap-4">
+        <StepScreen actions={<PrimaryButton onClick={testProviderKey}>Проверить</PrimaryButton>}>
           <InfoBlock icon={KeyRound} title="Ключ поставщика" text="Выберите поставщика, введите ключ и сохраните его для голосового модуля." />
           <Input value={provider} aria-label="Поставщик" onChange={(event) => setProvider(event.target.value)} />
           <Input value={providerKey} type="password" aria-label="Ключ поставщика" placeholder="API-ключ" onChange={(event) => setProviderKey(event.target.value)} />
-          <PrimaryButton onClick={testProviderKey}>Проверить</PrimaryButton>
-        </div>
+        </StepScreen>
       );
     }
 
     if (state.step === "local-server") {
       return (
-        <div className="grid gap-4">
+        <StepScreen actions={<PrimaryButton onClick={testLocalServer}>Проверить сервер</PrimaryButton>}>
           <InfoBlock icon={Server} title="Локальный сервер" text="Введите URL endpoint, который принимает аудио или отвечает health-проверкой." />
           <Input value={localUrl} type="url" aria-label="URL локального сервера" placeholder="https://server.example/health" onChange={(event) => setLocalUrl(event.target.value)} />
-          <PrimaryButton onClick={testLocalServer}>Проверить сервер</PrimaryButton>
-        </div>
+        </StepScreen>
       );
     }
 
@@ -450,28 +505,34 @@ export function OnboardingFlow({
       return (
         <PermissionScreen icon={MonitorUp} title="Поверх других приложений" text="Это разрешение нужно, чтобы плавающая кнопка Brai была доступна поверх текущего приложения.">
           <PrimaryButton onClick={openOverlay}>Открыть настройки</PrimaryButton>
-          <Button variant="outline" onClick={checkOverlay}>Я включил</Button>
+          <SecondaryButton onClick={checkOverlay}>Я включил</SecondaryButton>
         </PermissionScreen>
       );
     }
 
     if (state.step === "accessibility-why") return <InfoScreen icon={ShieldCheck} title="Специальные возможности" text="Они нужны, чтобы вставлять текст в поля, работать с буфером и выполнять действия на экране."><PrimaryButton onClick={() => go("accessibility-blocked")}>Продолжить</PrimaryButton></InfoScreen>;
-    if (state.step === "accessibility-blocked") return <InfoScreen icon={Lock} title="Шаг 1: получить отказ" text="Откройте специальные возможности и попробуйте включить Brai. Android должен показать, что настройка заблокирована."><PrimaryButton onClick={openAccessibility}>Открыть</PrimaryButton><Button variant="outline" onClick={() => go("accessibility-restricted")}>Да, доступ заблокирован</Button></InfoScreen>;
-    if (state.step === "accessibility-restricted") return <InfoScreen icon={ShieldCheck} title="Шаг 2: снять ограничение" text="Откройте карточку приложения, нажмите меню с тремя точками и выберите «Разрешить ограниченные настройки»."><PrimaryButton onClick={openAppSettings}>Открыть карточку приложения</PrimaryButton><Button className="min-h-12 rounded-full" variant="outline" onClick={() => go("accessibility-enable")}>Ограничение снято</Button></InfoScreen>;
-    if (state.step === "accessibility-enable") return <InfoScreen icon={ShieldCheck} title="Шаг 3: включить доступ" text="Теперь снова откройте специальные возможности и включите Brai. После возврата мы проверим состояние."><PrimaryButton onClick={openAccessibility}>Открыть</PrimaryButton><Button variant="outline" onClick={checkAccessibility}>Проверить</Button></InfoScreen>;
+    if (state.step === "accessibility-blocked") return <InfoScreen icon={Lock} title="Шаг 1: получить отказ" text="Откройте специальные возможности и попробуйте включить Brai. Android должен показать, что настройка заблокирована."><PrimaryButton onClick={openAccessibility}>Открыть</PrimaryButton><SecondaryButton onClick={() => go("accessibility-restricted")}>Да, доступ заблокирован</SecondaryButton></InfoScreen>;
+    if (state.step === "accessibility-restricted") return <InfoScreen icon={ShieldCheck} title="Шаг 2: снять ограничение" text="Откройте карточку приложения, нажмите меню с тремя точками и выберите «Разрешить ограниченные настройки»."><PrimaryButton onClick={openAppSettings}>Открыть карточку приложения</PrimaryButton><SecondaryButton onClick={() => go("accessibility-enable")}>Ограничение снято</SecondaryButton></InfoScreen>;
+    if (state.step === "accessibility-enable") return <InfoScreen icon={ShieldCheck} title="Шаг 3: включить доступ" text="Теперь снова откройте специальные возможности и включите Brai. После возврата мы проверим состояние."><PrimaryButton onClick={openAccessibility}>Открыть</PrimaryButton><SecondaryButton onClick={checkAccessibility}>Проверить</SecondaryButton></InfoScreen>;
 
     if (state.step === "microphone") return <PermissionScreen icon={Mic} title="Микрофон" text="Микрофон нужен для голосового ввода и команд."><PrimaryButton onClick={requestMic}>Разрешить микрофон</PrimaryButton></PermissionScreen>;
     if (state.step === "notifications") return <PermissionScreen icon={Bell} title="Уведомления" text="Уведомления нужны для фоновой записи, очереди и статуса отправки."><PrimaryButton onClick={requestNotifications}>Разрешить уведомления</PrimaryButton></PermissionScreen>;
 
-    if (state.step === "training-start") return <InfoScreen icon={CheckCircle2} title="Готово к обучению" text="Базовая настройка завершена. Осталось проверить голосовой сценарий в четыре шага."><PrimaryButton onClick={startTraining}>Обучение</PrimaryButton><Button variant="outline" onClick={completeSetup}>Пропустить</Button></InfoScreen>;
-    if (state.step === "training-dictate") return <TrainingDictate value={trainingText} onChange={setTrainingText} onNext={() => trainingText.trim() ? go("training-offline") : setError("Надиктуйте фразу через плавающую кнопку Brai CMD.")} />;
-    if (state.step === "training-offline") return <TrainingOffline onNext={() => go("training-queue")} />;
-    if (state.step === "training-queue") return <TrainingQueue value={insertedText} onChange={setInsertedText} onNext={() => insertedText.trim() ? go("training-storage") : setError("Вставьте результат через плавающую кнопку Brai CMD.")} />;
+    if (state.step === "training-start") return <InfoScreen icon={CheckCircle2} title="Готово к обучению" text="Базовая настройка завершена. Осталось проверить голосовой сценарий в четыре шага."><PrimaryButton onClick={startTraining}>Обучение</PrimaryButton><SecondaryButton onClick={completeSetup}>Пропустить</SecondaryButton></InfoScreen>;
+    if (state.step === "training-dictate") return <TrainingDictate confirmed={trainingDictated} value={trainingText} onChange={(value) => {
+      setTrainingText(value);
+      if (!value.trim()) setTrainingDictated(false);
+    }} onNext={() => trainingDictated && trainingText.trim() ? go("training-offline") : setError("Надиктуйте фразу через плавающую кнопку Brai CMD.")} />;
+    if (state.step === "training-offline") return <TrainingOffline confirmed={queueSaved} value={offlineText} onChange={setOfflineText} onNext={() => queueSaved ? go("training-queue") : setError("Надиктуйте запись через плавающую кнопку Brai CMD и дождитесь сохранения в очереди.")} />;
+    if (state.step === "training-queue") return <TrainingQueue confirmed={queueInserted} value={insertedText} onChange={(value) => {
+      setInsertedText(value);
+      if (!value.trim()) setQueueInserted(false);
+    }} onNext={() => queueInserted && insertedText.trim() ? go("training-storage") : setError("Вставьте расшифровку из очереди через длинное нажатие на плавающую кнопку Brai CMD.")} />;
     if (state.step === "training-storage") return <InfoScreen icon={FileAudio} title="Хранилище аудиозаписей" text="Аудиозаписи могут храниться в защищенной очереди устройства до отправки на расшифровку. После успешной обработки они очищаются согласно настройкам Brai CMD."><PrimaryButton onClick={() => go("voice-ready")}>Продолжить</PrimaryButton></InfoScreen>;
 
     if (state.step === "voice-ready") return <InfoScreen icon={CheckCircle2} title="Голосовое управление настроено" text="Brai CMD готов принимать голос, работать с очередью и вставлять результат в поле."><PrimaryButton onClick={completeSetup}>Готово</PrimaryButton></InfoScreen>;
     if (state.step === "login-check") return <InfoScreen icon={Lock} title="Проверяем вход" text="Если профиль уже открыт, вы попадете в кабинет. Если нет — доступ будет ограничен входом и настройками."><PrimaryButton onClick={() => authRequired ? go("locked") : onDone()}>Продолжить</PrimaryButton></InfoScreen>;
-    if (state.step === "locked") return <InfoScreen icon={Lock} title="Нужен вход" text="Пока вы не вошли, доступны только вход и настройки Brai CMD."><PrimaryButton onClick={() => go("login")}>Войти</PrimaryButton><Button variant="outline" onClick={openCmdSettings}>Настройки Brai CMD</Button></InfoScreen>;
+    if (state.step === "locked") return <InfoScreen icon={Lock} title="Нужен вход" text="Пока вы не вошли, доступны только вход и настройки Brai CMD."><PrimaryButton onClick={() => go("login")}>Войти</PrimaryButton><SecondaryButton onClick={openCmdSettings}>Настройки Brai CMD</SecondaryButton></InfoScreen>;
     if (state.step === "login") return <OnboardingAuthForm busy={busy} mode={authMode} onLogin={onLogin} onRequestOtp={onRequestOtp} onVerifyOtp={onVerifyOtp} />;
     if (state.step === "cmd-settings") {
       return (
@@ -486,6 +547,35 @@ export function OnboardingFlow({
     }
 
     return null;
+  }
+
+  if (state.step === "start") {
+    return (
+      <main className="relative h-dvh overflow-hidden bg-black text-foreground" data-onboarding-flow data-theme="dark" style={{ colorScheme: "dark" }}>
+        <style>{startButtonCss}</style>
+        <Image
+          className="absolute left-1/2 top-1/2 h-auto w-72 max-w-[78vw] -translate-x-1/2 -translate-y-1/2"
+          src="/brand/brai-logo-transparent.svg"
+          width="779"
+          height="368"
+          alt="Brai"
+          priority
+          draggable={false}
+        />
+        <div
+          className={cx(
+            "absolute inset-x-6 bottom-[calc(env(safe-area-inset-bottom)+3rem)] mx-auto max-w-md",
+            startButtonDelayMs === 0 ? "pointer-events-auto" : "pointer-events-none",
+          )}
+          style={{
+            opacity: startButtonDelayMs === 0 ? 1 : 0,
+            animation: startButtonDelayMs === 0 ? undefined : `brai-onboarding-start-button 300ms ease-out ${startButtonDelayMs}ms both`,
+          }}
+        >
+          <ShinyButton onClick={() => go("welcome-1")}>Приступить</ShinyButton>
+        </div>
+      </main>
+    );
   }
 
   return (
@@ -506,7 +596,7 @@ export function OnboardingFlow({
           {screen.description ? <p className="m-0 text-sm text-muted-foreground">{screen.description}</p> : null}
           {error ? <StatusAlert tone="bad" title="Нужно проверить" text={error} /> : null}
           {message ? <StatusAlert tone="ok" title="Готово" text={message} /> : null}
-          <section className="flex min-h-0 flex-1 flex-col justify-center py-8">
+          <section className="flex min-h-0 flex-1 flex-col py-4">
             {body}
           </section>
         </div>
@@ -531,7 +621,24 @@ function ShinyButton({ children, onClick }: { children: ReactNode; onClick: () =
 }
 
 function PrimaryButton(props: React.ComponentProps<typeof Button>) {
-  return <Button className={cx("min-h-12 w-full rounded-full sm:w-auto", props.className)} {...props} />;
+  return <Button className={cx("min-h-12 w-full rounded-full", props.className)} {...props} />;
+}
+
+function SecondaryButton(props: React.ComponentProps<typeof Button>) {
+  return <Button variant="outline" className={cx("min-h-12 w-full rounded-full", props.className)} {...props} />;
+}
+
+function StepScreen({ actions, children }: { actions?: ReactNode; children: ReactNode }) {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="my-auto grid gap-6 py-6">{children}</div>
+      {actions ? <StepActions>{actions}</StepActions> : null}
+    </div>
+  );
+}
+
+function StepActions({ children }: { children: ReactNode }) {
+  return <div className="grid gap-3 pb-2 pt-6">{children}</div>;
 }
 
 function InfoBlock({ icon: Icon, title, text }: { icon: LucideIcon; title: string; text: string }) {
@@ -550,17 +657,18 @@ function InfoBlock({ icon: Icon, title, text }: { icon: LucideIcon; title: strin
 
 function InfoScreen({ children, eyebrow, icon, text, title }: { children: ReactNode; eyebrow?: string; icon: LucideIcon; text: string; title: string }) {
   return (
-    <div className="grid gap-6">
-      {eyebrow ? <p className="m-0 text-sm font-medium text-muted-foreground">{eyebrow}</p> : null}
-      <InfoBlock icon={icon} title={title} text={text} />
-      <div className="grid gap-3 sm:flex sm:flex-wrap">{children}</div>
-    </div>
+    <StepScreen actions={children}>
+      <div className="grid gap-6">
+        {eyebrow ? <p className="m-0 text-sm font-medium text-muted-foreground">{eyebrow}</p> : null}
+        <InfoBlock icon={icon} title={title} text={text} />
+      </div>
+    </StepScreen>
   );
 }
 
 function ChoiceScreen({ choices, text, title }: { choices: Array<{ icon: LucideIcon; title: string; text: string; onClick: () => void }>; text: string; title: string }) {
   return (
-    <div className="grid gap-5">
+    <div className="my-auto grid gap-5 py-6">
       <InfoBlock icon={Radio} title={title} text={text} />
       <div className="grid gap-3 sm:grid-cols-2">
         {choices.map((choice) => (
@@ -578,7 +686,7 @@ function ChoiceScreen({ choices, text, title }: { choices: Array<{ icon: LucideI
 function PermissionScreen({ children, icon, text, title }: { children: ReactNode; icon: LucideIcon; text: string; title: string }) {
   return (
     <InfoScreen icon={icon} title={title} text={text}>
-      <div className="flex flex-wrap gap-2">{children}</div>
+      {children}
     </InfoScreen>
   );
 }
@@ -594,13 +702,15 @@ function DemoPlaceholder({ label }: { label: string }) {
 function AccessKeyForm({ onSubmit }: { onSubmit: (key: string) => void }) {
   const [key, setKey] = useState("");
   return (
-    <form className="grid gap-4" onSubmit={(event) => {
+    <form className="flex min-h-0 flex-1 flex-col" onSubmit={(event) => {
       event.preventDefault();
       onSubmit(key);
     }}>
-      <InfoBlock icon={KeyRound} title="Ключ доступа" text="Введите ключ self-hosted профиля, чтобы связать приложение с вашим сервером." />
-      <Input value={key} type="password" aria-label="Ключ доступа" placeholder="Ключ доступа" onChange={(event) => setKey(event.target.value)} />
-      <PrimaryButton>Подключить</PrimaryButton>
+      <div className="my-auto grid gap-4 py-6">
+        <InfoBlock icon={KeyRound} title="Ключ доступа" text="Введите ключ self-hosted профиля, чтобы связать приложение с вашим сервером." />
+        <Input value={key} type="password" aria-label="Ключ доступа" placeholder="Ключ доступа" onChange={(event) => setKey(event.target.value)} />
+      </div>
+      <StepActions><PrimaryButton>Подключить</PrimaryButton></StepActions>
     </form>
   );
 }
@@ -708,32 +818,36 @@ function OnboardingAuthForm({
   );
 }
 
-function TrainingDictate({ onChange, onNext, value }: { value: string; onChange: (value: string) => void; onNext: () => void }) {
+function TrainingDictate({ confirmed, onChange, onNext, value }: { confirmed: boolean; value: string; onChange: (value: string) => void; onNext: () => void }) {
   return (
-    <div className="grid gap-4">
-      <InfoBlock icon={Mic} title="Шаг 1: голос в поле" text="Надиктуйте фразу. Она должна появиться в поле ввода." />
+    <StepScreen
+      actions={<PrimaryButton disabled={!confirmed || !value.trim()} onClick={onNext}>Да, вставилось</PrimaryButton>}
+    >
+      <InfoBlock icon={Mic} title="Шаг 1: голос в поле" text="Нажмите плавающую кнопку Brai CMD и надиктуйте фразу. Вперёд пустим только после нативного события распознавания." />
       <VoiceOnlyTextarea value={value} placeholder="Здесь появится результат голосового ввода" ariaLabel="Результат голосового ввода" onChange={onChange} />
-      {value.trim() ? <PrimaryButton onClick={onNext}>Да, вставилось</PrimaryButton> : null}
-    </div>
+    </StepScreen>
   );
 }
 
-function TrainingOffline({ onNext }: { onNext: () => void }) {
+function TrainingOffline({ confirmed, onChange, onNext, value }: { confirmed: boolean; value: string; onChange: (value: string) => void; onNext: () => void }) {
   return (
-    <div className="grid gap-4">
-      <InfoBlock icon={WifiOff} title="Шаг 2: очередь без связи" text="Отправка временно отключена. Нажмите плавающую кнопку, надиктуйте фразу и остановите запись: Android должен показать, что запись сохранена в очереди." />
-      <PrimaryButton onClick={onNext}>Запись в очереди</PrimaryButton>
-    </div>
+    <StepScreen
+      actions={<PrimaryButton disabled={!confirmed} onClick={onNext}>Запись в очереди</PrimaryButton>}
+    >
+      <InfoBlock icon={WifiOff} title="Шаг 2: очередь без связи" text="На этом экране отправка программно остановлена. Нажмите плавающую кнопку, надиктуйте и остановите запись: она должна сохраниться в очереди." />
+      <VoiceOnlyTextarea value={value} placeholder="Поле нужно только для появления плавающей кнопки" ariaLabel="Поле проверки очереди" onChange={onChange} />
+    </StepScreen>
   );
 }
 
-function TrainingQueue({ onChange, onNext, value }: { value: string; onChange: (value: string) => void; onNext: () => void }) {
+function TrainingQueue({ confirmed, onChange, onNext, value }: { confirmed: boolean; value: string; onChange: (value: string) => void; onNext: () => void }) {
   return (
-    <div className="grid gap-4">
-      <InfoBlock icon={Send} title="Шаг 3: вставка из очереди" text="Повторная отправка уже запущена и повторяется каждые несколько секунд. Когда текст будет готов, зажмите плавающую кнопку и вставьте результат в поле." />
+    <StepScreen
+      actions={<PrimaryButton disabled={!confirmed || !value.trim()} onClick={onNext}>Данные вставлены</PrimaryButton>}
+    >
+      <InfoBlock icon={Send} title="Шаг 3: вставка из очереди" text="Повторная отправка уже запущена. Когда расшифровка готова, зажмите плавающую кнопку и вставьте результат в поле." />
       <VoiceOnlyTextarea value={value} placeholder="Здесь появится результат из очереди" ariaLabel="Результат из очереди" onChange={onChange} />
-      {value.trim() ? <PrimaryButton onClick={onNext}>Данные вставлены</PrimaryButton> : null}
-    </div>
+    </StepScreen>
   );
 }
 
@@ -746,17 +860,11 @@ function VoiceOnlyTextarea({ ariaLabel, onChange, placeholder, value }: { ariaLa
         autoCapitalize="none"
         autoCorrect="off"
         className="min-h-32 resize-none pr-14"
-        inputMode="none"
         spellCheck={false}
         value={value}
         placeholder={placeholder}
         aria-label={ariaLabel}
         onChange={(event) => onChange(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Tab" || event.key === "Escape") return;
-          event.preventDefault();
-        }}
-        onPaste={(event) => event.preventDefault()}
       />
       {value ? (
         <Button
