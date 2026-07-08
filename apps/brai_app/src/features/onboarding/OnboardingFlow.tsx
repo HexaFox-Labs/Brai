@@ -42,6 +42,7 @@ import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/shared/ui/fie
 import { Input } from "@/shared/ui/input";
 import { Progress } from "@/shared/ui/progress";
 import { ScrollArea } from "@/shared/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 import { Textarea } from "@/shared/ui/textarea";
 import { cx } from "../app/appUtils";
 import {
@@ -68,9 +69,11 @@ type OnboardingFlowProps = {
 
 const cloudHealthPath = "/v1/brai-cmd/health";
 const startButtonDelayMs = process.env.NODE_ENV === "test" ? 0 : 3000;
+const logoFrameClass = "relative aspect-[779/368] w-64 max-w-[78vw] sm:w-80";
+const providerOptions = ["Groq", "OpenAI", "Deepgram", "AssemblyAI"] as const;
 const startButtonCss = `
 @keyframes brai-onboarding-start-button {
-  0%, 99% { opacity: 0; pointer-events: none; }
+  0% { opacity: 0; pointer-events: none; }
   100% { opacity: 1; pointer-events: auto; }
 }
 `;
@@ -99,6 +102,7 @@ export function OnboardingFlow({
   const [trainingText, setTrainingText] = useState("");
   const [offlineText, setOfflineText] = useState("");
   const [insertedText, setInsertedText] = useState("");
+  const [openedSystemStep, setOpenedSystemStep] = useState<OnboardingStep | null>(null);
   const [trainingDictated, setTrainingDictated] = useState(false);
   const [queueSaved, setQueueSaved] = useState(false);
   const [queueInserted, setQueueInserted] = useState(false);
@@ -288,13 +292,12 @@ export function OnboardingFlow({
   }
 
   async function openOverlay() {
+    setOpenedSystemStep("overlay");
     if (!isAndroid) {
-      setMessage("В веб-просмотре системное разрешение считается включенным.");
       go("accessibility-why");
       return;
     }
     await openAndroidOverlaySettings();
-    setMessage("Вернитесь сюда после включения разрешения поверх экрана.");
     await refreshCapabilities();
   }
 
@@ -305,22 +308,20 @@ export function OnboardingFlow({
   }
 
   async function openAccessibility() {
+    setOpenedSystemStep(stepRef.current);
     if (!isAndroid) {
-      setMessage("В веб-просмотре шаг считается пройденным.");
       return;
     }
     await openAndroidAccessibilitySettings();
-    setMessage("Вернитесь сюда после системного шага.");
     await refreshCapabilities();
   }
 
   async function openAppSettings() {
+    setOpenedSystemStep("accessibility-restricted");
     if (!isAndroid) {
-      setMessage("В веб-просмотре карточка приложения недоступна.");
       return;
     }
     await openAndroidAppSettings();
-    setMessage("Откройте меню с тремя точками и выберите «Разрешить ограниченные настройки».");
   }
 
   async function checkAccessibility() {
@@ -413,7 +414,7 @@ export function OnboardingFlow({
             <InfoBlock icon={UserRound} title="Как к вам обращаться?" text="Имя нужно для приветствия и будущих голосовых подсказок." />
             <Input value={state.name} placeholder="Ваше имя" aria-label="Имя" onChange={(event) => update({ name: event.target.value })} />
           </div>
-          <StepActions><PrimaryButton>Продолжить</PrimaryButton></StepActions>
+          <StepActions><PrimaryButton disabled={!state.name.trim()}>Продолжить</PrimaryButton></StepActions>
         </form>
       );
     }
@@ -473,18 +474,26 @@ export function OnboardingFlow({
     if (state.step === "voice-choice") {
       const choices = [
         { icon: KeyRound, title: "Ключ поставщика", text: "Выбрать поставщика и сохранить API-ключ.", onClick: () => chooseVoiceMode("provider") },
-        state.profileVersion === "self-hosted"
-          ? { icon: Server, title: "Локальная модель", text: "Подключить URL модели на вашем сервере.", onClick: () => chooseVoiceMode("local") }
-          : { icon: Cloud, title: "Облачный модуль", text: "Использовать облачное распознавание Brai.", onClick: () => chooseVoiceMode("cloud") },
+        { icon: Cloud, title: "Облачный модуль", text: "Использовать облачное распознавание Brai.", onClick: () => chooseVoiceMode("cloud") },
+        { icon: Server, title: "Локальная модель", text: "Подключить URL модели на вашем сервере.", onClick: () => chooseVoiceMode("local") },
       ];
       return <ChoiceScreen title="Как распознавать голос?" text="Выберите способ, который будет использовать Brai CMD." choices={choices} />;
     }
 
     if (state.step === "provider-key") {
       return (
-        <StepScreen actions={<PrimaryButton onClick={testProviderKey}>Проверить</PrimaryButton>}>
+        <StepScreen actions={<PrimaryButton disabled={!provider || providerKey.trim().length < 8} onClick={testProviderKey}>Проверить</PrimaryButton>}>
           <InfoBlock icon={KeyRound} title="Ключ поставщика" text="Выберите поставщика, введите ключ и сохраните его для голосового модуля." />
-          <Input value={provider} aria-label="Поставщик" onChange={(event) => setProvider(event.target.value)} />
+          <Select value={provider} onValueChange={setProvider}>
+            <SelectTrigger className="w-full" aria-label="Поставщик">
+              <SelectValue placeholder="Выберите поставщика" />
+            </SelectTrigger>
+            <SelectContent>
+              {providerOptions.map((option) => (
+                <SelectItem key={option} value={option}>{option}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Input value={providerKey} type="password" aria-label="Ключ поставщика" placeholder="API-ключ" onChange={(event) => setProviderKey(event.target.value)} />
         </StepScreen>
       );
@@ -492,7 +501,7 @@ export function OnboardingFlow({
 
     if (state.step === "local-server") {
       return (
-        <StepScreen actions={<PrimaryButton onClick={testLocalServer}>Проверить сервер</PrimaryButton>}>
+        <StepScreen actions={<PrimaryButton disabled={!isValidUrl(localUrl)} onClick={testLocalServer}>Проверить сервер</PrimaryButton>}>
           <InfoBlock icon={Server} title="Локальный сервер" text="Введите URL endpoint, который принимает аудио или отвечает health-проверкой." />
           <Input value={localUrl} type="url" aria-label="URL локального сервера" placeholder="https://server.example/health" onChange={(event) => setLocalUrl(event.target.value)} />
         </StepScreen>
@@ -505,15 +514,15 @@ export function OnboardingFlow({
       return (
         <PermissionScreen icon={MonitorUp} title="Поверх других приложений" text="Это разрешение нужно, чтобы плавающая кнопка Brai была доступна поверх текущего приложения.">
           <PrimaryButton onClick={openOverlay}>Открыть настройки</PrimaryButton>
-          <SecondaryButton onClick={checkOverlay}>Я включил</SecondaryButton>
+          <SecondaryButton disabled={isAndroid && openedSystemStep !== "overlay"} onClick={checkOverlay}>Я включил</SecondaryButton>
         </PermissionScreen>
       );
     }
 
     if (state.step === "accessibility-why") return <InfoScreen icon={ShieldCheck} title="Специальные возможности" text="Они нужны, чтобы вставлять текст в поля, работать с буфером и выполнять действия на экране."><PrimaryButton onClick={() => go("accessibility-blocked")}>Продолжить</PrimaryButton></InfoScreen>;
-    if (state.step === "accessibility-blocked") return <InfoScreen icon={Lock} title="Шаг 1: получить отказ" text="Откройте специальные возможности и попробуйте включить Brai. Android должен показать, что настройка заблокирована."><PrimaryButton onClick={openAccessibility}>Открыть</PrimaryButton><SecondaryButton onClick={() => go("accessibility-restricted")}>Да, доступ заблокирован</SecondaryButton></InfoScreen>;
-    if (state.step === "accessibility-restricted") return <InfoScreen icon={ShieldCheck} title="Шаг 2: снять ограничение" text="Откройте карточку приложения, нажмите меню с тремя точками и выберите «Разрешить ограниченные настройки»."><PrimaryButton onClick={openAppSettings}>Открыть карточку приложения</PrimaryButton><SecondaryButton onClick={() => go("accessibility-enable")}>Ограничение снято</SecondaryButton></InfoScreen>;
-    if (state.step === "accessibility-enable") return <InfoScreen icon={ShieldCheck} title="Шаг 3: включить доступ" text="Теперь снова откройте специальные возможности и включите Brai. После возврата мы проверим состояние."><PrimaryButton onClick={openAccessibility}>Открыть</PrimaryButton><SecondaryButton onClick={checkAccessibility}>Проверить</SecondaryButton></InfoScreen>;
+    if (state.step === "accessibility-blocked") return <InfoScreen icon={Lock} title="Шаг 1: получить отказ" text="Откройте специальные возможности и попробуйте включить Brai. Android должен показать, что настройка заблокирована."><PrimaryButton onClick={openAccessibility}>Открыть</PrimaryButton><SecondaryButton disabled={isAndroid && openedSystemStep !== "accessibility-blocked"} onClick={() => go("accessibility-restricted")}>Да, доступ заблокирован</SecondaryButton></InfoScreen>;
+    if (state.step === "accessibility-restricted") return <InfoScreen icon={ShieldCheck} title="Шаг 2: снять ограничение" text="Откройте карточку приложения, нажмите меню с тремя точками и выберите «Разрешить ограниченные настройки»."><PrimaryButton onClick={openAppSettings}>Открыть карточку приложения</PrimaryButton><SecondaryButton disabled={isAndroid && openedSystemStep !== "accessibility-restricted"} onClick={() => go("accessibility-enable")}>Ограничение снято</SecondaryButton></InfoScreen>;
+    if (state.step === "accessibility-enable") return <InfoScreen icon={ShieldCheck} title="Шаг 3: включить доступ" text="Теперь снова откройте специальные возможности и включите Brai. После возврата мы проверим состояние."><PrimaryButton onClick={openAccessibility}>Открыть</PrimaryButton><SecondaryButton disabled={isAndroid && openedSystemStep !== "accessibility-enable"} onClick={checkAccessibility}>Проверить</SecondaryButton></InfoScreen>;
 
     if (state.step === "microphone") return <PermissionScreen icon={Mic} title="Микрофон" text="Микрофон нужен для голосового ввода и команд."><PrimaryButton onClick={requestMic}>Разрешить микрофон</PrimaryButton></PermissionScreen>;
     if (state.step === "notifications") return <PermissionScreen icon={Bell} title="Уведомления" text="Уведомления нужны для фоновой записи, очереди и статуса отправки."><PrimaryButton onClick={requestNotifications}>Разрешить уведомления</PrimaryButton></PermissionScreen>;
@@ -553,15 +562,17 @@ export function OnboardingFlow({
     return (
       <main className="relative h-dvh overflow-hidden bg-black text-foreground" data-onboarding-flow data-theme="dark" style={{ colorScheme: "dark" }}>
         <style>{startButtonCss}</style>
-        <Image
-          className="absolute left-1/2 top-1/2 h-auto w-72 max-w-[78vw] -translate-x-1/2 -translate-y-1/2"
-          src="/brand/brai-logo-transparent.svg"
-          width="779"
-          height="368"
-          alt="Brai"
-          priority
-          draggable={false}
-        />
+        <div className={cx("absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2", logoFrameClass)}>
+          <Image
+            className="object-contain"
+            src="/brand/brai-logo-transparent.svg"
+            alt="Brai"
+            fill
+            sizes="(min-width: 640px) 20rem, 16rem"
+            priority
+            draggable={false}
+          />
+        </div>
         <div
           className={cx(
             "absolute inset-x-6 bottom-[calc(env(safe-area-inset-bottom)+3rem)] mx-auto max-w-md",
@@ -606,26 +617,30 @@ export function OnboardingFlow({
 }
 
 function ShinyButton({ children, onClick }: { children: ReactNode; onClick: () => void }) {
+  return <PrimaryButton onClick={onClick}>{children}</PrimaryButton>;
+}
+
+function PrimaryButton({ children, className, disabled, ...props }: React.ComponentProps<typeof Button>) {
   return (
     <Button
       size="lg"
       variant="outline"
-      className="min-h-12 w-full overflow-hidden rounded-full border-primary/35 bg-primary/10 px-6 text-base shadow-lg shadow-primary/10 hover:bg-primary/15"
-      onClick={onClick}
+      className={cx(
+        "min-h-12 w-full overflow-hidden rounded-full border-primary/35 bg-primary/10 px-6 text-base shadow-lg shadow-primary/10 hover:bg-primary/15 disabled:border-muted/30 disabled:bg-muted/20 disabled:opacity-60 disabled:shadow-none disabled:hover:bg-muted/20",
+        className,
+      )}
+      disabled={disabled}
+      {...props}
     >
-      <AnimatedShinyText shimmerWidth={140} className="font-semibold text-foreground/90 dark:text-foreground">
+      <AnimatedShinyText shimmerWidth={140} className={cx("font-semibold", disabled ? "text-muted-foreground dark:text-muted-foreground" : "text-foreground/90 dark:text-foreground")}>
         {children}
       </AnimatedShinyText>
     </Button>
   );
 }
 
-function PrimaryButton(props: React.ComponentProps<typeof Button>) {
-  return <Button className={cx("min-h-12 w-full rounded-full", props.className)} {...props} />;
-}
-
-function SecondaryButton(props: React.ComponentProps<typeof Button>) {
-  return <Button variant="outline" className={cx("min-h-12 w-full rounded-full", props.className)} {...props} />;
+function SecondaryButton({ className, ...props }: React.ComponentProps<typeof Button>) {
+  return <Button variant="outline" className={cx("min-h-12 w-full rounded-full border-primary/20 bg-transparent hover:bg-primary/10 disabled:opacity-50", className)} {...props} />;
 }
 
 function StepScreen({ actions, children }: { actions?: ReactNode; children: ReactNode }) {
@@ -710,7 +725,7 @@ function AccessKeyForm({ onSubmit }: { onSubmit: (key: string) => void }) {
         <InfoBlock icon={KeyRound} title="Ключ доступа" text="Введите ключ self-hosted профиля, чтобы связать приложение с вашим сервером." />
         <Input value={key} type="password" aria-label="Ключ доступа" placeholder="Ключ доступа" onChange={(event) => setKey(event.target.value)} />
       </div>
-      <StepActions><PrimaryButton>Подключить</PrimaryButton></StepActions>
+      <StepActions><PrimaryButton disabled={key.trim().length < 8}>Подключить</PrimaryButton></StepActions>
     </form>
   );
 }
@@ -891,6 +906,15 @@ function StatusAlert({ text, title, tone }: { title: string; text: string; tone:
       <AlertDescription>{text}</AlertDescription>
     </Alert>
   );
+}
+
+function isValidUrl(value: string): boolean {
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 function screenMeta(step: OnboardingStep): { title: string; description?: string } {

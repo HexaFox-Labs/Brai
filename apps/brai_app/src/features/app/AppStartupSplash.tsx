@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
-import { useReducedMotion } from "motion/react";
 
 export const SPLASH_MIN_VISIBLE_MS = 3000;
 export const SPLASH_MAX_VISIBLE_MS = 5000;
 const IS_TEST_RUNTIME = process.env.NODE_ENV === "test";
+const LOGO_FRAME_CLASS = "relative aspect-[779/368] w-64 max-w-[78vw] sm:w-80";
 const SPLASH_TIMEOUT_CSS = `
 @keyframes brai-startup-splash-timeout {
   0%, 99% { opacity: 1; pointer-events: auto; visibility: visible; }
@@ -15,11 +15,9 @@ const SPLASH_TIMEOUT_CSS = `
 `;
 
 export function AppStartupSplash({ ready }: { ready: boolean }) {
-  const reduceMotion = Boolean(useReducedMotion()) || IS_TEST_RUNTIME;
   const [elapsed, setElapsed] = useState(false);
   const [expired, setExpired] = useState(false);
   const show = !expired && (!ready || !elapsed);
-  const logoClassName = reduceMotion ? "h-auto w-64 sm:w-80" : "h-auto w-64 animate-in fade-in-0 duration-300 sm:w-80";
 
   useEffect(() => {
     const minTimeout = window.setTimeout(() => setElapsed(true), SPLASH_MIN_VISIBLE_MS);
@@ -39,15 +37,17 @@ export function AppStartupSplash({ ready }: { ready: boolean }) {
         data-startup-splash
         aria-label="Brai"
       >
-        <Image
-          className={logoClassName}
-          src="/brand/brai-logo-transparent.svg"
-          width="779"
-          height="368"
-          alt="Brai"
-          priority={!IS_TEST_RUNTIME}
-          draggable={false}
-        />
+        <div className={LOGO_FRAME_CLASS}>
+          <Image
+            className="object-contain"
+            src="/brand/brai-logo-transparent.svg"
+            alt="Brai"
+            fill
+            sizes="(min-width: 640px) 20rem, 16rem"
+            priority={!IS_TEST_RUNTIME}
+            draggable={false}
+          />
+        </div>
       </div>
     </>
   ) : null;

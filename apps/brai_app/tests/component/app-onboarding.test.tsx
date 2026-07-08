@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { setupBraiAppTest } from "./app-test-support";
+import { setupBraiAppTest, stubAndroidCapacitor } from "./app-test-support";
 import { BraiApp } from "@/features/app/BraiApp";
 import { ONBOARDING_STORAGE_KEY } from "@/features/onboarding/onboardingModel";
 
@@ -65,7 +65,7 @@ describe("BraiApp onboarding", () => {
     expect(screen.queryByRole("textbox", { name: "Добавить" })).not.toBeInTheDocument();
   }, 10000);
 
-  it("offers local voice recognition for a new self-hosted setup", async () => {
+  it("offers cloud and local voice recognition for a new setup", async () => {
     window.localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({
       complete: false,
       history: [],
@@ -79,7 +79,43 @@ describe("BraiApp onboarding", () => {
     render(<BraiApp />);
 
     expect(await screen.findByText("Как распознавать голос?")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Облачный модуль/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Локальная модель/ })).toBeInTheDocument();
+  });
+
+  it("uses a select for provider choice and mutes provider testing until the key is entered", async () => {
+    window.localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({
+      complete: false,
+      history: ["voice-choice"],
+      name: "Test",
+      path: "new",
+      profileVersion: "self-hosted",
+      step: "provider-key",
+      voiceMode: "provider",
+    }));
+
+    render(<BraiApp />);
+
+    expect(await screen.findByRole("combobox", { name: "Поставщик" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Проверить" })).toBeDisabled();
+  });
+
+  it("mutes overlay confirmation before opening Android settings", async () => {
+    stubAndroidCapacitor();
+    window.localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({
+      complete: false,
+      history: ["cloud-privacy"],
+      name: "Test",
+      path: "new",
+      profileVersion: "cloud",
+      step: "overlay",
+      voiceMode: "cloud",
+    }));
+
+    render(<BraiApp />);
+
+    expect(await screen.findByRole("button", { name: "Я включил" })).toBeDisabled();
+    expect(screen.queryByText("Готово")).not.toBeInTheDocument();
   });
 
   it("does not pass voice training from manually typed text", async () => {
