@@ -11,6 +11,7 @@ import {
   Cloud,
   Command,
   CircleX,
+  ExternalLink,
   FileAudio,
   KeyRound,
   Lock,
@@ -725,26 +726,26 @@ export function OnboardingFlow({
     if (state.step === "overlay") {
       return (
         <PermissionScreen icon={MonitorUp} title="Поверх других приложений" text="Это разрешение нужно, чтобы плавающая кнопка Brai была доступна поверх текущего приложения.">
-          <SecondaryButton icon={MonitorUp} onClick={openOverlay}>Открыть настройки</SecondaryButton>
+          <SecondaryButton icon={ExternalLink} onClick={openOverlay}>Открыть настройки</SecondaryButton>
           <CheckActionButton status={checkStatus("overlay")} onClick={checkOverlay} />
         </PermissionScreen>
       );
     }
 
     if (state.step === "accessibility-why") return <InfoScreen icon={ShieldCheck} title="Специальные возможности" text="Они нужны, чтобы вставлять текст в поля, работать с буфером и выполнять действия на экране."><PrimaryButton onClick={() => go("accessibility-blocked")}>Продолжить</PrimaryButton></InfoScreen>;
-    if (state.step === "accessibility-blocked") return <InfoScreen icon={Lock} title="Шаг 1: получить отказ" text="Откройте специальные возможности и попробуйте включить Brai. Android должен показать, что настройка заблокирована."><SecondaryButton icon={ShieldCheck} onClick={openAccessibility}>Открыть</SecondaryButton><PrimaryButton disabled={isAndroid && manualConfirmReadyStep !== "accessibility-blocked"} icon={CheckCircle2} onClick={() => go("accessibility-restricted")}>Да, доступ заблокирован</PrimaryButton></InfoScreen>;
-    if (state.step === "accessibility-restricted") return <InfoScreen icon={ShieldCheck} title="Шаг 2: снять ограничение" text="Откройте карточку приложения, нажмите меню с тремя точками и выберите «Разрешить ограниченные настройки»."><SecondaryButton icon={ShieldCheck} onClick={openAppSettings}>Открыть карточку приложения</SecondaryButton><PrimaryButton disabled={isAndroid && manualConfirmReadyStep !== "accessibility-restricted"} icon={CheckCircle2} onClick={() => go("accessibility-enable")}>Ограничение снято</PrimaryButton></InfoScreen>;
-    if (state.step === "accessibility-enable") return <InfoScreen icon={ShieldCheck} title="Шаг 3: включить доступ" text="Теперь снова откройте специальные возможности и включите Brai. После возврата мы проверим состояние."><SecondaryButton icon={ShieldCheck} onClick={openAccessibility}>Открыть</SecondaryButton><CheckActionButton status={checkStatus("accessibility-enable")} onClick={checkAccessibility} /></InfoScreen>;
+    if (state.step === "accessibility-blocked") return <InfoScreen icon={Lock} title="Шаг 1: получить отказ" text="Откройте специальные возможности и попробуйте включить Brai. Android должен показать, что настройка заблокирована."><SecondaryButton icon={ExternalLink} onClick={openAccessibility}>Открыть</SecondaryButton><PrimaryButton disabled={isAndroid && manualConfirmReadyStep !== "accessibility-blocked"} icon={CheckCircle2} onClick={() => go("accessibility-restricted")}>Да, доступ заблокирован</PrimaryButton></InfoScreen>;
+    if (state.step === "accessibility-restricted") return <InfoScreen icon={ShieldCheck} title="Шаг 2: снять ограничение" text="Откройте карточку приложения, нажмите меню с тремя точками и выберите «Разрешить ограниченные настройки»."><SecondaryButton icon={ExternalLink} onClick={openAppSettings}>Открыть карточку приложения</SecondaryButton><PrimaryButton disabled={isAndroid && manualConfirmReadyStep !== "accessibility-restricted"} icon={CheckCircle2} onClick={() => go("accessibility-enable")}>Ограничение снято</PrimaryButton></InfoScreen>;
+    if (state.step === "accessibility-enable") return <InfoScreen icon={ShieldCheck} title="Шаг 3: включить доступ" text="Теперь снова откройте специальные возможности и включите Brai. После возврата мы проверим состояние."><SecondaryButton icon={ExternalLink} onClick={openAccessibility}>Открыть</SecondaryButton><CheckActionButton status={checkStatus("accessibility-enable")} onClick={checkAccessibility} /></InfoScreen>;
 
     if (state.step === "microphone") return (
       <PermissionScreen icon={Mic} title="Микрофон" text="Микрофон нужен для голосового ввода и команд.">
-        {permissionFallbackStep === "microphone" ? <SecondaryButton icon={ShieldCheck} onClick={() => openPermissionAppSettings("microphone")}>Открыть настройки приложения</SecondaryButton> : null}
+        {permissionFallbackStep === "microphone" ? <SecondaryButton icon={ExternalLink} onClick={() => openPermissionAppSettings("microphone")}>Открыть настройки приложения</SecondaryButton> : null}
         <CheckActionButton idleLabel={permissionFallbackStep === "microphone" ? "Проверить" : "Разрешить микрофон"} status={checkStatus("microphone")} onClick={requestMic} />
       </PermissionScreen>
     );
     if (state.step === "notifications") return (
       <PermissionScreen icon={Bell} title="Уведомления" text="Уведомления нужны для фоновой записи, очереди и статуса отправки.">
-        {permissionFallbackStep === "notifications" ? <SecondaryButton icon={ShieldCheck} onClick={() => openPermissionAppSettings("notifications")}>Открыть настройки приложения</SecondaryButton> : null}
+        {permissionFallbackStep === "notifications" ? <SecondaryButton icon={ExternalLink} onClick={() => openPermissionAppSettings("notifications")}>Открыть настройки приложения</SecondaryButton> : null}
         <CheckActionButton idleLabel={permissionFallbackStep === "notifications" ? "Проверить" : "Разрешить уведомления"} status={checkStatus("notifications")} onClick={requestNotifications} />
       </PermissionScreen>
     );
@@ -861,7 +862,7 @@ function CheckActionButton({ disabled, idleLabel = "Проверить", onClick
     <PrimaryButton
       disabled={disabled || checking || failed}
       icon={checking ? LoaderCircle : failed ? CircleX : ready ? CheckCircle2 : ShieldCheck}
-      iconClassName={checking ? "animate-spin" : undefined}
+      iconClassName={checking ? "animate-spin" : ready ? "text-emerald-400" : undefined}
       tone={failed ? "danger" : "default"}
       trailingArrow={false}
       onClick={onClick}
@@ -898,7 +899,7 @@ function PrimaryButton({ children, className, disabled, icon, iconClassName, ton
       {...props}
     >
       {Icon ? <Icon className={cx("size-4 transition-all", iconClassName)} aria-hidden="true" /> : null}
-      <AnimatedShinyText shimmerWidth={140} className={cx("min-w-0 flex-1 text-center text-base font-semibold", danger ? "text-destructive/80 dark:text-destructive/80" : disabled ? "text-muted-foreground/70 dark:text-muted-foreground/70" : "")}>
+      <AnimatedShinyText shimmerWidth={160} className={cx("min-w-0 flex-1 text-center text-base font-semibold via-black dark:via-white", danger ? "text-destructive/80 dark:text-destructive/80" : disabled ? "text-muted-foreground/70 dark:text-muted-foreground/70" : "text-foreground/85 dark:text-foreground/90")}>
         {children}
       </AnimatedShinyText>
       {trailingArrow ? <ArrowRight className={cx("size-4 transition-transform duration-200 group-active:translate-x-1", transitionActive && !disabled ? "translate-x-1" : "")} aria-hidden="true" /> : null}
@@ -940,7 +941,7 @@ function StepActions({ children }: { children: ReactNode }) {
   if (!statusText && !mainAction && !canBack) return null;
 
   return (
-    <div className="grid shrink-0 gap-3 pt-3" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 1.5rem)" }}>
+    <div className="grid shrink-0 gap-3 pt-5" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 1.5rem)" }}>
       {statusText ? <StatusCard text={statusText} tone={statusTone} /> : null}
       {extraActions.length ? <div className="grid gap-2">{extraActions}</div> : null}
       <div className={cx("grid gap-3", canBack && mainAction ? "grid-cols-[3rem_minmax(0,1fr)]" : canBack ? "grid-cols-[3rem]" : "grid-cols-1")}>
@@ -1029,12 +1030,12 @@ function WelcomeCarousel({ currentStep, onStart, onStepChange }: { currentStep: 
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="grid min-h-0 flex-1 content-center overflow-hidden py-4">
+      <div className="grid min-h-0 flex-1 content-end gap-5 overflow-hidden py-0">
         <Carousel setApi={setApi} opts={{ align: "start" }} className="w-full min-w-0 overflow-hidden" aria-label="Приветствие Brai" data-nav-swipe-exclusion>
           <CarouselContent className="ml-0">
             {welcomeSlides.map(({ icon: Icon, step, text, title }, index) => (
-              <CarouselItem key={step} className="basis-full pl-0">
-                <Card className="grid min-h-96 w-full min-w-0 content-center gap-6 overflow-hidden rounded-2xl border-primary/15 bg-card/80 p-6 shadow-none">
+              <CarouselItem key={step} className="basis-full px-2">
+                <Card className="grid min-h-[72dvh] w-full min-w-0 content-center gap-6 overflow-hidden rounded-2xl border-primary/15 bg-card/80 p-6 shadow-none">
                   <p className="m-0 text-sm font-medium text-muted-foreground">Карточка {index + 1} из 4</p>
                   <InfoBlock icon={Icon} title={title} text={text} />
                 </Card>
@@ -1042,7 +1043,7 @@ function WelcomeCarousel({ currentStep, onStart, onStepChange }: { currentStep: 
             ))}
           </CarouselContent>
         </Carousel>
-        <div className="mt-5 flex justify-center gap-2" aria-hidden="true">
+        <div className="flex justify-center gap-2" aria-hidden="true">
           {welcomeSlides.map((slide, index) => (
             <span key={slide.step} className={cx("h-2 rounded-full transition-all duration-300", index === current ? "w-6 bg-primary" : "w-2 bg-muted-foreground/30")} />
           ))}

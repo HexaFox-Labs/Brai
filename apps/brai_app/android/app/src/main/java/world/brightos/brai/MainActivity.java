@@ -1,7 +1,10 @@
 package world.brightos.brai;
 
 import android.content.Intent;
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
 import android.os.Bundle;
+import android.webkit.WebView;
 
 import androidx.activity.OnBackPressedCallback;
 
@@ -19,6 +22,7 @@ import world.brightos.brai.timer.BraiTimerNotificationService;
 import world.brightos.brai.widget.BraiActionsWidgetPlugin;
 
 public class MainActivity extends BridgeActivity {
+    private static final int STARTUP_BACKGROUND = Color.BLACK;
     private static final String HANDLE_ANDROID_BACK_SCRIPT =
         "(function(){try{return !!(window.BraiAndroidBack&&window.BraiAndroidBack());}catch(e){return false;}})();";
     private static final String HANDLE_TIMER_STOP_SCRIPT =
@@ -29,6 +33,10 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        getWindow().setBackgroundDrawable(new ColorDrawable(STARTUP_BACKGROUND));
+        getWindow().setStatusBarColor(STARTUP_BACKGROUND);
+        getWindow().setNavigationBarColor(STARTUP_BACKGROUND);
+
         otaManager = new BraiOtaManager(this);
         BraiOtaRegistry.setManager(otaManager);
 
@@ -43,6 +51,10 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(BraiActionsWidgetPlugin.class);
 
         super.onCreate(savedInstanceState);
+        WebView webView = getBridge().getWebView();
+        if (webView != null) {
+            webView.setBackgroundColor(STARTUP_BACKGROUND);
+        }
 
         androidBackCallback = new OnBackPressedCallback(true) {
             @Override
