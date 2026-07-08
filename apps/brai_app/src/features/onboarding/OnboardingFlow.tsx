@@ -47,6 +47,7 @@ import { GlareHover } from "@/shared/ui/glare-hover";
 import { Input } from "@/shared/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 import { Textarea } from "@/shared/ui/textarea";
+import { Carousel, CarouselContent, CarouselItem, type CarouselApi } from "@/shared/ui/carousel";
 import { cx } from "../app/appUtils";
 import {
   initialOnboardingState,
@@ -88,7 +89,7 @@ const OnboardingChromeContext = createContext<{
   transitionActive: false,
 });
 
-const startButtonDelayMs = process.env.NODE_ENV === "test" ? 0 : 3000;
+const startButtonDelayMs = process.env.NODE_ENV === "test" ? 1 : 3000;
 const screenTransitionDelayMs = process.env.NODE_ENV === "test" ? 0 : 280;
 const logoClassName = "h-auto w-64 sm:w-80";
 const startLogoGlareDelayMs = 1000;
@@ -97,10 +98,16 @@ const providerOptions = ["Groq", "OpenAI", "Deepgram", "AssemblyAI"] as const;
 const manualConfirmDelayMs = 3000;
 const verificationMinVisibleMs = process.env.NODE_ENV === "test" ? 1 : 1000;
 const failedCheckVisibleMs = process.env.NODE_ENV === "test" ? 100 : 2000;
+const welcomeSlides = [
+  { step: "welcome-1", title: "Brai рядом с вашим экраном", text: "Голос, текст и контекст доступны без переключения между приложениями.", icon: TextCursorInput },
+  { step: "welcome-2", title: "Голос превращается в действие", text: "Надиктуйте мысль, ответ или команду — Brai подготовит текст там, где вы работаете.", icon: Mic },
+  { step: "welcome-3", title: "Идеи не теряются", text: "Сохраняйте важное прямо с экрана и отправляйте агенту задачи вместе с контекстом.", icon: Send },
+  { step: "welcome-4", title: "Пора настроить основу", text: "Дальше выберем профиль, голосовой модуль и системные разрешения.", icon: Sparkles },
+] as const satisfies ReadonlyArray<{ step: OnboardingStep; title: string; text: string; icon: LucideIcon }>;
 const startButtonCss = `
 @keyframes brai-onboarding-start-button {
-  0% { opacity: 0; pointer-events: none; }
-  100% { opacity: 1; pointer-events: auto; }
+  0% { opacity: 0; }
+  100% { opacity: 1; }
 }
 `;
 
@@ -147,6 +154,8 @@ export function OnboardingFlow({
   const [queueSaved, setQueueSaved] = useState(false);
   const [queueInserted, setQueueInserted] = useState(false);
   const [screenTransitioning, setScreenTransitioning] = useState(false);
+  const [startupSplashVisible, setStartupSplashVisible] = useState(startButtonDelayMs > 0);
+  const [permissionFallbackStep, setPermissionFallbackStep] = useState<OnboardingStep | null>(null);
   const stepRef = useRef<OnboardingStep>(state.step);
   const stateRef = useRef<OnboardingState>(state);
   const manualConfirmTimerRef = useRef<number | null>(null);
@@ -156,9 +165,18 @@ export function OnboardingFlow({
   const isAndroid = isNativeShell() && platformName() === "android";
 
   useEffect(() => {
-    const timeout = window.setTimeout(() => setState(loadInitialOnboardingState(authRequired)), 0);
+    const loadTimer = window.setTimeout(() => {
+      const next = loadInitialOnboardingState(authRequired);
+      stateRef.current = next;
+      stepRef.current = next.step;
+      setState(next);
+    }, 0);
+    const splashTimer = window.setTimeout(() => setStartupSplashVisible(false), startButtonDelayMs);
     void refreshCapabilities();
-    return () => window.clearTimeout(timeout);
+    return () => {
+      window.clearTimeout(loadTimer);
+      window.clearTimeout(splashTimer);
+    };
   }, [authRequired]);
 
   useEffect(() => {
@@ -199,6 +217,11 @@ export function OnboardingFlow({
     }, 80);
     return () => window.clearTimeout(timeout);
   }, [state.step]);
+
+  useEffect(() => {
+    if (!isAndroid) return;
+    void setBraiCmdVoiceOnlyMode(!(state.complete || state.step === "voice-ready"));
+  }, [isAndroid, state.complete, state.step]);
 
   useEffect(() => {
     if (!isAndroid) return;
@@ -281,6 +304,7 @@ export function OnboardingFlow({
     setCheckingStep(null);
     setReadyStep(null);
     clearFailedCheck();
+    setPermissionFallbackStep(null);
     setManualConfirmReadyStep(null);
     if (manualConfirmTimerRef.current != null) {
       window.clearTimeout(manualConfirmTimerRef.current);
@@ -299,8 +323,18 @@ export function OnboardingFlow({
     setCheckingStep(null);
     setReadyStep(null);
     clearFailedCheck();
+    setPermissionFallbackStep(null);
     setManualConfirmReadyStep(null);
     transitionTo({ ...current, step: previous.step, history: current.history.slice(0, previous.historyIndex) });
+  }
+
+  function replaceCurrentStep(step: OnboardingStep) {
+    const current = stateRef.current;
+    if (current.step === step) return;
+    const next = { ...current, step };
+    saveOnboardingState(next);
+    stateRef.current = next;
+    setState(next);
   }
 
   function completeSetup() {
@@ -340,7 +374,7 @@ export function OnboardingFlow({
     }, manualConfirmDelayMs);
   }
 
-  async function runVerification(step: OnboardingStep, verify: () => Promise<boolean>, errorText: string) {
+  async function runVerification(step: OnboardingStep, verify: () => Promise<boolean>, errorText: string): Promise<boolean> {
     setError("");
     setMessage("");
     clearFailedCheck();
@@ -364,6 +398,7 @@ export function OnboardingFlow({
       }, failedCheckVisibleMs);
     }
     setCheckingStep(null);
+    return ok;
   }
 
   function choosePath(path: "new" | "existing") {
@@ -472,15 +507,36 @@ export function OnboardingFlow({
   }
 
   async function requestMic() {
-    const next = isAndroid ? await requestAndroidMicrophone() : null;
-    if (!isAndroid || next?.microphoneGranted) go("notifications");
-    else setError("Микрофон не разрешен.");
+    if (readyStep === "microphone") {
+      go("notifications");
+      return;
+    }
+    const checkOnly = permissionFallbackStep === "microphone";
+    const ok = await runVerification("microphone", async () => {
+      const next = isAndroid ? (checkOnly ? await refreshCapabilities() : await requestAndroidMicrophone()) : null;
+      return !isAndroid || Boolean(next?.microphoneGranted);
+    }, "Микрофон не разрешен.");
+    setPermissionFallbackStep(ok ? null : "microphone");
   }
 
   async function requestNotifications() {
-    const next = isAndroid ? await requestAndroidNotifications() : null;
-    if (!isAndroid || next?.notificationsGranted) go("training-start");
-    else setError("Уведомления не разрешены.");
+    if (readyStep === "notifications") {
+      go("training-start");
+      return;
+    }
+    const checkOnly = permissionFallbackStep === "notifications";
+    const ok = await runVerification("notifications", async () => {
+      const next = isAndroid ? (checkOnly ? await refreshCapabilities() : await requestAndroidNotifications()) : null;
+      return !isAndroid || Boolean(next?.notificationsGranted);
+    }, "Уведомления не разрешены.");
+    setPermissionFallbackStep(ok ? null : "notifications");
+  }
+
+  async function openPermissionAppSettings(step: OnboardingStep) {
+    setPermissionFallbackStep(step);
+    if (!isAndroid) return;
+    await openAndroidAppSettings();
+    await refreshCapabilities();
   }
 
   async function startTraining() {
@@ -524,20 +580,12 @@ export function OnboardingFlow({
     }
 
     if (state.step.startsWith("welcome-")) {
-      const slides = [
-        ["welcome-1", "Brai рядом с вашим экраном", "Голос, текст и контекст доступны без переключения между приложениями.", TextCursorInput],
-        ["welcome-2", "Голос превращается в действие", "Надиктуйте мысль, ответ или команду — Brai подготовит текст там, где вы работаете.", Mic],
-        ["welcome-3", "Идеи не теряются", "Сохраняйте важное прямо с экрана и отправляйте агенту задачи вместе с контекстом.", Send],
-        ["welcome-4", "Пора настроить основу", "Дальше выберем профиль, голосовой модуль и системные разрешения.", Sparkles],
-      ] as const;
-      const index = slides.findIndex(([step]) => step === state.step);
-      const [, title, text, Icon] = slides[index];
       return (
-        <InfoScreen icon={Icon} eyebrow={`Карточка ${index + 1} из 4`} title={title} text={text}>
-          <ShinyButton onClick={() => go(index === slides.length - 1 ? "path" : slides[index + 1][0])}>
-            {index === slides.length - 1 ? "Начать" : "Далее"}
-          </ShinyButton>
-        </InfoScreen>
+        <WelcomeCarousel
+          currentStep={state.step}
+          onStart={() => go("path")}
+          onStepChange={replaceCurrentStep}
+        />
       );
     }
 
@@ -624,7 +672,7 @@ export function OnboardingFlow({
     }
 
     if (state.step === "special-settings") return <InfoScreen icon={ShieldCheck} title="Нужны системные настройки" text="Показанные функции требуют доступа поверх экрана, специальных возможностей, микрофона и уведомлений."><PrimaryButton onClick={() => go("voice-intro")}>Продолжить</PrimaryButton></InfoScreen>;
-    if (state.step === "voice-intro") return <InfoScreen icon={Mic} title="Сначала голосовой модуль" text="Без распознавания голоса Brai CMD не сможет принимать команды и вставлять продиктованный текст."><PrimaryButton onClick={() => go("voice-choice")}>Настроить голосовой модуль</PrimaryButton></InfoScreen>;
+    if (state.step === "voice-intro") return <InfoScreen icon={Mic} title="Сначала голосовой модуль" text="Без распознавания голоса Brai CMD не сможет принимать команды и вставлять продиктованный текст."><PrimaryButton onClick={() => go("voice-choice")}>Настроить Brai CMD</PrimaryButton></InfoScreen>;
 
     if (state.step === "voice-choice") {
       const choices = [
@@ -688,8 +736,18 @@ export function OnboardingFlow({
     if (state.step === "accessibility-restricted") return <InfoScreen icon={ShieldCheck} title="Шаг 2: снять ограничение" text="Откройте карточку приложения, нажмите меню с тремя точками и выберите «Разрешить ограниченные настройки»."><SecondaryButton icon={ShieldCheck} onClick={openAppSettings}>Открыть карточку приложения</SecondaryButton><PrimaryButton disabled={isAndroid && manualConfirmReadyStep !== "accessibility-restricted"} icon={CheckCircle2} onClick={() => go("accessibility-enable")}>Ограничение снято</PrimaryButton></InfoScreen>;
     if (state.step === "accessibility-enable") return <InfoScreen icon={ShieldCheck} title="Шаг 3: включить доступ" text="Теперь снова откройте специальные возможности и включите Brai. После возврата мы проверим состояние."><SecondaryButton icon={ShieldCheck} onClick={openAccessibility}>Открыть</SecondaryButton><CheckActionButton status={checkStatus("accessibility-enable")} onClick={checkAccessibility} /></InfoScreen>;
 
-    if (state.step === "microphone") return <PermissionScreen icon={Mic} title="Микрофон" text="Микрофон нужен для голосового ввода и команд."><PrimaryButton onClick={requestMic}>Разрешить микрофон</PrimaryButton></PermissionScreen>;
-    if (state.step === "notifications") return <PermissionScreen icon={Bell} title="Уведомления" text="Уведомления нужны для фоновой записи, очереди и статуса отправки."><PrimaryButton onClick={requestNotifications}>Разрешить уведомления</PrimaryButton></PermissionScreen>;
+    if (state.step === "microphone") return (
+      <PermissionScreen icon={Mic} title="Микрофон" text="Микрофон нужен для голосового ввода и команд.">
+        {permissionFallbackStep === "microphone" ? <SecondaryButton icon={ShieldCheck} onClick={() => openPermissionAppSettings("microphone")}>Открыть настройки приложения</SecondaryButton> : null}
+        <CheckActionButton idleLabel={permissionFallbackStep === "microphone" ? "Проверить" : "Разрешить микрофон"} status={checkStatus("microphone")} onClick={requestMic} />
+      </PermissionScreen>
+    );
+    if (state.step === "notifications") return (
+      <PermissionScreen icon={Bell} title="Уведомления" text="Уведомления нужны для фоновой записи, очереди и статуса отправки.">
+        {permissionFallbackStep === "notifications" ? <SecondaryButton icon={ShieldCheck} onClick={() => openPermissionAppSettings("notifications")}>Открыть настройки приложения</SecondaryButton> : null}
+        <CheckActionButton idleLabel={permissionFallbackStep === "notifications" ? "Проверить" : "Разрешить уведомления"} status={checkStatus("notifications")} onClick={requestNotifications} />
+      </PermissionScreen>
+    );
 
     if (state.step === "training-start") return <InfoScreen icon={CheckCircle2} title="Готово к обучению" text="Базовая настройка завершена. Осталось проверить голосовой сценарий в четыре шага."><SecondaryButton onClick={completeSetup}>Пропустить</SecondaryButton><PrimaryButton onClick={startTraining}>Обучение</PrimaryButton></InfoScreen>;
     if (state.step === "training-dictate") return <TrainingDictate confirmed={trainingDictated} value={trainingText} onChange={(value) => {
@@ -722,12 +780,12 @@ export function OnboardingFlow({
     return null;
   }
 
-  if (state.step === "start") {
+  if (startupSplashVisible || state.step === "start") {
     return (
       <OnboardingChromeContext.Provider value={chrome}>
         <main className={cx("fixed inset-0 overflow-hidden bg-black text-foreground transition-opacity duration-300 ease-out", screenTransitioning ? "opacity-0" : "opacity-100")} data-onboarding-flow data-theme="dark" style={{ colorScheme: "dark" }}>
           <style>{startButtonCss}</style>
-          <div className="absolute inset-0 grid place-items-center">
+          <div className="pointer-events-none absolute inset-0 grid place-items-center">
             <GlareHover
               width="auto"
               height="auto"
@@ -756,12 +814,13 @@ export function OnboardingFlow({
           </div>
           <div
             className={cx(
-              "absolute inset-x-6 bottom-[calc(env(safe-area-inset-bottom)+1.5rem)] mx-auto max-w-md",
-              startButtonDelayMs === 0 ? "pointer-events-auto" : "pointer-events-none",
+              "absolute inset-x-6 z-10 mx-auto max-w-md",
+              !startupSplashVisible && state.step === "start" ? "pointer-events-auto" : "pointer-events-none",
             )}
             style={{
-              opacity: startButtonDelayMs === 0 ? 1 : 0,
-              animation: startButtonDelayMs === 0 ? undefined : `brai-onboarding-start-button 300ms ease-out ${startButtonDelayMs}ms both`,
+              bottom: "calc(env(safe-area-inset-bottom) + 1.5rem)",
+              opacity: !startupSplashVisible && state.step === "start" ? 1 : 0,
+              animation: !startupSplashVisible && state.step === "start" ? `brai-onboarding-start-button 300ms ease-out both` : undefined,
             }}
           >
             <ShinyButton onClick={() => go("welcome-1")}>Приступить</ShinyButton>
@@ -775,7 +834,6 @@ export function OnboardingFlow({
     <OnboardingChromeContext.Provider value={chrome}>
       <main className="fixed inset-0 min-h-0 overflow-hidden bg-black text-foreground" data-onboarding-flow data-theme="dark" style={{ colorScheme: "dark" }}>
         <div
-          key={state.step}
           className={cx(
             "mx-auto flex h-dvh w-full max-w-md flex-col px-6 pb-0 pt-[calc(env(safe-area-inset-top)+1.5rem)] sm:max-w-2xl sm:px-6 sm:pt-6",
             "transition-opacity duration-300 ease-out",
@@ -795,7 +853,7 @@ function ShinyButton({ children, onClick }: { children: ReactNode; onClick: () =
   return <PrimaryButton onClick={onClick}>{children}</PrimaryButton>;
 }
 
-function CheckActionButton({ disabled, onClick, status }: { disabled?: boolean; onClick: () => void | Promise<void>; status: CheckStatus }) {
+function CheckActionButton({ disabled, idleLabel = "Проверить", onClick, status }: { disabled?: boolean; idleLabel?: string; onClick: () => void | Promise<void>; status: CheckStatus }) {
   const checking = status === "checking";
   const failed = status === "error";
   const ready = status === "ready";
@@ -808,7 +866,7 @@ function CheckActionButton({ disabled, onClick, status }: { disabled?: boolean; 
       trailingArrow={false}
       onClick={onClick}
     >
-      {checking ? "Проверка" : failed ? "Ошибка" : ready ? "Продолжить" : "Проверить"}
+      {checking ? "Проверка" : failed ? "Ошибка" : ready ? "Продолжить" : idleLabel}
     </PrimaryButton>
   );
 }
@@ -840,7 +898,7 @@ function PrimaryButton({ children, className, disabled, icon, iconClassName, ton
       {...props}
     >
       {Icon ? <Icon className={cx("size-4 transition-all", iconClassName)} aria-hidden="true" /> : null}
-      <AnimatedShinyText shimmerWidth={140} className={cx("min-w-0 flex-1 text-center text-base font-semibold", danger ? "text-destructive dark:text-destructive" : disabled ? "text-muted-foreground dark:text-muted-foreground" : "text-foreground/90 dark:text-foreground")}>
+      <AnimatedShinyText shimmerWidth={140} className={cx("min-w-0 flex-1 text-center text-base font-semibold", danger ? "text-destructive/80 dark:text-destructive/80" : disabled ? "text-muted-foreground/70 dark:text-muted-foreground/70" : "")}>
         {children}
       </AnimatedShinyText>
       {trailingArrow ? <ArrowRight className={cx("size-4 transition-transform duration-200 group-active:translate-x-1", transitionActive && !disabled ? "translate-x-1" : "")} aria-hidden="true" /> : null}
@@ -882,7 +940,7 @@ function StepActions({ children }: { children: ReactNode }) {
   if (!statusText && !mainAction && !canBack) return null;
 
   return (
-    <div className="grid shrink-0 gap-3 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] pt-3">
+    <div className="grid shrink-0 gap-3 pt-3" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 1.5rem)" }}>
       {statusText ? <StatusCard text={statusText} tone={statusTone} /> : null}
       {extraActions.length ? <div className="grid gap-2">{extraActions}</div> : null}
       <div className={cx("grid gap-3", canBack && mainAction ? "grid-cols-[3rem_minmax(0,1fr)]" : canBack ? "grid-cols-[3rem]" : "grid-cols-1")}>
@@ -938,6 +996,61 @@ function ChoiceScreen({ choices, text, title }: { choices: Array<{ icon: LucideI
         </div>
       </div>
       <StepActions>{null}</StepActions>
+    </div>
+  );
+}
+
+function WelcomeCarousel({ currentStep, onStart, onStepChange }: { currentStep: OnboardingStep; onStart: () => void; onStepChange: (step: OnboardingStep) => void }) {
+  const [api, setApi] = useState<CarouselApi>();
+  const [current, setCurrent] = useState(() => welcomeStepIndex(currentStep));
+  const canStart = current === welcomeSlides.length - 1;
+
+  useEffect(() => {
+    if (!api) return;
+    const index = welcomeStepIndex(currentStep);
+    api.scrollTo(index, true);
+  }, [api, currentStep]);
+
+  useEffect(() => {
+    if (!api) return;
+    const onSelect = () => {
+      const index = api.selectedScrollSnap();
+      setCurrent(index);
+      onStepChange(welcomeSlides[index]?.step ?? "welcome-1");
+    };
+    onSelect();
+    api.on("select", onSelect);
+    api.on("reInit", onSelect);
+    return () => {
+      api.off("select", onSelect);
+      api.off("reInit", onSelect);
+    };
+  }, [api, onStepChange]);
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="grid min-h-0 flex-1 content-center overflow-hidden py-4">
+        <Carousel setApi={setApi} opts={{ align: "start" }} className="w-full" aria-label="Приветствие Brai" data-nav-swipe-exclusion>
+          <CarouselContent>
+            {welcomeSlides.map(({ icon: Icon, step, text, title }, index) => (
+              <CarouselItem key={step}>
+                <Card className="grid min-h-72 content-center gap-6 rounded-2xl border-primary/15 bg-card/80 p-6 shadow-none">
+                  <p className="m-0 text-sm font-medium text-muted-foreground">Карточка {index + 1} из 4</p>
+                  <InfoBlock icon={Icon} title={title} text={text} />
+                </Card>
+              </CarouselItem>
+            ))}
+          </CarouselContent>
+        </Carousel>
+        <div className="mt-5 flex justify-center gap-2" aria-hidden="true">
+          {welcomeSlides.map((slide, index) => (
+            <span key={slide.step} className={cx("h-2 rounded-full transition-all duration-300", index === current ? "w-6 bg-primary" : "w-2 bg-muted-foreground/30")} />
+          ))}
+        </div>
+      </div>
+      <StepActions>
+        <PrimaryButton className={canStart ? "" : "invisible"} disabled={!canStart} aria-hidden={!canStart} tabIndex={canStart ? 0 : -1} onClick={onStart}>Начать</PrimaryButton>
+      </StepActions>
     </div>
   );
 }
@@ -1204,5 +1317,12 @@ function statusPromptForStep(step: OnboardingStep): string {
   if (step === "accessibility-blocked") return "Откройте специальные возможности, получите отказ и подтвердите шаг.";
   if (step === "accessibility-restricted") return "Разрешите ограниченные настройки в карточке приложения.";
   if (step === "accessibility-enable") return "Включите специальные возможности Brai и нажмите Проверить.";
+  if (step === "microphone") return "Разрешите микрофон и нажмите Продолжить после успешной проверки.";
+  if (step === "notifications") return "Разрешите уведомления и нажмите Продолжить после успешной проверки.";
   return "";
+}
+
+function welcomeStepIndex(step: OnboardingStep): number {
+  const index = welcomeSlides.findIndex((slide) => slide.step === step);
+  return index >= 0 ? index : 0;
 }

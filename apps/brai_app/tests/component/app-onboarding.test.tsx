@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { androidCapabilitiesPlugin, setupBraiAppTest, stubAndroidCapacitor } from "./app-test-support";
+import { androidCapabilitiesPlugin, cmdPlugin, setupBraiAppTest, stubAndroidCapacitor } from "./app-test-support";
 import { BraiApp } from "@/features/app/BraiApp";
 import { ONBOARDING_STORAGE_KEY } from "@/features/onboarding/onboardingModel";
 
@@ -18,23 +18,57 @@ describe("BraiApp onboarding", () => {
     expect(screen.queryByRole("textbox", { name: "Добавить" })).not.toBeInTheDocument();
   });
 
-  it("moves through the first welcome cards into the path choice", async () => {
+  it("renders the first welcome cards without carousel arrow buttons", async () => {
     window.localStorage.removeItem(ONBOARDING_STORAGE_KEY);
 
     render(<BraiApp />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Приступить" }));
     expect(screen.getByText("Brai рядом с вашим экраном")).toBeInTheDocument();
+    expect(screen.getByText("Голос превращается в действие")).toBeInTheDocument();
+    expect(screen.getByText("Идеи не теряются")).toBeInTheDocument();
+    expect(screen.getByText("Пора настроить основу")).toBeInTheDocument();
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Previous slide" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Next slide" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Начать" })).not.toBeInTheDocument();
+  });
 
-    fireEvent.click(screen.getByRole("button", { name: "Далее" }));
-    fireEvent.click(screen.getByRole("button", { name: "Далее" }));
-    fireEvent.click(screen.getByRole("button", { name: "Далее" }));
-    fireEvent.click(screen.getByRole("button", { name: "Начать" }));
+  it("shows the start button on the fourth welcome card", async () => {
+    window.localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({
+      complete: false,
+      history: ["start"],
+      name: "",
+      path: null,
+      profileVersion: null,
+      step: "welcome-4",
+      voiceMode: null,
+    }));
 
+    render(<BraiApp />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Начать" }));
     expect(screen.getByText("Как запускаем Brai?")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Начать с начала/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Есть профиль/ })).toBeInTheDocument();
+  });
+
+  it("shows the logo splash before restoring an unfinished onboarding step", async () => {
+    window.localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({
+      complete: false,
+      history: ["voice-intro"],
+      name: "Test",
+      path: "new",
+      profileVersion: "cloud",
+      step: "voice-choice",
+      voiceMode: null,
+    }));
+
+    render(<BraiApp />);
+
+    expect(screen.getByAltText("Brai")).toBeInTheDocument();
+    expect(screen.queryByText("Как распознавать голос?")).not.toBeInTheDocument();
+    expect(await screen.findByText("Как распознавать голос?")).toBeInTheDocument();
   });
 
   it("keeps unauthenticated users inside the limited access screen", async () => {
@@ -89,6 +123,82 @@ describe("BraiApp onboarding", () => {
 
     expect(await screen.findByRole("combobox", { name: "Поставщик" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Проверить" })).toBeDisabled();
+  });
+
+  it("offers app settings after microphone permission is denied", async () => {
+    stubAndroidCapacitor();
+    androidCapabilitiesPlugin.requestMicrophone.mockResolvedValueOnce({ microphoneGranted: false });
+    window.localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({
+      complete: false,
+      history: ["accessibility-enable"],
+      name: "Test",
+      path: "new",
+      profileVersion: "cloud",
+      step: "microphone",
+      voiceMode: "cloud",
+    }));
+
+    render(<BraiApp />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Разрешить микрофон" }));
+    expect(await screen.findByRole("button", { name: "Открыть настройки приложения" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ошибка" })).toBeDisabled();
+  });
+
+  it("offers app settings after notification permission is denied", async () => {
+    stubAndroidCapacitor();
+    androidCapabilitiesPlugin.requestNotifications.mockResolvedValueOnce({ notificationsGranted: false });
+    window.localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({
+      complete: false,
+      history: ["microphone"],
+      name: "Test",
+      path: "new",
+      profileVersion: "cloud",
+      step: "notifications",
+      voiceMode: "cloud",
+    }));
+
+    render(<BraiApp />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Разрешить уведомления" }));
+    expect(await screen.findByRole("button", { name: "Открыть настройки приложения" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ошибка" })).toBeDisabled();
+  });
+
+  it("keeps the context floating button disabled until the final voice screen", async () => {
+    stubAndroidCapacitor();
+    window.localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({
+      complete: false,
+      history: ["accessibility-enable"],
+      name: "Test",
+      path: "new",
+      profileVersion: "cloud",
+      step: "microphone",
+      voiceMode: "cloud",
+    }));
+
+    render(<BraiApp />);
+
+    expect(await screen.findByText("Микрофон")).toBeInTheDocument();
+    await waitFor(() => expect(cmdPlugin.setVoiceOnlyMode).toHaveBeenCalledWith({ enabled: true }));
+  });
+
+  it("allows the context floating button on the final voice screen", async () => {
+    stubAndroidCapacitor();
+    window.localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({
+      complete: false,
+      history: ["training-storage"],
+      name: "Test",
+      path: "new",
+      profileVersion: "cloud",
+      step: "voice-ready",
+      voiceMode: "cloud",
+    }));
+
+    render(<BraiApp />);
+
+    expect(await screen.findByText("Голосовое управление настроено")).toBeInTheDocument();
+    await waitFor(() => expect(cmdPlugin.setVoiceOnlyMode).toHaveBeenCalledWith({ enabled: false }));
   });
 
   it("does not run a fake check on the cloud privacy screen", async () => {

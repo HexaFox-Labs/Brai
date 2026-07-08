@@ -148,6 +148,20 @@ export function setupBraiAppTest() {
         dispatchEvent: vi.fn(),
       })),
     );
+    vi.stubGlobal("IntersectionObserver", class {
+      readonly root = null;
+      readonly rootMargin = "";
+      readonly thresholds = [];
+      disconnect() {}
+      observe() {}
+      takeRecords() { return []; }
+      unobserve() {}
+    });
+    vi.stubGlobal("ResizeObserver", class {
+      disconnect() {}
+      observe() {}
+      unobserve() {}
+    });
     Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 360 });
     window.history.replaceState(null, "", "/");
     window.localStorage.clear();

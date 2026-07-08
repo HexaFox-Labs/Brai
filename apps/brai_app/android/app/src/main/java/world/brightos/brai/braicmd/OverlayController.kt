@@ -102,8 +102,8 @@ class OverlayController(private val service: BraiAccessibilityService) {
             if (state.recordings > 0 && !config.onboardingQueuePaused) pendingRetry.schedule()
         } else if (state is RecorderState.InboxDelivered) {
             pendingRetry.cancel()
-            showStatusBubble("Отправлено", "Во входящих")
-            Toast.makeText(service, "Команда отправлена во входящие", Toast.LENGTH_SHORT).show()
+            showStatusBubble("Отправлено", "Во входящие")
+            Toast.makeText(service, "Отправлено во входящие", Toast.LENGTH_SHORT).show()
         } else if (state is RecorderState.Error) {
             showStatusBubble("Ошибка", state.message)
             Toast.makeText(service, state.message, Toast.LENGTH_SHORT).show()
