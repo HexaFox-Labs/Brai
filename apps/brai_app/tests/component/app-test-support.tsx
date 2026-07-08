@@ -19,6 +19,15 @@ const cmdPlugin = vi.hoisted(() => ({
   setVoiceOnlyMode: vi.fn(),
 }));
 
+const androidCapabilitiesPlugin = vi.hoisted(() => ({
+  getState: vi.fn(),
+  openAccessibilitySettings: vi.fn(),
+  openAppSettings: vi.fn(),
+  openOverlaySettings: vi.fn(),
+  requestMicrophone: vi.fn(),
+  requestNotifications: vi.fn(),
+}));
+
 const actionsWidgetPlugin = vi.hoisted(() => ({
   acknowledgeStatusChanges: vi.fn(),
   addListener: vi.fn(),
@@ -27,12 +36,13 @@ const actionsWidgetPlugin = vi.hoisted(() => ({
   saveSnapshot: vi.fn(),
 }));
 
-export { actionsWidgetPlugin, cmdPlugin, otaPlugin };
+export { actionsWidgetPlugin, androidCapabilitiesPlugin, cmdPlugin, otaPlugin };
 
 vi.mock("@capacitor/core", () => ({
   registerPlugin: vi.fn((name: string) => {
     if (name === "BraiCmd") return cmdPlugin;
     if (name === "BraiActionsWidget") return actionsWidgetPlugin;
+    if (name === "BraiAndroidCapabilities") return androidCapabilitiesPlugin;
     return otaPlugin;
   }),
 }));
@@ -60,6 +70,12 @@ export function setupBraiAppTest() {
     cmdPlugin.setAccessKey.mockReset();
     cmdPlugin.setQueuePausedMode.mockReset();
     cmdPlugin.setVoiceOnlyMode.mockReset();
+    androidCapabilitiesPlugin.getState.mockReset();
+    androidCapabilitiesPlugin.openAccessibilitySettings.mockReset();
+    androidCapabilitiesPlugin.openAppSettings.mockReset();
+    androidCapabilitiesPlugin.openOverlaySettings.mockReset();
+    androidCapabilitiesPlugin.requestMicrophone.mockReset();
+    androidCapabilitiesPlugin.requestNotifications.mockReset();
     cmdPlugin.openSettings.mockResolvedValue({});
     cmdPlugin.addListener.mockResolvedValue({ remove: vi.fn(async () => undefined) });
     cmdPlugin.ensureAccess.mockResolvedValue({ accessGranted: true });
@@ -68,6 +84,12 @@ export function setupBraiAppTest() {
     cmdPlugin.setAccessKey.mockResolvedValue({ accessGranted: true });
     cmdPlugin.setQueuePausedMode.mockResolvedValue({ queuePausedMode: true });
     cmdPlugin.setVoiceOnlyMode.mockResolvedValue({ voiceOnlyMode: true });
+    androidCapabilitiesPlugin.getState.mockResolvedValue({});
+    androidCapabilitiesPlugin.openAccessibilitySettings.mockResolvedValue({});
+    androidCapabilitiesPlugin.openAppSettings.mockResolvedValue({});
+    androidCapabilitiesPlugin.openOverlaySettings.mockResolvedValue({});
+    androidCapabilitiesPlugin.requestMicrophone.mockResolvedValue({ microphoneGranted: true });
+    androidCapabilitiesPlugin.requestNotifications.mockResolvedValue({ notificationsGranted: true });
     actionsWidgetPlugin.acknowledgeStatusChanges.mockReset();
     actionsWidgetPlugin.addListener.mockReset();
     actionsWidgetPlugin.clear.mockReset();

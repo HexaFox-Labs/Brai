@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { setupBraiAppTest, stubAndroidCapacitor } from "./app-test-support";
+import { androidCapabilitiesPlugin, setupBraiAppTest, stubAndroidCapacitor } from "./app-test-support";
 import { BraiApp } from "@/features/app/BraiApp";
 import { ONBOARDING_STORAGE_KEY } from "@/features/onboarding/onboardingModel";
 
@@ -100,8 +100,12 @@ describe("BraiApp onboarding", () => {
     expect(screen.getByRole("button", { name: "Проверить" })).toBeDisabled();
   });
 
-  it("mutes overlay confirmation before opening Android settings", async () => {
+  it("checks overlay permission before continuing", async () => {
     stubAndroidCapacitor();
+    androidCapabilitiesPlugin.getState
+      .mockResolvedValueOnce({ overlayGranted: false })
+      .mockResolvedValueOnce({ overlayGranted: false })
+      .mockResolvedValueOnce({ overlayGranted: true });
     window.localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({
       complete: false,
       history: ["cloud-privacy"],
@@ -114,8 +118,42 @@ describe("BraiApp onboarding", () => {
 
     render(<BraiApp />);
 
-    expect(await screen.findByRole("button", { name: "Я включил" })).toBeDisabled();
+    const checkButton = await screen.findByRole("button", { name: "Проверить" });
+    expect(checkButton).toBeEnabled();
     expect(screen.queryByText("Готово")).not.toBeInTheDocument();
+    fireEvent.click(checkButton);
+    expect(await screen.findByText("Разрешение поверх экрана еще не включено.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Проверить" }));
+    expect(await screen.findByRole("button", { name: "Продолжить" })).toBeInTheDocument();
+  });
+
+  it("delays manual accessibility confirmation after opening settings", async () => {
+    vi.useFakeTimers();
+    stubAndroidCapacitor();
+    window.localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({
+      complete: false,
+      history: ["accessibility-why"],
+      name: "Test",
+      path: "new",
+      profileVersion: "cloud",
+      step: "accessibility-blocked",
+      voiceMode: "cloud",
+    }));
+
+    render(<BraiApp />);
+    await act(async () => {
+      vi.runOnlyPendingTimers();
+    });
+
+    const confirmButton = screen.getByRole("button", { name: "Да, доступ заблокирован" });
+    expect(confirmButton).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Открыть" }));
+    expect(confirmButton).toBeDisabled();
+    act(() => vi.advanceTimersByTime(2999));
+    expect(confirmButton).toBeDisabled();
+    act(() => vi.advanceTimersByTime(1));
+    expect(confirmButton).toBeEnabled();
+    vi.useRealTimers();
   });
 
   it("does not pass voice training from manually typed text", async () => {

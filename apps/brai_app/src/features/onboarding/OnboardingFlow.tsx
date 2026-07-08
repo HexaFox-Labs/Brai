@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import {
+  ArrowRight,
   Bell,
   CheckCircle2,
   ChevronLeft,
@@ -11,6 +12,7 @@ import {
   FileAudio,
   KeyRound,
   Lock,
+  LoaderCircle,
   Mic,
   MonitorUp,
   Radio,
@@ -67,10 +69,13 @@ type OnboardingFlowProps = {
   onOpenNativeCmdSettings: () => Promise<boolean>;
 };
 
+type CheckStatus = "idle" | "checking" | "ready";
+
 const cloudHealthPath = "/v1/brai-cmd/health";
 const startButtonDelayMs = process.env.NODE_ENV === "test" ? 0 : 3000;
 const logoFrameClass = "relative aspect-[779/368] w-64 max-w-[78vw] sm:w-80";
 const providerOptions = ["Groq", "OpenAI", "Deepgram", "AssemblyAI"] as const;
+const manualConfirmDelayMs = 3000;
 const startButtonCss = `
 @keyframes brai-onboarding-start-button {
   0% { opacity: 0; pointer-events: none; }
@@ -102,12 +107,15 @@ export function OnboardingFlow({
   const [trainingText, setTrainingText] = useState("");
   const [offlineText, setOfflineText] = useState("");
   const [insertedText, setInsertedText] = useState("");
-  const [openedSystemStep, setOpenedSystemStep] = useState<OnboardingStep | null>(null);
+  const [manualConfirmReadyStep, setManualConfirmReadyStep] = useState<OnboardingStep | null>(null);
+  const [checkingStep, setCheckingStep] = useState<OnboardingStep | null>(null);
+  const [readyStep, setReadyStep] = useState<OnboardingStep | null>(null);
   const [trainingDictated, setTrainingDictated] = useState(false);
   const [queueSaved, setQueueSaved] = useState(false);
   const [queueInserted, setQueueInserted] = useState(false);
   const stepRef = useRef<OnboardingStep>(state.step);
   const stateRef = useRef<OnboardingState>(state);
+  const manualConfirmTimerRef = useRef<number | null>(null);
   const isAndroid = isNativeShell() && platformName() === "android";
   const progress = stepProgress(state.step);
   const screen = screenMeta(state.step);
@@ -124,6 +132,10 @@ export function OnboardingFlow({
   useEffect(() => {
     if (state.complete && !authRequired) onDone();
   }, [authRequired, onDone, state.complete]);
+
+  useEffect(() => () => {
+    if (manualConfirmTimerRef.current != null) window.clearTimeout(manualConfirmTimerRef.current);
+  }, []);
 
   useEffect(() => {
     stateRef.current = state;
@@ -209,6 +221,13 @@ export function OnboardingFlow({
   function go(step: OnboardingStep, next?: Partial<OnboardingState>) {
     setError("");
     setMessage("");
+    setCheckingStep(null);
+    setReadyStep(null);
+    setManualConfirmReadyStep(null);
+    if (manualConfirmTimerRef.current != null) {
+      window.clearTimeout(manualConfirmTimerRef.current);
+      manualConfirmTimerRef.current = null;
+    }
     update({ ...next, step, history: [...state.history, state.step] });
   }
 
@@ -224,6 +243,41 @@ export function OnboardingFlow({
     const nextState = { ...state, complete: true, step: "login-check" as const, history: [...state.history, state.step] };
     saveOnboardingState(nextState);
     setState(nextState);
+  }
+
+  function checkStatus(step: OnboardingStep): CheckStatus {
+    if (checkingStep === step) return "checking";
+    if (readyStep === step) return "ready";
+    return "idle";
+  }
+
+  function resetCheck(step: OnboardingStep) {
+    if (readyStep === step) setReadyStep(null);
+    if (checkingStep === step) setCheckingStep(null);
+  }
+
+  function unlockManualConfirmAfterDelay(step: OnboardingStep) {
+    setManualConfirmReadyStep(null);
+    if (manualConfirmTimerRef.current != null) window.clearTimeout(manualConfirmTimerRef.current);
+    manualConfirmTimerRef.current = window.setTimeout(() => {
+      setManualConfirmReadyStep(step);
+      manualConfirmTimerRef.current = null;
+    }, manualConfirmDelayMs);
+  }
+
+  async function runVerification(step: OnboardingStep, verify: () => Promise<boolean>, errorText: string) {
+    setError("");
+    setMessage("");
+    setCheckingStep(step);
+    try {
+      const ok = await verify();
+      if (ok) setReadyStep(step);
+      else setError(errorText);
+    } catch {
+      setError(errorText);
+    } finally {
+      setCheckingStep(null);
+    }
   }
 
   function choosePath(path: "new" | "existing") {
@@ -260,39 +314,41 @@ export function OnboardingFlow({
   }
 
   async function testProviderKey() {
+    if (readyStep === "provider-key") {
+      go("overlay");
+      return;
+    }
     if (!provider.trim() || providerKey.trim().length < 8) {
       setError("Выберите поставщика и введите полный ключ.");
       return;
     }
-    setMessage("Ключ сохранен. Полная проверка пройдет при первой расшифровке аудио.");
-    window.setTimeout(() => go("overlay"), 450);
+    await runVerification("provider-key", async () => true, "Ключ не сохранён. Проверьте поставщика и ключ.");
   }
 
   async function testLocalServer() {
-    setError("");
-    try {
+    if (readyStep === "local-server") {
+      go("overlay");
+      return;
+    }
+    await runVerification("local-server", async () => {
       const url = new URL(localUrl.trim());
       const response = await fetch(url.href, { method: "GET" });
-      if (!response.ok) throw new Error("bad_status");
-      go("overlay");
-    } catch {
-      setError("Сервер не ответил на проверку. Проверьте URL и доступность health endpoint.");
-    }
+      return response.ok;
+    }, "Сервер не ответил на проверку. Проверьте URL и доступность health endpoint.");
   }
 
   async function testCloudVoice() {
-    setError("");
-    try {
-      const response = await fetch(cloudHealthPath);
-      if (!response.ok) throw new Error("bad_status");
+    if (readyStep === "cloud-privacy") {
       go("overlay");
-    } catch {
-      setError("Облачный модуль сейчас недоступен. Можно вернуться и выбрать другой способ.");
+      return;
     }
+    await runVerification("cloud-privacy", async () => {
+      const response = await fetch(cloudHealthPath);
+      return response.ok;
+    }, "Облачный модуль сейчас недоступен. Можно вернуться и выбрать другой способ.");
   }
 
   async function openOverlay() {
-    setOpenedSystemStep("overlay");
     if (!isAndroid) {
       go("accessibility-why");
       return;
@@ -302,13 +358,18 @@ export function OnboardingFlow({
   }
 
   async function checkOverlay() {
-    const next = await refreshCapabilities();
-    if (!isAndroid || next?.overlayGranted) go("accessibility-why");
-    else setError("Разрешение поверх экрана еще не включено.");
+    if (readyStep === "overlay") {
+      go("accessibility-why");
+      return;
+    }
+    await runVerification("overlay", async () => {
+      const next = await refreshCapabilities();
+      return !isAndroid || Boolean(next?.overlayGranted);
+    }, "Разрешение поверх экрана еще не включено.");
   }
 
   async function openAccessibility() {
-    setOpenedSystemStep(stepRef.current);
+    if (stepRef.current === "accessibility-blocked") unlockManualConfirmAfterDelay("accessibility-blocked");
     if (!isAndroid) {
       return;
     }
@@ -317,7 +378,7 @@ export function OnboardingFlow({
   }
 
   async function openAppSettings() {
-    setOpenedSystemStep("accessibility-restricted");
+    unlockManualConfirmAfterDelay("accessibility-restricted");
     if (!isAndroid) {
       return;
     }
@@ -325,9 +386,14 @@ export function OnboardingFlow({
   }
 
   async function checkAccessibility() {
-    const next = await refreshCapabilities();
-    if (!isAndroid || next?.accessibilityServiceEnabled) go("microphone");
-    else setError("Специальные возможности Brai пока не включены.");
+    if (readyStep === "accessibility-enable") {
+      go("microphone");
+      return;
+    }
+    await runVerification("accessibility-enable", async () => {
+      const next = await refreshCapabilities();
+      return !isAndroid || Boolean(next?.accessibilityServiceEnabled);
+    }, "Специальные возможности Brai пока не включены.");
   }
 
   async function requestMic() {
@@ -482,9 +548,12 @@ export function OnboardingFlow({
 
     if (state.step === "provider-key") {
       return (
-        <StepScreen actions={<PrimaryButton disabled={!provider || providerKey.trim().length < 8} onClick={testProviderKey}>Проверить</PrimaryButton>}>
+        <StepScreen actions={<CheckActionButton disabled={!provider || providerKey.trim().length < 8} status={checkStatus("provider-key")} onClick={testProviderKey} />}>
           <InfoBlock icon={KeyRound} title="Ключ поставщика" text="Выберите поставщика, введите ключ и сохраните его для голосового модуля." />
-          <Select value={provider} onValueChange={setProvider}>
+          <Select value={provider} onValueChange={(value) => {
+            setProvider(value);
+            resetCheck("provider-key");
+          }}>
             <SelectTrigger className="w-full" aria-label="Поставщик">
               <SelectValue placeholder="Выберите поставщика" />
             </SelectTrigger>
@@ -494,35 +563,41 @@ export function OnboardingFlow({
               ))}
             </SelectContent>
           </Select>
-          <Input value={providerKey} type="password" aria-label="Ключ поставщика" placeholder="API-ключ" onChange={(event) => setProviderKey(event.target.value)} />
+          <Input value={providerKey} type="password" aria-label="Ключ поставщика" placeholder="API-ключ" onChange={(event) => {
+            setProviderKey(event.target.value);
+            resetCheck("provider-key");
+          }} />
         </StepScreen>
       );
     }
 
     if (state.step === "local-server") {
       return (
-        <StepScreen actions={<PrimaryButton disabled={!isValidUrl(localUrl)} onClick={testLocalServer}>Проверить сервер</PrimaryButton>}>
+        <StepScreen actions={<CheckActionButton disabled={!isValidUrl(localUrl)} status={checkStatus("local-server")} onClick={testLocalServer} />}>
           <InfoBlock icon={Server} title="Локальный сервер" text="Введите URL endpoint, который принимает аудио или отвечает health-проверкой." />
-          <Input value={localUrl} type="url" aria-label="URL локального сервера" placeholder="https://server.example/health" onChange={(event) => setLocalUrl(event.target.value)} />
+          <Input value={localUrl} type="url" aria-label="URL локального сервера" placeholder="https://server.example/health" onChange={(event) => {
+            setLocalUrl(event.target.value);
+            resetCheck("local-server");
+          }} />
         </StepScreen>
       );
     }
 
-    if (state.step === "cloud-privacy") return <InfoScreen icon={Cloud} title="Приватность облака" text="Аудио проходит через серверы Brai для расшифровки. Мы не храним содержимое запросов."><PrimaryButton onClick={testCloudVoice}>Согласен</PrimaryButton></InfoScreen>;
+    if (state.step === "cloud-privacy") return <InfoScreen icon={Cloud} title="Приватность облака" text="Аудио проходит через серверы Brai для расшифровки. Мы не храним содержимое запросов."><CheckActionButton status={checkStatus("cloud-privacy")} onClick={testCloudVoice} /></InfoScreen>;
 
     if (state.step === "overlay") {
       return (
         <PermissionScreen icon={MonitorUp} title="Поверх других приложений" text="Это разрешение нужно, чтобы плавающая кнопка Brai была доступна поверх текущего приложения.">
-          <PrimaryButton onClick={openOverlay}>Открыть настройки</PrimaryButton>
-          <SecondaryButton disabled={isAndroid && openedSystemStep !== "overlay"} onClick={checkOverlay}>Я включил</SecondaryButton>
+          <SecondaryButton icon={MonitorUp} onClick={openOverlay}>Открыть настройки</SecondaryButton>
+          <CheckActionButton status={checkStatus("overlay")} onClick={checkOverlay} />
         </PermissionScreen>
       );
     }
 
     if (state.step === "accessibility-why") return <InfoScreen icon={ShieldCheck} title="Специальные возможности" text="Они нужны, чтобы вставлять текст в поля, работать с буфером и выполнять действия на экране."><PrimaryButton onClick={() => go("accessibility-blocked")}>Продолжить</PrimaryButton></InfoScreen>;
-    if (state.step === "accessibility-blocked") return <InfoScreen icon={Lock} title="Шаг 1: получить отказ" text="Откройте специальные возможности и попробуйте включить Brai. Android должен показать, что настройка заблокирована."><PrimaryButton onClick={openAccessibility}>Открыть</PrimaryButton><SecondaryButton disabled={isAndroid && openedSystemStep !== "accessibility-blocked"} onClick={() => go("accessibility-restricted")}>Да, доступ заблокирован</SecondaryButton></InfoScreen>;
-    if (state.step === "accessibility-restricted") return <InfoScreen icon={ShieldCheck} title="Шаг 2: снять ограничение" text="Откройте карточку приложения, нажмите меню с тремя точками и выберите «Разрешить ограниченные настройки»."><PrimaryButton onClick={openAppSettings}>Открыть карточку приложения</PrimaryButton><SecondaryButton disabled={isAndroid && openedSystemStep !== "accessibility-restricted"} onClick={() => go("accessibility-enable")}>Ограничение снято</SecondaryButton></InfoScreen>;
-    if (state.step === "accessibility-enable") return <InfoScreen icon={ShieldCheck} title="Шаг 3: включить доступ" text="Теперь снова откройте специальные возможности и включите Brai. После возврата мы проверим состояние."><PrimaryButton onClick={openAccessibility}>Открыть</PrimaryButton><SecondaryButton disabled={isAndroid && openedSystemStep !== "accessibility-enable"} onClick={checkAccessibility}>Проверить</SecondaryButton></InfoScreen>;
+    if (state.step === "accessibility-blocked") return <InfoScreen icon={Lock} title="Шаг 1: получить отказ" text="Откройте специальные возможности и попробуйте включить Brai. Android должен показать, что настройка заблокирована."><SecondaryButton icon={ShieldCheck} onClick={openAccessibility}>Открыть</SecondaryButton><PrimaryButton disabled={isAndroid && manualConfirmReadyStep !== "accessibility-blocked"} icon={CheckCircle2} onClick={() => go("accessibility-restricted")}>Да, доступ заблокирован</PrimaryButton></InfoScreen>;
+    if (state.step === "accessibility-restricted") return <InfoScreen icon={ShieldCheck} title="Шаг 2: снять ограничение" text="Откройте карточку приложения, нажмите меню с тремя точками и выберите «Разрешить ограниченные настройки»."><SecondaryButton icon={ShieldCheck} onClick={openAppSettings}>Открыть карточку приложения</SecondaryButton><PrimaryButton disabled={isAndroid && manualConfirmReadyStep !== "accessibility-restricted"} icon={CheckCircle2} onClick={() => go("accessibility-enable")}>Ограничение снято</PrimaryButton></InfoScreen>;
+    if (state.step === "accessibility-enable") return <InfoScreen icon={ShieldCheck} title="Шаг 3: включить доступ" text="Теперь снова откройте специальные возможности и включите Brai. После возврата мы проверим состояние."><SecondaryButton icon={ShieldCheck} onClick={openAccessibility}>Открыть</SecondaryButton><CheckActionButton status={checkStatus("accessibility-enable")} onClick={checkAccessibility} /></InfoScreen>;
 
     if (state.step === "microphone") return <PermissionScreen icon={Mic} title="Микрофон" text="Микрофон нужен для голосового ввода и команд."><PrimaryButton onClick={requestMic}>Разрешить микрофон</PrimaryButton></PermissionScreen>;
     if (state.step === "notifications") return <PermissionScreen icon={Bell} title="Уведомления" text="Уведомления нужны для фоновой записи, очереди и статуса отправки."><PrimaryButton onClick={requestNotifications}>Разрешить уведомления</PrimaryButton></PermissionScreen>;
@@ -620,27 +695,57 @@ function ShinyButton({ children, onClick }: { children: ReactNode; onClick: () =
   return <PrimaryButton onClick={onClick}>{children}</PrimaryButton>;
 }
 
-function PrimaryButton({ children, className, disabled, ...props }: React.ComponentProps<typeof Button>) {
+function CheckActionButton({ disabled, onClick, status }: { disabled?: boolean; onClick: () => void | Promise<void>; status: CheckStatus }) {
+  const checking = status === "checking";
+  const ready = status === "ready";
+  return (
+    <PrimaryButton
+      disabled={disabled || checking}
+      icon={checking ? LoaderCircle : ready ? CheckCircle2 : ShieldCheck}
+      iconClassName={checking ? "animate-spin" : undefined}
+      onClick={onClick}
+    >
+      {checking ? "Проверка" : ready ? "Продолжить" : "Проверить"}
+    </PrimaryButton>
+  );
+}
+
+type ActionButtonProps = React.ComponentProps<typeof Button> & {
+  icon?: LucideIcon | null;
+  iconClassName?: string;
+};
+
+function PrimaryButton({ children, className, disabled, icon: Icon = ArrowRight, iconClassName, ...props }: ActionButtonProps) {
   return (
     <Button
       size="lg"
       variant="outline"
       className={cx(
-        "min-h-12 w-full overflow-hidden rounded-full border-primary/35 bg-primary/10 px-6 text-base shadow-lg shadow-primary/10 hover:bg-primary/15 disabled:border-muted/30 disabled:bg-muted/20 disabled:opacity-60 disabled:shadow-none disabled:hover:bg-muted/20",
+        "min-h-12 w-full overflow-hidden rounded-full border-primary/35 bg-primary/10 px-6 text-base font-semibold shadow-lg shadow-primary/10 transition-all duration-200 hover:bg-primary/15 disabled:border-muted/30 disabled:bg-muted/20 disabled:opacity-60 disabled:shadow-none disabled:hover:bg-muted/20",
         className,
       )}
       disabled={disabled}
       {...props}
     >
-      <AnimatedShinyText shimmerWidth={140} className={cx("font-semibold", disabled ? "text-muted-foreground dark:text-muted-foreground" : "text-foreground/90 dark:text-foreground")}>
+      {Icon ? <Icon className={cx("size-4 transition-all", iconClassName)} aria-hidden="true" /> : null}
+      <AnimatedShinyText shimmerWidth={140} className={cx("mx-0 text-base font-semibold", disabled ? "text-muted-foreground dark:text-muted-foreground" : "text-foreground/90 dark:text-foreground")}>
         {children}
       </AnimatedShinyText>
     </Button>
   );
 }
 
-function SecondaryButton({ className, ...props }: React.ComponentProps<typeof Button>) {
-  return <Button variant="outline" className={cx("min-h-12 w-full rounded-full border-primary/20 bg-transparent hover:bg-primary/10 disabled:opacity-50", className)} {...props} />;
+function SecondaryButton({ children, className, icon: Icon, iconClassName, ...props }: ActionButtonProps) {
+  return (
+    <Button
+      variant="outline"
+      className={cx("min-h-12 w-full rounded-full border-primary/20 bg-transparent text-base font-semibold transition-all duration-200 hover:bg-primary/10 disabled:opacity-50", className)}
+      {...props}
+    >
+      {Icon ? <Icon className={cx("size-4 transition-all", iconClassName)} aria-hidden="true" /> : null}
+      {children}
+    </Button>
+  );
 }
 
 function StepScreen({ actions, children }: { actions?: ReactNode; children: ReactNode }) {
