@@ -33,6 +33,7 @@ export function acceptedPreviewBranches(pulls, targetBranch = "main") {
 export function acceptedPreviewReleaseNotes(pulls, targetBranch = "main") {
   return acceptedPreviewPulls(pulls, targetBranch).map(({ branch, pull }) => ({
     branch,
+    sha: pull?.head?.sha ?? pull?.headRefOid ?? pull?.head_sha ?? "",
     releaseNotes: requiredReleaseNotesFromPull(pull, branch),
   }));
 }
