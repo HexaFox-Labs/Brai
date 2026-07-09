@@ -1483,6 +1483,18 @@ function classifyToolCall({ tool, input }) {
   if (isShellTool(effectiveTool)) {
     const commandText = String(input?.cmd ?? input?.command ?? "");
     if (!commandText.trim()) return { ok: false, reason: `Shell tool ${effectiveTool} did not include a command; blocking fail-closed.` };
+    if (isUnsafeRepoTaskStarterCommand(commandText)) {
+      return { ok: true, write: true, blockedReason: `Repo-local task starter is stale in this checkout.\n\n${taskStartGuidance()}` };
+    }
+    if (isRepoTaskStarterCommand(commandText) && input?.sandbox_permissions !== "require_escalated") {
+      return {
+        ok: true,
+        write: true,
+        blockedReason:
+          `This Brai command must run with sandbox_permissions=require_escalated before it creates a false sandbox failure.\n\n` +
+          `Brai task starter reads and writes authoritative Git/worktree metadata.`,
+      };
+    }
     const sandboxMode = sandboxCheckMode(commandText);
     if (sandboxMode.mode === "require_escalated" && input?.sandbox_permissions !== "require_escalated") {
       return {
@@ -1492,9 +1504,6 @@ function classifyToolCall({ tool, input }) {
           `This Brai command must run with sandbox_permissions=require_escalated before it creates a false sandbox failure.\n\n` +
           `${sandboxMode.reason}`,
       };
-    }
-    if (isUnsafeRepoTaskStarterCommand(commandText)) {
-      return { ok: true, write: true, blockedReason: `Repo-local task starter is stale in this checkout.\n\n${taskStartGuidance()}` };
     }
     if (isTaskBaseRefreshCommand(commandText) && hasActiveTaskMarker()) {
       return {
@@ -1555,6 +1564,10 @@ function isOfficialTaskStarterCommand(commandText) {
 
 function isUnsafeRepoTaskStarterCommand(commandText) {
   return splitShellSegments(commandText).some((segment) => isRepoTaskStarterSegment(segment) && !repoTaskStarterIsStable());
+}
+
+function isRepoTaskStarterCommand(commandText) {
+  return splitShellSegments(commandText).some((segment) => isRepoTaskStarterSegment(segment));
 }
 
 function isOfficialAcceptanceReconcileCommand(commandText) {
@@ -1633,11 +1646,14 @@ function sandboxCheckMode(commandText) {
     /\bplaywright\b.*\btest\b/.test(text) ||
     /\bnpm run app:e2e\b/.test(text) ||
     /\bgradlew?\b/.test(text) ||
+    /\badb\b/.test(text) ||
+    /\bemulator\b/.test(text) ||
     /\bandroid:(build:release|release|debug)\b/.test(text) ||
     /\bapp:cap:sync\b/.test(text) ||
     /\bbuild-android-env-apk\.sh\b/.test(text) ||
     /\bnpm run app:(build|dev)\b/.test(text) ||
     /\bnpm --prefix apps\/brai_app run (build|dev)\b/.test(text) ||
+    /\bnpm --prefix admin run (build|dev|start)\b/.test(text) ||
     /\bnext (build|dev)\b/.test(text) ||
     /\bpublish-(client-web-layer|web|mobile-bundle|capacitor-apk)\.sh\b/.test(text) ||
     /\bnpm run publish:(client-web-layer|web|mobile-bundle|apk)\b/.test(text) ||
