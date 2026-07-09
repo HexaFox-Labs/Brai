@@ -47,7 +47,7 @@ scripts/use-node22.sh node scripts/brai-sandbox-check-mode.mjs -- <command>
 | `scripts/brai-api-test.sh`, `npm --prefix services/brai_api test` | `require_escalated` | Wrapper подхватывает `BRAI_TEST_DATABASE_URL` из `BRAI_TEST_ENV_FILE`/`/etc/brai/brai-test.env`, а API suite слушает `127.0.0.1`. |
 | `npm run socraticode:preflight`, `npm run socraticode:ensure` | `require_escalated` | SocratiCode читает localhost Qdrant/Ollama и при bootstrap может запускать Docker-backed local services, что в Codex sandbox неавторитетно. |
 | `scripts/brai-preview-handoff.sh`, `node scripts/brai-task.mjs handoff` / `preview` / `acceptance-reconcile`, `deploy/scripts/accept-preview.sh <branch>` | `require_escalated` | Команды handoff/acceptance опираются на авторитетное состояние Git/GitHub и delivery-потока вне sandbox. |
-| `deploy/scripts/create-operation-activity.sh ...`, `deploy/scripts/complete-operation-activities.sh <operation:agent-task:id>` | `require_escalated` | Helper-скрипты re-enter host deploy context и пишут в защищённый runtime Postgres. |
+| `deploy/scripts/create-operation-activity.sh ...`, `deploy/scripts/complete-operation-activities.sh <operation:agent-task:id>`, `deploy/scripts/list-operation-activities.sh ...` | `require_escalated` | Helper-скрипты re-enter protected host deploy/runtime DB boundary. |
 | `deploy/scripts/classify-delivery.mjs --file <path>` или `BRAI_CHANGED_FILES=... deploy/scripts/classify-delivery.mjs` | `sandbox` | Changed files переданы явно, Git metadata не нужен. |
 | `deploy/scripts/classify-delivery.mjs` без `--file`/`BRAI_CHANGED_FILES` | `require_escalated` | Скрипт читает Git metadata. |
 | `npm run app:e2e`, `playwright test` | `require_escalated` | Playwright поднимает browser/dev-server runtime. |
