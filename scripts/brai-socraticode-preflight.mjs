@@ -280,6 +280,8 @@ export async function runSocraticodeCheck(options = {}) {
     await ensureContextArtifactsFresh(root, socraticode, report);
     await ensureGraphFresh(root, collection, socraticode, report);
     await ensureWatcherFresh(root, socraticode, report);
+    // startWatching() performs its own catch-up update, so graph freshness must be checked after it too.
+    await ensureGraphFresh(root, collection, socraticode, report);
     console.log(
       `SocratiCode ensure OK for ${root} ` +
         `(projectId=${effectiveProjectId}, committedProjectId=${committedProjectId}, collection=${collection})`,
