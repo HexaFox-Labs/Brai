@@ -107,10 +107,10 @@ export function sandboxCheckMode(command, env = process.env) {
     };
   }
 
-  if (/\bdeploy\/scripts\/(complete-operation-activities|create-operation-activity)\.sh\b/.test(text)) {
+  if (/\bdeploy\/scripts\/(complete-operation-activities|create-operation-activity|list-operation-activities)\.sh\b/.test(text)) {
     return {
       mode: "require_escalated",
-      reason: "Operation activity helpers enter the host deploy boundary and may write the live runtime DB.",
+      reason: "Operation activity helpers enter the protected host deploy/runtime DB boundary.",
     };
   }
 

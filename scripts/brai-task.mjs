@@ -591,6 +591,7 @@ function serverAccessContract(root = process.env.BRAI_ROOT ?? "/srv/projects/bra
   const supabaseDeployEnvFile = process.env.BRAI_SUPABASE_DEPLOY_ENV_FILE ?? path.join(protectedEnvDir, "supabase-deploy.env");
   const localCreateOperationHelper = path.join(root, "deploy/scripts/create-operation-activity.sh");
   const localCompleteOperationHelper = path.join(root, "deploy/scripts/complete-operation-activities.sh");
+  const localListOperationHelper = path.join(root, "deploy/scripts/list-operation-activities.sh");
   const acceptedPreviewOtaHelper = path.join(root, "deploy/scripts/sync-occupied-preview-ota-manifests.sh");
   const checks = [
     commandCheck("guard sync", [path.join(root, "scripts/brai-guard-sync-check.sh"), "--check"], { cwd: root }),
@@ -639,6 +640,7 @@ function serverAccessContract(root = process.env.BRAI_ROOT ?? "/srv/projects/bra
     }),
     commandCheck("operation create helper host-local sudo", [localCreateOperationHelper, "--host-local", "--check-access"], { cwd: root }),
     commandCheck("operation complete helper host-local sudo", [localCompleteOperationHelper, "--host-local", "--check-access"], { cwd: root }),
+    commandCheck("operation list helper host-local sudo", [localListOperationHelper, "--host-local", "--check-access"], { cwd: root }),
     commandCheck("accepted preview OTA sync access", [acceptedPreviewOtaHelper, "--check-access"], {
       cwd: root,
       env: {
@@ -665,6 +667,15 @@ function serverAccessContract(root = process.env.BRAI_ROOT ?? "/srv/projects/bra
       deployHost,
       localOperationHelper: localCompleteOperationHelper,
       checkName: "operation complete helper remote ssh",
+      root,
+    }),
+    operationHelperRemoteAccessCheck({
+      deployIdentityFile,
+      deploySshPort,
+      deployUser,
+      deployHost,
+      localOperationHelper: localListOperationHelper,
+      checkName: "operation list helper remote ssh",
       root,
     }),
     pathCheck("deploy artifacts", path.join(deployRepo, "deploy"), { requireRead: true, expectDirectory: true }),
@@ -1567,7 +1578,7 @@ function sandboxCheckMode(commandText) {
     /\bscripts\/brai-preview-handoff\.sh\b/.test(text) ||
     /\bdeploy\/scripts\/accept-preview\.sh\b/.test(text) ||
     /\bnode scripts\/brai-task\.mjs (acceptance-reconcile|handoff|preview)\b/.test(text) ||
-    /\bdeploy\/scripts\/(complete-operation-activities|create-operation-activity)\.sh\b/.test(text)
+    /\bdeploy\/scripts\/(complete-operation-activities|create-operation-activity|list-operation-activities)\.sh\b/.test(text)
   ) {
     return { mode: "require_escalated", reason: "Brai host/Git/runtime boundaries for this command are not authoritative inside the Codex sandbox." };
   }
@@ -1698,6 +1709,7 @@ function deliveryClassForFile(file) {
       "deploy/scripts/cleanup-accepted-branches.mjs",
       "deploy/scripts/complete-operation-activities.sh",
       "deploy/scripts/create-operation-activity.sh",
+      "deploy/scripts/list-operation-activities.sh",
       "deploy/scripts/deploy-branch.sh",
       "deploy/scripts/detect-native-apk-change.mjs",
       "deploy/scripts/generate-android-preview-icons.sh",
