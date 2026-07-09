@@ -35,7 +35,7 @@ database state before the slot is reused.
 
 If the preview branch changes the Android native boundary, deploy also builds a slot-specific preview APK and records `brai-<slot>-vN-previewM.apk`, APK `vN`, branch-local preview `M`, and `versionCode=N*10000+M` in the preview slot registry/status page. Preview OTA manifests then target the same release key, build kind, stable `N`, and preview `M`, so stale slot APKs block with an APK update screen instead of silently running an incompatible web bundle.
 
-Infrastructure/documentation-only branches can use the Temporal no-preview path when the delivery class is `infra-docs`. Strict technical-only branches can use the same no-preview path as `technical-no-preview` when the changed files are limited to tests, test configuration, or narrowly allowed agent-operation bookkeeping that is proven by CI rather than browser review. That path records `delivery_classified`, `no_preview_required`, `delivery_handoff_*`, and `auto_merge_*` events instead of allocating a slot. Temporal then marks `supabase_preview`, `preview_deploy`, `accepted_preview_promotion`, `supabase_preview_release`, and `slot_release` as `not_applicable`; after `pr_merged`, the branch lifecycle is complete without a slot.
+Infrastructure/documentation-only branches can use the Temporal no-preview path when the delivery class is `infra-docs`. Strict technical-only branches can use the same no-preview path as `technical-no-preview` when the changed files are limited to tests, test configuration, or narrowly allowed agent-operation bookkeeping that is proven by CI rather than browser review. That path records `delivery_classified` and `no_preview_required`, then dispatches Temporal handoff/merge activities instead of allocating a slot. Temporal marks `supabase_preview`, `preview_deploy`, `accepted_preview_promotion`, `supabase_preview_release`, and `slot_release` as `not_applicable`; after `no_preview_merged`, the branch lifecycle is complete without a slot.
 
 Local dev server URLs are agent-only verification aids. The user-facing handoff for preview-class project changes is the preview slot URL after `deploy-preview` succeeds; if CI/deploy is not complete, report that blocker instead of asking the project owner to open `localhost` or `127.0.0.1`.
 
@@ -130,9 +130,9 @@ Preview acceptance flow:
 codex/* accepted -> accept-preview.sh -> PR/merge queue into main -> production release/deploy -> release preview slot -> delete accepted branch/worktree
 ```
 
-Temporal is the required CI/CD control ledger for this flow. See
-[Temporal CI/CD Orchestration](temporal-ci-cd.md). GitHub Actions still runs the existing checks and deploy scripts, but strict Temporal signals gate the critical transitions. Failed Temporal recording is a blocker, not a reason to bypass checks, deploy jobs, slot registry, or branch protection.
-If this flow changes, update the Temporal workflow state, signals, tests, and the Temporal CI/CD document in the same branch; required delivery work must not live only in GitHub Actions or shell scripts.
+Temporal is the required CI/CD orchestrator for this flow. See
+[Temporal CI/CD Orchestration](temporal-ci-cd.md). GitHub Actions still runs checks and reports external facts, but deploy/release/promotion/cleanup side effects run as Temporal activities. Failed Temporal dispatch or a Temporal blocker is not a reason to bypass checks, deploy jobs, slot registry, or branch protection.
+If this flow changes, update the Temporal workflow state, dispatch/events, tests, and the Temporal CI/CD document in the same branch; required delivery work must not live only in GitHub Actions or shell scripts.
 
 Acceptance trigger:
 
@@ -176,6 +176,10 @@ The deploy user must not need read or write access to `/srv/projects/brai/.git`.
 ```text
 caddy validate --config /etc/caddy/Caddyfile
 systemctl reload caddy
+/srv/opt/brai-main-sync.sh *
+sudo -u brai /srv/opt/node-v22.16.0/bin/npm --prefix /srv/projects/brai/services/brai_temporal ci
+systemctl restart brai-temporal-worker.service
+systemd-run --unit=brai-temporal-worker-delayed-restart --on-active=* --collect /bin/systemctl restart brai-temporal-worker.service
 sudo -u brai /srv/projects/brai-envs/prod/source/deploy/scripts/complete-operation-activities.sh --local operation:agent-task:*
 systemctl restart brai-api.service
 systemctl restart brai-api-dev.service
