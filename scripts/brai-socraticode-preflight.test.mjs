@@ -55,6 +55,13 @@ test("preflight mode reads SocratiCode state without mutating local services", (
   assert.doesNotMatch(preflightBlock, /ensureWatcherFresh/);
 });
 
+test("ensure mode rechecks graph freshness after watcher startup catch-up", () => {
+  const script = fs.readFileSync(new URL("./brai-socraticode-preflight.mjs", import.meta.url), "utf8");
+  const ensureBlock = script.slice(script.indexOf('if (mode === "ensure")'), script.indexOf("let info;"));
+
+  assert.match(ensureBlock, /await ensureGraphFresh[\s\S]+await ensureWatcherFresh[\s\S]+await ensureGraphFresh/);
+});
+
 test("preflight watcher check is read-only", async () => {
   await assertWatcherActive("/tmp/brai", async () => true);
   await assert.rejects(
