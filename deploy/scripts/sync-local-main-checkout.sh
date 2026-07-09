@@ -340,6 +340,7 @@ if [ "${BRAI_MAIN_SYNC_LOCK_CHECKOUT:-1}" = "1" ]; then
     for deploy_tool in \
       deploy/scripts/create-operation-activity.sh \
       deploy/scripts/complete-operation-activities.sh \
+      deploy/scripts/list-operation-activities.sh \
       deploy/scripts/record-runtime-log.mjs \
       deploy/scripts/sync-occupied-preview-ota-manifests.sh
     do

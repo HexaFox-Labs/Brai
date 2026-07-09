@@ -230,6 +230,18 @@ copied `app_settings.primary_user_id`. Production env files must not set this fl
 Use [Supabase Postgres Cutover](supabase-postgres-cutover.md) only as the archived record of the
 completed cutover. Active production, Dev, and preview writes use Supabase Postgres only.
 
+Use `deploy/scripts/list-operation-activities.sh [--status New|Done|all] [--limit <N>] [--json]`
+to list Codex operation activities. Default mode SSHes through `brai-deploy@localhost` and
+executes the helper from deploy-owned `/srv/projects/brai-envs/prod/source`, then re-enters
+the protected runtime boundary as `brai`. Default output is a table of open `New` rows with
+`id`, `title`, `status`, UTC timestamps, truncated `reason`, and truncated `description_md`.
+For same-host maintenance without a deploy SSH key, use `--host-local`; for machine-readable
+output use `--json`.
+
+```bash
+deploy/scripts/list-operation-activities.sh --host-local --status New --limit 50
+```
+
 Use `deploy/scripts/complete-operation-activities.sh <operation-activity-id>...` to
 mark Codex operation activities as `Done`. The default mode SSHes through
 `brai-deploy@localhost` and executes the helper from deploy-owned

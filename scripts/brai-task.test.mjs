@@ -101,6 +101,7 @@ test("server access contract checks operation helper sudo boundary", () => {
   const sudoers = fs.readFileSync(new URL("../deploy/ansible/templates/brai-deploy-sudoers.j2", import.meta.url), "utf8");
   assert.match(script, /commandCheck\("operation create helper host-local sudo"/);
   assert.match(script, /commandCheck\("operation complete helper host-local sudo"/);
+  assert.match(script, /commandCheck\("operation list helper host-local sudo"/);
   assert.match(script, /commandCheck\("accepted preview OTA sync access"/);
   assert.match(script, /sync-occupied-preview-ota-manifests\.sh/);
   assert.match(script, /BRAI_PROD_SOURCE_ROOT: path\.join\(envsRoot, "prod\/source"\)/);
@@ -109,11 +110,13 @@ test("server access contract checks operation helper sudo boundary", () => {
   assert.match(sudoers, /ALL=\(\{\{ brai_service_user \}\}\) NOPASSWD:/);
   assert.match(sudoers, /create-operation-activity\.sh --local \*/);
   assert.match(sudoers, /complete-operation-activities\.sh --local \*/);
+  assert.match(sudoers, /list-operation-activities\.sh --local \*/);
   assert.match(sudoers, /brai_operation_maintainers/);
 });
 
 test("delivery classifier keeps operation helper changes in infra", () => {
   assert.equal(deliveryClassForFile("deploy/scripts/create-operation-activity.sh"), "infra");
+  assert.equal(deliveryClassForFile("deploy/scripts/list-operation-activities.sh"), "infra");
 });
 
 test("task base refresh commands are hard blocked", () => {
@@ -216,6 +219,7 @@ test("main checkout lock preserves agent worktrees by default", () => {
   assert.match(script, /sudo chmod u=rwx,g=rx,o=x "\$root\/deploy"/);
   assert.match(script, /complete-operation-activities\.sh/);
   assert.match(script, /create-operation-activity\.sh/);
+  assert.match(script, /list-operation-activities\.sh/);
   assert.match(script, /sync-occupied-preview-ota-manifests\.sh/);
   assert.match(script, /sudo chmod u=rwx,g=rx,o=x "\$root\/deploy\/scripts"/);
   assert.match(script, /sudo chgrp brai-deploy "\$deploy_tool"/);
@@ -257,6 +261,7 @@ test("local main sync preserves runtime dirs and hard resets to origin main", ()
   assert.match(script, /chmod u=rwx,g=rx,o=x deploy/);
   assert.match(script, /complete-operation-activities\.sh/);
   assert.match(script, /create-operation-activity\.sh/);
+  assert.match(script, /list-operation-activities\.sh/);
   assert.match(script, /sync-occupied-preview-ota-manifests\.sh/);
   assert.match(script, /preserve_agent_dependency_paths/);
   assert.match(script, /admin\/node_modules/);
@@ -386,6 +391,7 @@ test("delivery classifier separates infra-docs from runtime preview", () => {
   assert.equal(deliveryClassForFile("deploy/scripts/publish-mobile-bundle.sh"), "infra");
   assert.equal(deliveryClassForFile("deploy/scripts/publish-capacitor-apk.sh"), "infra");
   assert.equal(deliveryClassForFile("deploy/scripts/complete-operation-activities.sh"), "infra");
+  assert.equal(deliveryClassForFile("deploy/scripts/list-operation-activities.sh"), "infra");
   assert.equal(deliveryClassForFile("deploy/scripts/sync-local-main-checkout.sh"), "infra");
   assert.equal(deliveryClassForFile("deploy/scripts/sync-occupied-preview-ota-manifests.sh"), "infra");
   assert.equal(deliveryClassForFile("deploy/scripts/ci-ssh-sync-main-checkout.sh"), "infra");
@@ -402,6 +408,7 @@ test("delivery classifier separates infra-docs from runtime preview", () => {
   assert.equal(classifyDelivery(["docs/foo.md"]).deliveryClass, "infra-docs");
   assert.equal(classifyDelivery([".github/workflows/brai-delivery.yml"]).deliveryClass, "infra-docs");
   assert.equal(classifyDelivery(["deploy/scripts/complete-operation-activities.sh"]).deliveryClass, "infra-docs");
+  assert.equal(classifyDelivery(["deploy/scripts/list-operation-activities.sh"]).deliveryClass, "infra-docs");
   assert.equal(classifyDelivery(["supabase/migrations/0002_enable_rls_public_tables.sql"]).deliveryClass, "infra-docs");
   assert.equal(classifyDelivery(["supabase/migrations/0003_fix_rls_function_search_path.sql"]).deliveryClass, "infra-docs");
   assert.equal(classifyDelivery(["supabase/migrations/0004_empty_rls_function_search_path.sql"]).deliveryClass, "infra-docs");
@@ -506,6 +513,37 @@ test("operation activity completion helper has a narrow shell contract", () => {
   assert.match(helper, /completed_at_utc = COALESCE/);
   assert.doesNotMatch(helper, /activity_type_id = 'action'/);
   assert.doesNotMatch(helper, /SQLite|sqlite|BRAI_DB|\.backup/);
+});
+
+test("operation activity list helper has a read-only shell contract", () => {
+  const helperPath = path.resolve(import.meta.dirname, "../deploy/scripts/list-operation-activities.sh");
+  const helper = fs.readFileSync(helperPath, "utf8");
+  assert.match(helper, /set -euo pipefail/);
+  assert.match(helper, /BRAI_OPERATION_HELPER_REPO/);
+  assert.match(helper, /--host-local/);
+  assert.match(helper, /sudo -n -u "\$SERVICE_USER"/);
+  assert.match(helper, /BRAI_DATABASE_URL is required/);
+  assert.match(helper, /new Pool/);
+  assert.match(helper, /activity_type_id = 'operation'/);
+  assert.match(helper, /author = 'Codex'/);
+  assert.match(helper, /deleted_at_utc IS NULL/);
+  assert.match(helper, /status = \$2/);
+  assert.match(helper, /LIMIT \$1/);
+  assert.doesNotMatch(helper, /\b(?:INSERT|UPDATE|DELETE)\b/);
+  assert.doesNotMatch(helper, /record-runtime-log/);
+  assert.doesNotMatch(helper, /SQLite|sqlite|BRAI_DB|\.backup/);
+
+  const help = spawnSync("bash", [helperPath, "--help"], { encoding: "utf8" });
+  assert.equal(help.status, 0);
+  assert.match(help.stderr, /--status New\|Done\|all/);
+
+  const badStatus = spawnSync("bash", [helperPath, "--local", "--status", "Open"], { encoding: "utf8" });
+  assert.notEqual(badStatus.status, 0);
+  assert.match(badStatus.stderr, /Invalid status/);
+
+  const badLimit = spawnSync("bash", [helperPath, "--local", "--limit", "0"], { encoding: "utf8" });
+  assert.notEqual(badLimit.status, 0);
+  assert.match(badLimit.stderr, /Invalid limit/);
 });
 
 test("operation activity creation helper rejects placeholder payloads before DB access", () => {
