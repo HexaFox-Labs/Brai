@@ -375,6 +375,7 @@ test("delivery classifier separates infra-docs from runtime preview", () => {
   assert.equal(deliveryClassForFile("services/brai_api/test/api.auth-migrations.test.js"), "technical");
   assert.equal(deliveryClassForFile("deploy/environments.json"), "infra");
   assert.equal(deliveryClassForFile("deploy/ansible/brai.yml"), "infra");
+  assert.equal(deliveryClassForFile("deploy/systemd/brai-temporal-worker.service"), "infra");
   assert.equal(deliveryClassForFile("deploy/scripts/apk-release-targets.mjs"), "infra");
   assert.equal(deliveryClassForFile("deploy/scripts/build-nonproduction-apks.sh"), "infra");
   assert.equal(deliveryClassForFile("deploy/scripts/resolve-deploy-env.mjs"), "infra");
@@ -1397,30 +1398,30 @@ test("delivery handoff does not write a receipt when a required delivery job fai
 
 test("infra docs workflow marks handoff passed only from the PR merge job", () => {
   const workflow = fs.readFileSync(new URL("../.github/workflows/brai-delivery.yml", import.meta.url), "utf8");
+  const workflows = fs.readFileSync(new URL("../services/brai_temporal/src/workflows.mjs", import.meta.url), "utf8");
   const autoMergeJob = workflow.slice(workflow.indexOf("auto-merge-infra-docs:"), workflow.indexOf("deploy-prod:"));
   const recordMergeJob = workflow.slice(workflow.indexOf("record-infra-docs-merge:"), workflow.indexOf("release-preview-slot:"));
   assert.doesNotMatch(autoMergeJob, /event delivery_handoff_passed/);
-  assert.match(recordMergeJob, /Cleanup accepted no-preview branch/);
-  assert.match(recordMergeJob, /deploy\/scripts\/ci-cleanup-accepted-branches\.sh --branch "\$BRAI_BRANCH"/);
-  assert.match(recordMergeJob, /continue-on-error: true/);
   assert.match(recordMergeJob, /permissions:\n\s+contents: write/);
-  assert.match(autoMergeJob, /BRAI_ACCEPT_NO_PREVIEW_ONLY/);
-  assert.match(recordMergeJob, /event delivery_handoff_passed/);
-  assert.match(recordMergeJob, /event pr_merged/);
+  assert.match(autoMergeJob, /dispatch-no-preview-handoff/);
+  assert.match(recordMergeJob, /dispatch-no-preview-merged/);
+  assert.match(workflows, /delivery_handoff_passed/);
+  assert.match(workflows, /cleanupAcceptedBranches\(\{ branch: state\.branch \}\)/);
+  assert.match(workflows, /eventLike\(request, "pr_merged"\)/);
   assert.match(recordMergeJob, /brai-delivery:technical-no-preview/);
-  assert.ok(recordMergeJob.indexOf("event delivery_handoff_passed") < recordMergeJob.indexOf("event pr_merged"));
   assert.match(recordMergeJob, /BRAI_PR_MERGED_AT/);
 });
 
-test("delivery workflow serializes main sync after prod deploy", () => {
+test("delivery workflow dispatches prod deploy through Temporal and bootstraps worker changes", () => {
   const workflow = fs.readFileSync(new URL("../.github/workflows/brai-delivery.yml", import.meta.url), "utf8");
-  const deployProdJob = workflow.slice(workflow.indexOf("deploy-prod:"), workflow.indexOf("sync-local-main-checkout:"));
-  const syncJob = workflow.slice(workflow.indexOf("sync-local-main-checkout:"), workflow.indexOf("record-infra-docs-merge:"));
+  const deployProdJob = workflow.slice(workflow.indexOf("deploy-prod:"), workflow.indexOf("deploy-dev:"));
 
-  assert.match(deployProdJob, /id: deploy_prod/);
   assert.match(deployProdJob, /permissions:\n\s+contents: write/);
-  assert.match(deployProdJob, /Temporal prod deploy failed\n\s+if: failure\(\) && steps\.deploy_prod\.outcome == 'failure'/);
-  assert.match(syncJob, /needs: deploy-prod/);
+  assert.match(deployProdJob, /id: temporal_worker_restart/);
+  assert.match(deployProdJob, /Bootstrap Temporal worker for orchestration changes/);
+  assert.match(deployProdJob, /ci-ssh-sync-main-checkout\.sh/);
+  assert.match(deployProdJob, /dispatch-promotion --target prod/);
+  assert.doesNotMatch(workflow, /sync-local-main-checkout:/);
 });
 
 test("delivery workflow releases preview slots for unmerged closed codex PRs", () => {
@@ -1430,7 +1431,9 @@ test("delivery workflow releases preview slots for unmerged closed codex PRs", (
   assert.match(releaseJob, /github\.event\.pull_request\.merged == false/);
   assert.match(releaseJob, /github\.event\.pull_request\.head\.ref/);
   assert.match(releaseJob, /github\.event\.pull_request\.head\.sha/);
-  assert.match(releaseJob, /steps\.release_slot\.outputs\.released == 'true' \|\| github\.event_name == 'pull_request'/);
+  assert.match(releaseJob, /dispatch-release-preview/);
+  assert.match(releaseJob, /BRAI_CLOSE_OUTCOME/);
+  assert.match(releaseJob, /abandoned_closed/);
 });
 
 test("delivery handoff writes infra-docs receipt only for merged PRs", () => {
@@ -1870,6 +1873,7 @@ test("accept preview checks verified preview before PR actions", () => {
 test("accepted preview stale cleanup is best effort", () => {
   const script = fs.readFileSync(path.join(process.cwd(), "deploy/scripts/ci-ssh-complete-accepted-previews.sh"), "utf8");
   const workflow = fs.readFileSync(path.join(process.cwd(), ".github/workflows/brai-delivery.yml"), "utf8");
+  const temporalWorkflow = fs.readFileSync(path.join(process.cwd(), "services/brai_temporal/src/workflows.mjs"), "utf8");
   const cleanupScript = fs.readFileSync(path.join(process.cwd(), "deploy/scripts/ci-cleanup-accepted-branches.sh"), "utf8");
   const pruneScript = fs.readFileSync(path.join(process.cwd(), "deploy/scripts/ci-ssh-prune-accepted-branches.sh"), "utf8");
   const promoteScript = fs.readFileSync(path.join(process.cwd(), "deploy/scripts/ci-ssh-promote-deployment.sh"), "utf8");
@@ -1889,9 +1893,8 @@ test("accepted preview stale cleanup is best effort", () => {
   assert.match(cleanupLoop, /cleanup_previously_accepted_preview/);
   assert.match(cleanupLoop, /Best-effort cleanup failed/);
   assert.doesNotMatch(cleanupLoop, /exit 1/);
-  assert.match(workflow, /Cleanup accepted preview branches/);
-  assert.match(workflow, /deploy\/scripts\/ci-cleanup-accepted-branches\.sh --recent-merged/);
-  assert.match(workflow, /continue-on-error: true/);
+  assert.match(workflow, /dispatch-promotion --target prod/);
+  assert.match(temporalWorkflow, /cleanupAcceptedBranches\(\{ recentMerged: true \}\)/);
   assert.match(cleanupScript, /BRAI_ACTIVE_PREVIEW_BRANCHES_JSON="\$ACTIVE_BRANCHES_JSON"/);
   assert.match(cleanupScript, /cleanup-accepted-branches\.mjs/);
   assert.match(cleanupScript, /ci-ssh-prune-accepted-branches\.sh/);

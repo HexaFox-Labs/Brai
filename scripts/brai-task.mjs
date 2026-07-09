@@ -1672,6 +1672,7 @@ function deliveryClassForFile(file) {
     file === "apps/brai_app/tests/unit/publishScripts.test.ts" ||
     file.startsWith("admin/deploy/") ||
     file.startsWith("deploy/ansible/") ||
+    file.startsWith("deploy/systemd/") ||
     file.startsWith(".githooks/") ||
     file.startsWith("scripts/brai-") ||
     file.startsWith("scripts/check-open-openspec-changes") ||
