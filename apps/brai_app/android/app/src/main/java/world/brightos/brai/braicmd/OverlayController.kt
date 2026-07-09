@@ -740,7 +740,8 @@ class OverlayController(private val service: BraiAccessibilityService) {
             AppConstants.KEY_MAIN_ICON_OPACITY_PERCENT,
             AppConstants.KEY_MAIN_ICON_SIZE_PERCENT,
             AppConstants.KEY_SCREENSHOT_ICON_OPACITY_PERCENT,
-            AppConstants.KEY_SCREENSHOT_ICON_SIZE_PERCENT
+            AppConstants.KEY_SCREENSHOT_ICON_SIZE_PERCENT,
+            AppConstants.KEY_ONBOARDING_VOICE_ONLY
         ) + contextActionSettingKeys
     }
 }

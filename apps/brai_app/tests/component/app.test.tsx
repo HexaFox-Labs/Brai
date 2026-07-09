@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { openProfileMenuItem, setupBraiAppTest, stubAndroidCapacitor } from "./app-test-support";
+import { cmdPlugin, openProfileMenuItem, setupBraiAppTest, stubAndroidCapacitor } from "./app-test-support";
 import { BraiApp } from "@/features/app/BraiApp";
 import { FocusSection } from "@/features/app/sections/focus/FocusSection";
 import { pendingEvents, saveGoalCache, saveHistoryCache } from "@/shared/storage/syncStore";
@@ -25,6 +25,15 @@ describe("BraiApp shell", () => {
     expect(screen.getAllByLabelText("Информация о действиях").length).toBeGreaterThan(0);
     expect(screen.getByRole("textbox", { name: "Добавить" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Открыть правое меню" })).toBeInTheDocument();
+  });
+
+  it("leaves Brai Cmd voice-only onboarding mode after opening the signed-in app", async () => {
+    stubAndroidCapacitor();
+
+    render(<BraiApp />);
+
+    await waitFor(() => expect(cmdPlugin.setVoiceOnlyMode).toHaveBeenCalledWith({ enabled: false }));
+    expect(cmdPlugin.setQueuePausedMode).toHaveBeenCalledWith({ enabled: false });
   });
 
   it("keeps collapsed desktop rail action icons clickable", async () => {
