@@ -111,7 +111,7 @@ Brai SHALL track accepted production builds and APK public releases in the serve
 
 For `version_type_id = build`, `build_versions.version` SHALL be the monotonically increasing accepted production build counter.
 
-The public APK version SHALL be `vN`. The browser web and Android OTA version SHALL be `X.Y.Z` and SHALL NOT be assembled from the APK counter.
+The public APK version SHALL be `vN`. Native-boundary preview APK iteration `M` SHALL be counted per branch and stable APK version `N`. The browser web and Android OTA version SHALL be `X.Y.Z` and SHALL NOT be assembled from the APK counter.
 
 `short_changes` and `detailed_changes` SHALL contain Russian human-readable notes about the accepted build or APK capabilities.
 
@@ -205,7 +205,7 @@ Brai SHALL keep Preview APK artifacts aligned with their OTA manifests through t
 #### Scenario: Native preview APK is published
 - **WHEN** a `codex/*` branch changes the native Android boundary
 - **THEN** the allocated preview slot APK is built with Android `versionName=N` and `versionCode=N * 10000 + M`
-- **AND** the preview release metadata records `brai-vN-previewM.apk`, APK version `N`, and preview iteration `M`
+- **AND** the preview release metadata records slot-specific `brai-<slot>-vN-previewM.apk`, APK version `N`, and branch-local preview iteration `M`
 - **AND** the Preview OTA manifest targets release key, build kind, stable `N`, and preview `M`
 - **AND** `M` is committed only after the preview deployment is fully ready, so failed builds and failed deployments retry the same `M`
 
