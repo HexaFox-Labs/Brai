@@ -613,7 +613,7 @@ describe("mobile OTA publish scripts", () => {
     expect(index.sections.a).toMatchObject({
       title: "Preview A",
       applicationId: "world.brightos.brai.preview.a.work",
-      file: "brai-v2-preview6.apk",
+      file: "brai-a-v2-preview6.apk",
       apkVersion: 2,
       versionCode: 20006,
       releaseKey: "a",
@@ -622,8 +622,8 @@ describe("mobile OTA publish scripts", () => {
     });
     expect(html).toContain("<h2>Preview A</h2>");
     expect(html).toContain('<p class="version">v2-preview6</p>');
-    expect(html).toContain('<a class="download" href="./brai-v2-preview6.apk">Скачать</a>');
-    await expect(readFile(path.join(root, "deploy/releases/brai-v2-preview6.apk"), "utf8")).resolves.toBe("preview-apk");
+    expect(html).toContain('<a class="download" href="./brai-a-v2-preview6.apk">Скачать</a>');
+    await expect(readFile(path.join(root, "deploy/releases/brai-a-v2-preview6.apk"), "utf8")).resolves.toBe("preview-apk");
   });
 
   it("replaces an existing APK instead of rewriting it in place", async () => {
@@ -821,7 +821,7 @@ describe("mobile OTA publish scripts", () => {
     expect(statusHtml).toContain("APK versionCode");
   });
 
-  it("commits preview APK counters per stable version only after a ready preview", async () => {
+  it("commits preview APK counters per branch and stable version only after a ready preview", async () => {
     const root = await fixtureRoot("brai-slots-apk-counter-");
     const envsRoot = path.join(root, "envs");
     const env = {
@@ -850,29 +850,32 @@ describe("mobile OTA publish scripts", () => {
     registry = JSON.parse(await readFile(path.join(envsRoot, "preview-slots.json"), "utf8"));
     expect(registry.apk_preview_counter).toBe(1);
     expect(registry.apk_preview_counters).toMatchObject({ 2: 1 });
+    expect(registry.apk_preview_branch_counters).toMatchObject({ 2: { "codex/one": 1 } });
 
     registry.apk_preview_counter = 0;
     await writeFile(path.join(envsRoot, "preview-slots.json"), JSON.stringify(registry));
     await execFileAsync("node", [slotScript, "allocate", "codex/two", "def"], { env });
     await execFileAsync("node", [slotScript, "next-apk-preview", "codex/two", "def", "2"], { env });
     registry = JSON.parse(await readFile(path.join(envsRoot, "preview-slots.json"), "utf8"));
-    expect(registry.B).toMatchObject({ apk_preview_iteration: 2, apk_version_code: 20002 });
-    expect(registry.apk_preview_counter).toBe(1);
-
-    await execFileAsync("node", [slotScript, "release", "codex/two"], { env });
-
-    await execFileAsync("node", [slotScript, "release", "codex/one"], { env });
-    await execFileAsync("node", [slotScript, "allocate", "codex/two", "def"], { env });
-    await execFileAsync("node", [slotScript, "next-apk-preview", "codex/two", "def", "2"], { env });
-    registry = JSON.parse(await readFile(path.join(envsRoot, "preview-slots.json"), "utf8"));
-
-    expect(registry.A).toMatchObject({ apk_preview_iteration: 2, apk_version_code: 20002 });
+    expect(registry.B).toMatchObject({ apk_preview_iteration: 1, apk_version_code: 20001 });
     expect(registry.apk_preview_counter).toBe(1);
 
     await execFileAsync("node", [slotScript, "ready", "codex/two", "def"], { env });
     registry = JSON.parse(await readFile(path.join(envsRoot, "preview-slots.json"), "utf8"));
+    expect(registry.apk_preview_branch_counters).toMatchObject({ 2: { "codex/one": 1, "codex/two": 1 } });
+
+    await execFileAsync("node", [slotScript, "allocate", "codex/two", "def2"], { env });
+    await execFileAsync("node", [slotScript, "next-apk-preview", "codex/two", "def2", "2"], { env });
+    registry = JSON.parse(await readFile(path.join(envsRoot, "preview-slots.json"), "utf8"));
+
+    expect(registry.B).toMatchObject({ apk_preview_iteration: 2, apk_version_code: 20002 });
+    expect(registry.apk_preview_counter).toBe(1);
+
+    await execFileAsync("node", [slotScript, "ready", "codex/two", "def2"], { env });
+    registry = JSON.parse(await readFile(path.join(envsRoot, "preview-slots.json"), "utf8"));
     expect(registry.apk_preview_counter).toBe(2);
     expect(registry.apk_preview_counters).toMatchObject({ 2: 2 });
+    expect(registry.apk_preview_branch_counters).toMatchObject({ 2: { "codex/one": 1, "codex/two": 2 } });
 
     await execFileAsync("node", [slotScript, "allocate", "codex/three", "ghi"], { env });
     await execFileAsync("node", [slotScript, "next-apk-preview", "codex/three", "ghi", "3"], { env });

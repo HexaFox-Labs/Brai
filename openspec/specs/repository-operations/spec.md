@@ -73,7 +73,7 @@ Native-boundary preview branches SHALL publish a slot-specific preview APK befor
 
 #### Scenario: Native preview branch is handed off
 - **WHEN** a `codex/*` branch changes native Android behavior
-- **THEN** the handoff includes the preview APK link and APK `vN-previewM`
+- **THEN** the handoff includes the slot-specific preview APK link and APK `vN-previewM`
 - **AND** the release page slot card points to that preview APK while the branch owns the slot
 
 #### Scenario: Native preview branch is accepted
