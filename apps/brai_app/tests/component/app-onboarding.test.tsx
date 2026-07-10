@@ -1,14 +1,29 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { androidCapabilitiesPlugin, cmdPlugin, setupBraiAppTest, stubAndroidCapacitor } from "./app-test-support";
+import RootLayout from "@/app/layout";
 import { BraiApp } from "@/features/app/BraiApp";
 import { ONBOARDING_STORAGE_KEY } from "@/features/onboarding/onboardingModel";
+
+function runAppInitScript() {
+  const markup = renderToStaticMarkup(<RootLayout><main /></RootLayout>);
+  const appInitScript = /<script>([\s\S]*?)<\/script>/.exec(markup)?.[1] ?? "";
+  new Function(appInitScript)();
+}
 
 describe("BraiApp onboarding", () => {
   setupBraiAppTest();
 
   it("shows the commissioning start screen before the normal shell on a fresh install", async () => {
+    stubAndroidCapacitor();
     window.localStorage.removeItem(ONBOARDING_STORAGE_KEY);
+    window.localStorage.setItem("brai_theme_mode", "light");
+    document.documentElement.dataset.theme = "light";
+
+    runAppInitScript();
+
+    expect(document.documentElement.dataset.theme).toBe("dark");
 
     render(<BraiApp />);
 
@@ -18,7 +33,25 @@ describe("BraiApp onboarding", () => {
     expect(screen.queryByRole("textbox", { name: "Добавить" })).not.toBeInTheDocument();
   });
 
+  it("shows the normal shell instead of onboarding on fresh browser web", async () => {
+    window.localStorage.removeItem(ONBOARDING_STORAGE_KEY);
+    window.localStorage.setItem("brai_theme_mode", "light");
+    document.documentElement.dataset.theme = "dark";
+
+    runAppInitScript();
+
+    expect(document.documentElement.dataset.theme).toBe("light");
+
+    render(<BraiApp />);
+
+    expect(await screen.findByRole("heading", { name: "Действия" })).toBeInTheDocument();
+    expect(document.querySelector("[data-app-shell]")).toBeInTheDocument();
+    expect(document.querySelector("[data-onboarding-flow]")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Приступить" })).not.toBeInTheDocument();
+  });
+
   it("renders the first welcome cards without carousel arrow buttons", async () => {
+    stubAndroidCapacitor();
     window.localStorage.removeItem(ONBOARDING_STORAGE_KEY);
 
     const { container } = render(<BraiApp />);
@@ -39,6 +72,7 @@ describe("BraiApp onboarding", () => {
   });
 
   it("shows the start button on the fourth welcome card", async () => {
+    stubAndroidCapacitor();
     window.localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({
       complete: false,
       history: ["start"],
@@ -58,6 +92,7 @@ describe("BraiApp onboarding", () => {
   });
 
   it("shows the logo splash before restoring an unfinished onboarding step", async () => {
+    stubAndroidCapacitor();
     window.localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({
       complete: false,
       history: ["voice-intro"],
@@ -76,6 +111,7 @@ describe("BraiApp onboarding", () => {
   });
 
   it("keeps unauthenticated users inside the limited access screen", async () => {
+    stubAndroidCapacitor();
     window.localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({
       complete: false,
       history: [],
@@ -95,6 +131,7 @@ describe("BraiApp onboarding", () => {
   });
 
   it("offers cloud and local voice recognition for a new setup", async () => {
+    stubAndroidCapacitor();
     window.localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({
       complete: false,
       history: [],
@@ -113,6 +150,7 @@ describe("BraiApp onboarding", () => {
   });
 
   it("uses a select for provider choice and mutes provider testing until the key is entered", async () => {
+    stubAndroidCapacitor();
     window.localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({
       complete: false,
       history: ["voice-choice"],
@@ -284,6 +322,7 @@ describe("BraiApp onboarding", () => {
   });
 
   it("does not leave cloud login after a failed password request", async () => {
+    stubAndroidCapacitor();
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
       if (url.endsWith("/auth/session")) {
@@ -390,6 +429,7 @@ describe("BraiApp onboarding", () => {
   });
 
   it("does not run a fake check on the cloud privacy screen", async () => {
+    stubAndroidCapacitor();
     window.localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({
       complete: false,
       history: ["voice-choice"],
@@ -471,6 +511,7 @@ describe("BraiApp onboarding", () => {
   });
 
   it("does not pass voice training from manually typed text", async () => {
+    stubAndroidCapacitor();
     window.localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({
       complete: false,
       history: ["training-start"],

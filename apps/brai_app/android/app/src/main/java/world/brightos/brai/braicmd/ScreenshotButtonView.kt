@@ -51,6 +51,9 @@ class ScreenshotButtonView(context: Context) : View(context) {
     private var state: RecorderState = RecorderState.Idle
     private var glyph: ContextButtonGlyph = ContextButtonGlyph.Logo
     private var glyphDrawable: Drawable? = null
+    private var menuExpansionProgress = 0f
+    private var queueCount = 0
+    private var readyToInsert = false
 
     fun setRecorderState(next: RecorderState) {
         state = next
@@ -63,47 +66,77 @@ class ScreenshotButtonView(context: Context) : View(context) {
         invalidate()
     }
 
+    fun setMenuExpansionProgress(progress: Float) {
+        menuExpansionProgress = progress.coerceIn(0f, 1f)
+        invalidate()
+    }
+
+    fun setQueueState(count: Int, ready: Boolean = false) {
+        queueCount = count.coerceAtLeast(0)
+        readyToInsert = ready
+        invalidate()
+    }
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val cx = width / 2f
         val cy = height / 2f
         val radius = minOf(width, height) * 0.46f
 
-        if (glyph == ContextButtonGlyph.Logo) {
-            drawIcon(canvas)
-        } else {
-            drawButtonShell(canvas, cx, cy, radius)
+        if (glyph == ContextButtonGlyph.Logo && menuExpansionProgress > 0f) {
+            drawHubTransition(canvas, cx, cy, radius)
+            return
         }
+        if (glyph == ContextButtonGlyph.Logo) drawIcon(canvas) else drawButtonShell(canvas, cx, cy, radius)
         if (glyph == ContextButtonGlyph.Close) {
             drawGlyph(canvas, cx, cy)
             return
         }
 
+        if (shouldDrawContextActionGlyph(glyph)) drawGlyph(canvas, cx, cy)
         when (val current = state) {
             is RecorderState.Recording -> drawAmplitude(canvas, cx, cy, radius, current.amplitude)
             is RecorderState.Uploading -> drawSpinner(canvas, cx, cy, radius)
-            is RecorderState.Pending -> drawPendingCount(canvas, cx, cy, current.recordings + current.transcripts)
-            is RecorderState.TranscriptReady -> drawPendingCount(canvas, cx, cy, current.transcripts)
             is RecorderState.InboxDelivered -> drawCheck(canvas, cx, cy)
             is RecorderState.Error -> drawError(canvas, cx, cy)
-            else -> drawGlyph(canvas, cx, cy)
+            else -> Unit
         }
+        if (queueCount > 0) drawQueueBadge(canvas)
 
         if (state is RecorderState.Recording || state is RecorderState.Uploading) {
             postInvalidateOnAnimation()
         }
     }
 
-    private fun drawIcon(canvas: Canvas) {
+    private fun drawIcon(canvas: Canvas, alpha: Int = 255) {
         iconBounds.set(0, 0, width, height)
+        bitmapPaint.alpha = alpha
         canvas.drawBitmap(iconBitmap, null, iconBounds, bitmapPaint)
+        bitmapPaint.alpha = 255
     }
 
-    private fun drawButtonShell(canvas: Canvas, cx: Float, cy: Float, radius: Float) {
+    private fun drawButtonShell(canvas: Canvas, cx: Float, cy: Float, radius: Float, alpha: Int = 255) {
+        fillPaint.alpha = alpha
+        strokePaint.alpha = alpha
         canvas.drawCircle(cx, cy, radius, fillPaint)
-        strokePaint.color = COLOR_ICON_RED
+        strokePaint.color = currentIconColor()
         strokePaint.strokeWidth = minOf(width, height) * 0.025f
         canvas.drawCircle(cx, cy, radius - strokePaint.strokeWidth / 2f, strokePaint)
+        fillPaint.alpha = 255
+        strokePaint.alpha = 255
+    }
+
+    private fun drawHubTransition(canvas: Canvas, cx: Float, cy: Float, radius: Float) {
+        val logoAlpha = ((1f - menuExpansionProgress) * 255).roundToInt()
+        val crossAlpha = (menuExpansionProgress * 255).roundToInt()
+        if (logoAlpha > 0) drawIcon(canvas, logoAlpha)
+        if (crossAlpha <= 0) return
+        drawButtonShell(canvas, cx, cy, radius, crossAlpha)
+        strokePaint.color = COLOR_ICON_RED
+        strokePaint.alpha = crossAlpha
+        strokePaint.strokeWidth = minOf(width, height) * 0.035f
+        drawCross(canvas, cx, cy, minOf(width, height).toFloat())
+        strokePaint.alpha = 255
     }
 
     private fun drawGlyph(canvas: Canvas, cx: Float, cy: Float) {
@@ -189,38 +222,39 @@ class ScreenshotButtonView(context: Context) : View(context) {
         canvas.drawArc(RectF(cx - radius * 0.55f, cy - radius * 0.55f, cx + radius * 0.55f, cy + radius * 0.55f), phase, 250f, false, strokePaint)
     }
 
-    private fun drawPendingCount(canvas: Canvas, cx: Float, cy: Float, count: Int) {
-        val label = count.coerceAtLeast(1).coerceAtMost(99).toString()
-        textPaint.color = currentIconColor()
-        textPaint.textSize = if (label.length == 1) width * 0.42f else width * 0.34f
-        canvas.drawText(label, cx, cy - ((textPaint.descent() + textPaint.ascent()) / 2f) - height * 0.05f, textPaint)
+    private fun drawQueueBadge(canvas: Canvas) {
+        val label = if (queueCount > 99) "99+" else queueCount.toString()
+        val badgeRadius = width * 0.17f
+        val badgeX = width * 0.76f
+        val badgeY = height * 0.24f
+        fillPaint.color = currentIconColor()
+        canvas.drawCircle(badgeX, badgeY, badgeRadius, fillPaint)
+        fillPaint.color = COLOR_BUTTON_BACKGROUND
+        textPaint.color = COLOR_BUTTON_BACKGROUND
+        textPaint.textSize = if (label.length == 1) width * 0.22f else width * 0.16f
+        canvas.drawText(label, badgeX, badgeY - (textPaint.descent() + textPaint.ascent()) / 2f, textPaint)
     }
 
     private fun drawError(canvas: Canvas, cx: Float, cy: Float) {
         textPaint.color = currentIconColor()
-        textPaint.textSize = width * 0.46f
-        canvas.drawText("!", cx, cy - ((textPaint.descent() + textPaint.ascent()) / 2f), textPaint)
+        textPaint.textSize = width * 0.28f
+        canvas.drawText("!", cx - width * 0.22f, cy + height * 0.3f, textPaint)
     }
 
     private fun currentIconColor(): Int =
-        when (state) {
-            is RecorderState.Pending,
-            is RecorderState.TranscriptReady,
-            is RecorderState.Error -> COLOR_ICON_LIGHT
-            else -> COLOR_ICON_RED
-        }
+        if (readyToInsert) COLOR_ICON_GREEN else COLOR_ICON_RED
 
     private fun currentIconSoftColor(): Int =
-        when (state) {
-            is RecorderState.Error -> COLOR_ICON_LIGHT_SOFT
-            else -> COLOR_ICON_RED_SOFT
-        }
+        if (readyToInsert) COLOR_ICON_GREEN_SOFT else COLOR_ICON_RED_SOFT
 
     companion object {
         private const val COLOR_BUTTON_BACKGROUND = 0xFF050505.toInt()
         private const val COLOR_ICON_RED = 0xFFFF2020.toInt()
-        private const val COLOR_ICON_LIGHT = 0xFFEFF4F7.toInt()
+        private const val COLOR_ICON_GREEN = 0xFF2ED36F.toInt()
         private const val COLOR_ICON_RED_SOFT = 0xB8FF2020.toInt()
-        private const val COLOR_ICON_LIGHT_SOFT = 0xB8EFF4F7.toInt()
+        private const val COLOR_ICON_GREEN_SOFT = 0xB82ED36F.toInt()
     }
 }
+
+internal fun shouldDrawContextActionGlyph(glyph: ContextButtonGlyph): Boolean =
+    glyph != ContextButtonGlyph.Logo && glyph != ContextButtonGlyph.Close

@@ -195,7 +195,7 @@ internal class OverlayRecordingCoordinator(
         activeContextAction = action
         when (action) {
             ContextButtonAction.IdeaVoiceInbox ->
-                beginRecording(null, null, deliverToInbox = true, inboxTextPrefix = "Идея")
+                beginRecording(null, null, deliverToInbox = true, inboxTextPrefix = "")
             ContextButtonAction.ScreenshotVoiceInbox ->
                 startRecordingWithScreenshot(inboxTextPrefix = "")
             ContextButtonAction.ChatContextInbox ->
@@ -265,21 +265,10 @@ internal class OverlayRecordingCoordinator(
                     BraiCmdBus.post(RecorderState.Error("Скриншот недоступен"))
                     return@captureActiveWindowScreenshot
                 }
-                Thread {
-                    try {
-                        NetworkClient(service).uploadInboxCommand(
-                            transcript = "Скриншот",
-                            conversationContext = null,
-                            screenshotFile = screenshotFile,
-                            idempotencyKey = screenshotFile.name
-                        )
-                        screenshotFile.delete()
-                        BraiCmdBus.post(RecorderState.InboxDelivered)
-                    } catch (error: Throwable) {
-                        screenshotFile.delete()
-                        BraiCmdBus.post(RecorderState.Error(error.message ?: "Входящие не отвечают"))
-                    }
-                }.start()
+                if (!RecordingService.enqueueScreenshot(service, screenshotFile)) {
+                    screenshotFile.delete()
+                    BraiCmdBus.post(RecorderState.Error("Не удалось сохранить скриншот в очереди"))
+                }
             }
         }, SCREENSHOT_HIDE_DELAY_MS)
     }
@@ -326,7 +315,14 @@ internal class OverlayRecordingCoordinator(
         recordingStartDispatched = true
         BraiCmdBus.post(RecorderState.Uploading)
         Haptics.recordingStart(service)
-        RecordingService.start(service, conversationContext, screenshotFile, deliverToInbox = deliverToInbox, inboxTextPrefix = inboxTextPrefix)
+        RecordingService.start(
+            service,
+            conversationContext,
+            screenshotFile,
+            deliverToInbox = deliverToInbox,
+            inboxTextPrefix = inboxTextPrefix,
+            contextAction = activeContextAction
+        )
     }
 
     companion object {

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { BookOpen, Crown, Info, Settings } from "lucide-react";
 import { ensureBraiCmdAccess, openBraiCmdSettings, setBraiCmdOverlayEnabled, setBraiCmdQueuePausedMode, setBraiCmdVoiceOnlyMode } from "@/shared/platform/braiCmd";
-import { installAndroidBackHandler } from "@/shared/platform/platform";
+import { installAndroidBackHandler, isNativeShell, platformName } from "@/shared/platform/platform";
 import { getBraiLocalStorageItem, removeBraiLocalStorageItem, setBraiLocalStorageItem } from "@/shared/storage/localStorageKeys";
 import { ScrollArea } from "@/shared/ui/scroll-area";
 import { SidebarInset, SidebarProvider } from "@/shared/ui/sidebar";
@@ -35,9 +35,11 @@ const INBOX_MOBILE_CREATE_DRAFT_STORAGE_KEY = "brai_inbox_mobile_create_draft";
 
 export function BraiApp({ initialSection = "actions" }: { initialSection?: SectionId }) {
   const app = useBraiAppState(initialSection);
+  const nativeAndroid = useMountedNativeAndroid();
   const [mobileDockMenu, setMobileDockMenu] = useState<"left" | "right" | null>(null);
   const [startupExpired, setStartupExpired] = useState(false);
   const [onboardingVisible, setOnboardingVisible] = useState(() => process.env.NODE_ENV === "test" ? shouldShowOnboarding(false) : true);
+  const onboardingActive = nativeAndroid && onboardingVisible;
   const dockOverflowOpen = mobileDockMenu != null;
   const [actionsMobileCreateDraft, setActionsMobileCreateDraft] = useStoredMobileCreateDraft(ACTIONS_MOBILE_CREATE_DRAFT_STORAGE_KEY);
   const [inboxMobileCreateDraft, setInboxMobileCreateDraft] = useStoredMobileCreateDraft(INBOX_MOBILE_CREATE_DRAFT_STORAGE_KEY);
@@ -76,17 +78,19 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
   }, []);
 
   useEffect(() => {
+    if (!nativeAndroid) return;
     const timeout = window.setTimeout(() => {
       setOnboardingVisible(shouldShowOnboarding(startupReady && app.displaySyncStatus === "auth_required"));
     }, 0);
     return () => window.clearTimeout(timeout);
-  }, [app.displaySyncStatus, startupReady]);
+  }, [app.displaySyncStatus, nativeAndroid, startupReady]);
 
   useEffect(() => {
-    document.documentElement.dataset.theme = onboardingVisible ? "dark" : app.theme;
-  }, [app.theme, onboardingVisible]);
+    document.documentElement.dataset.theme = onboardingActive ? "dark" : app.theme;
+  }, [app.theme, onboardingActive]);
 
   useEffect(() => {
+    if (!nativeAndroid) return;
     if (app.displaySyncStatus === "auth_required") {
       void setBraiCmdVoiceOnlyMode(true);
       return;
@@ -102,7 +106,7 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
       setBraiCmdVoiceOnlyMode(false),
       setBraiCmdQueuePausedMode(false),
     ]);
-  }, [app.authDisplayName, app.displaySyncStatus, app.localSnapshotReady, onboardingVisible]);
+  }, [app.authDisplayName, app.displaySyncStatus, app.localSnapshotReady, nativeAndroid, onboardingVisible]);
 
   useEffect(() => installAndroidBackHandler(() => {
     if (window.history.state?.braiMobileMenu || window.history.state?.braiMobileDockMenu || window.history.state?.braiMobileSheet || window.history.state?.braiActivityEditor || window.history.state?.braiMobileActionCreate || window.history.state?.braiInboxEditor || window.history.state?.braiMobileInboxCreate || window.history.state?.braiFactoryLog) return false;
@@ -227,7 +231,7 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
     );
   }
 
-  if (onboardingVisible) {
+  if (onboardingActive) {
     return (
       <OnboardingFlow
         authRequired={startupReady && app.displaySyncStatus === "auth_required"}
@@ -360,6 +364,22 @@ function useMountedMobileNavigationViewport(): boolean {
     isMobileNavigationViewport,
     () => false,
   );
+}
+
+function useMountedNativeAndroid(): boolean {
+  return useSyncExternalStore(
+    subscribeNativeAndroid,
+    isNativeAndroid,
+    () => false,
+  );
+}
+
+function subscribeNativeAndroid() {
+  return () => undefined;
+}
+
+function isNativeAndroid(): boolean {
+  return isNativeShell() && platformName() === "android";
 }
 
 function subscribeMobileNavigationViewport(onStoreChange: () => void) {

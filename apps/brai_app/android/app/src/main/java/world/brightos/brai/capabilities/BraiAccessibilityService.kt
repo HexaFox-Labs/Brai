@@ -23,6 +23,7 @@ import world.brightos.brai.braicmd.BraiCmdPlugin
 import world.brightos.brai.braicmd.OverlayController
 import world.brightos.brai.braicmd.PendingReason
 import world.brightos.brai.braicmd.PendingTranscript
+import world.brightos.brai.braicmd.PendingTranscriptKind
 import world.brightos.brai.braicmd.PendingTranscriptStore
 import world.brightos.brai.braicmd.RecorderState
 import world.brightos.brai.braicmd.RecordingService
@@ -47,6 +48,10 @@ class BraiAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         when (event?.eventType) {
+            AccessibilityEvent.TYPE_VIEW_CLICKED -> {
+                overlay.onExternalInteraction(event.packageName?.toString())
+                updateFocusedNode()
+            }
             AccessibilityEvent.TYPE_VIEW_FOCUSED,
             AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED,
             AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
@@ -93,8 +98,11 @@ class BraiAccessibilityService : AccessibilityService() {
         takeScreenshot(Display.DEFAULT_DISPLAY, mainExecutor, callback)
     }
 
-    fun insertNextPendingTranscriptIntoFocusedField(showToast: Boolean): Boolean {
-        val pending = PendingTranscriptStore.list(this)
+    fun insertNextPendingTranscriptIntoFocusedField(
+        showToast: Boolean,
+        kind: PendingTranscriptKind = PendingTranscriptKind.MainDictation
+    ): Boolean {
+        val pending = PendingTranscriptStore.list(this, kind)
         if (pending.isEmpty()) return false
         return insertPendingTranscriptIntoFocusedField(pending.first(), pending.size, showToast)
     }

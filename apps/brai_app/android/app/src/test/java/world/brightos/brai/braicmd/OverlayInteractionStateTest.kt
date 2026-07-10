@@ -1,6 +1,7 @@
 package world.brightos.brai.braicmd
 
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -12,5 +13,13 @@ class OverlayInteractionStateTest {
         assertTrue(shouldShowStandaloneCancel(recording, RecordingButton.Main))
         assertFalse(shouldShowStandaloneCancel(recording, RecordingButton.Context))
         assertFalse(shouldShowStandaloneCancel(RecorderState.Uploading, RecordingButton.Main))
+    }
+
+    @Test
+    fun secondaryButtonsDisappearBeforeTheyReachTheHub() {
+        assertEquals(1f, secondaryCloseAlpha(0f), 0.001f)
+        assertTrue(secondaryCloseAlpha(0.25f) in 0f..0.55f)
+        assertEquals(0f, secondaryCloseAlpha(0.52f), 0.001f)
+        assertEquals(0f, secondaryCloseAlpha(1f), 0.001f)
     }
 }
