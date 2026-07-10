@@ -158,3 +158,15 @@ test("branch database URL override requires explicit preview marker", () => {
   });
   assert.equal(allowed.status, 0, allowed.stderr || allowed.stdout);
 });
+
+test("production seed advances copied generated-id sequences before commit", () => {
+  const script = fs.readFileSync(path.join(repoRoot, "deploy/scripts/supabase-branch.mjs"), "utf8");
+  const copyStart = script.indexOf("async function copySchemaData");
+  const copyEnd = script.indexOf("async function schemaTables", copyStart);
+  const copyBlock = script.slice(copyStart, copyEnd);
+
+  assert.match(copyBlock, /await resetCopiedSequences\(pool, targetSchema, copyTables\);\s+await pool\.query\("COMMIT"\)/);
+  assert.match(copyBlock, /pg_get_serial_sequence/);
+  assert.match(copyBlock, /SELECT setval\(/);
+  assert.match(copyBlock, /COALESCE\(MAX\(\$\{quoteIdentifier\(column\)\}\), 0\) \+ 1/);
+});
