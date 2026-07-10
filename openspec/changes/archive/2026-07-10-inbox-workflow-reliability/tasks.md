@@ -29,6 +29,6 @@
 ## 4. Verification
 
 - [x] 4.1 Run API, Temporal, task, Postgres, and OpenSpec checks.
-- [ ] 4.2 Deploy the repaired branch preview and verify all identity sequences.
-- [ ] 4.3 Recreate the reported text-only Inbox scenario and verify it reaches a terminal state.
-- [ ] 4.4 Benchmark at least 30 preview no-image runs and report p50/p90/p95/p99 plus sampled output quality.
+- [x] 4.2 Deploy the repaired branch preview and verify all identity sequences.
+- [x] 4.3 Recreate the reported text-only Inbox scenario and verify it reaches a terminal state.
+- [x] 4.4 Benchmark at least 30 preview no-image runs and report p50/p90/p95/p99 plus sampled output quality.

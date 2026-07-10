@@ -1,12 +1,14 @@
 # Inbox Workflow Reliability
 
-## Summary
+## Why
 
-Repair preview identity sequences, make persisted Inbox workflow dispatch durable,
-and make the required local Codex CLI text normalizer use its smallest supported,
-schema-constrained execution path.
+Preview data copy inserted production IDs without advancing owned sequences. A
+subsequent technical log insert could fail after Inbox ingest committed, prevent
+the Temporal start callback, and leave `AI-working` visible forever. The required
+local Codex CLI text normalizer also loaded unrelated repository context and did
+not pass its stored schema through the supported structured-output option.
 
-## Capabilities
+## What Changes
 
 - Keep copied preview identity sequences ahead of copied production IDs and fail
   deployment readiness when sequence state is unsafe.
@@ -20,17 +22,6 @@ schema-constrained execution path.
   terminal failure.
 - Preserve the definition/schema version pinned to an execution instead of
   silently relabelling in-flight v1 work as v2.
-
-## Rationale
-
-Preview data copy currently inserts production IDs without advancing owned
-sequences. A subsequent technical log insert can fail after Inbox ingest commits,
-prevent the Temporal start callback, and leave `AI-working` visible forever.
-The normalizer must continue to run through the local Codex CLI. Its current call
-does not pass the supported output-schema option and starts from the repository
-working directory, so it loads irrelevant agent context for a tiny JSON task. The
-repair must address correctness and latency without bypassing Codex or weakening
-validation and AI audit logging.
 
 ## Delivery Guard
 
