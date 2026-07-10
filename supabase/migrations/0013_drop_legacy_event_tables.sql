@@ -91,6 +91,96 @@ DO $$
 BEGIN
   IF EXISTS (
     SELECT 1
+    FROM activities a
+    WHERE a.last_event_id IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM events e
+        WHERE e.event_domain = 'activity' AND e.event_id = a.last_event_id
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM legacy_event_cleanup_stage s
+        WHERE s.event_domain = 'activity' AND s.event_id = a.last_event_id
+      )
+    GROUP BY a.last_event_id
+    HAVING COUNT(DISTINCT a.user_id) > 1
+  ) THEN
+    RAISE EXCEPTION 'legacy event cleanup ambiguous activity reference ownership';
+  END IF;
+END;
+$$;
+
+WITH reference_groups AS (
+  SELECT
+    a.last_event_id,
+    COUNT(*)::integer AS reference_count,
+    MIN(a.id) AS single_activity_id,
+    MIN(a.created_at_utc) AS occurred_at_utc,
+    MAX(a.updated_at_utc) AS received_at_utc,
+    MAX(a.user_id) AS user_id,
+    jsonb_agg(a.id ORDER BY a.id) AS activity_ids
+  FROM activities a
+  WHERE a.last_event_id IS NOT NULL
+    AND NOT EXISTS (
+      SELECT 1 FROM events e
+      WHERE e.event_domain = 'activity' AND e.event_id = a.last_event_id
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM legacy_event_cleanup_stage s
+      WHERE s.event_domain = 'activity' AND s.event_id = a.last_event_id
+    )
+  GROUP BY a.last_event_id
+), sequence_base AS (
+  SELECT GREATEST(
+    COALESCE((SELECT MAX(domain_sequence) FROM events WHERE event_domain = 'activity'), 0),
+    COALESCE((SELECT MAX(domain_sequence) FROM legacy_event_cleanup_stage WHERE event_domain = 'activity'), 0)
+  ) AS value
+), numbered AS (
+  SELECT r.*, row_number() OVER (ORDER BY r.last_event_id) AS offset
+  FROM reference_groups r
+)
+INSERT INTO legacy_event_cleanup_stage (
+  legacy_table, id, event_domain, event_id, event_type, event_action, title,
+  items_id, item_roles_id, subject_type, subject_id, actor_type, actor_id,
+  device_id, client_sequence, domain_sequence, status, ignore_reason,
+  occurred_at_utc, received_at_utc, base_server_revision, payload_version,
+  payload_json, created_at_utc, user_id
+)
+SELECT
+  'activities.last_event_id',
+  'activity-reference:' || md5(n.last_event_id),
+  'activity',
+  n.last_event_id,
+  'reference_backfill',
+  'activity.reference_backfill',
+  'Activity reference backfill',
+  NULL,
+  NULL,
+  CASE WHEN n.reference_count = 1 THEN 'activity' ELSE 'activity_list' END,
+  CASE WHEN n.reference_count = 1 THEN n.single_activity_id ELSE NULL END,
+  'system',
+  'migration:54',
+  NULL,
+  NULL,
+  b.value + n.offset,
+  'accepted',
+  NULL,
+  n.occurred_at_utc,
+  n.received_at_utc,
+  NULL,
+  1,
+  jsonb_build_object(
+    'source', 'legacy_activity_last_event_reference',
+    'activity_ids', n.activity_ids
+  )::text,
+  n.received_at_utc,
+  n.user_id
+FROM numbered n
+CROSS JOIN sequence_base b;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
     FROM legacy_event_cleanup_stage s
     JOIN events e ON e.id = s.id
     WHERE e.event_domain IS DISTINCT FROM s.event_domain

@@ -50,6 +50,12 @@ test('legacy event cleanup backfills missing rows and drops all three tables ide
         '2026-07-10T12:00:02.000Z', '2026-07-10T12:00:02.000Z',
         '{"title":"Inbox"}', 'accepted', 1
       );
+
+      INSERT INTO activities (
+        id, title, status, created_at_utc, updated_at_utc, last_event_id
+      ) VALUES
+        ('cleanup-operation-a', 'Operation A', 'New', '2026-07-10T11:00:00.000Z', '2026-07-10T12:00:00.000Z', 'manual:shared-operation-cleanup'),
+        ('cleanup-operation-b', 'Operation B', 'New', '2026-07-10T11:30:00.000Z', '2026-07-10T12:30:00.000Z', 'manual:shared-operation-cleanup');
     `);
 
     await pool.query(CLEANUP);
@@ -72,6 +78,18 @@ test('legacy event cleanup backfills missing rows and drops all three tables ide
         to_regclass(format('%I.%I', current_schema(), 'inbox_events')) AS inbox
     `)).rows[0], { timer: null, activity: null, inbox: null });
     assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM schema_migrations WHERE version = 54')).rows[0].count, 1);
+    assert.deepEqual((await pool.query(`
+      SELECT event_type, subject_type, payload_json::jsonb AS payload
+      FROM events
+      WHERE event_domain = 'activity' AND event_id = 'manual:shared-operation-cleanup'
+    `)).rows, [{
+      event_type: 'reference_backfill',
+      subject_type: 'activity_list',
+      payload: {
+        source: 'legacy_activity_last_event_reference',
+        activity_ids: ['cleanup-operation-a', 'cleanup-operation-b']
+      }
+    }]);
   } finally {
     await pool.end();
     await database.drop();
