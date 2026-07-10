@@ -90,7 +90,6 @@ const OnboardingChromeContext = createContext<{
 });
 
 const startButtonDelayMs = process.env.NODE_ENV === "test" ? 1 : 3000;
-const startupLogoDelayMs = process.env.NODE_ENV === "test" ? 0 : 220;
 const screenTransitionDelayMs = process.env.NODE_ENV === "test" ? 0 : 280;
 const startLogoGlareDelayMs = 1000;
 const startLogoGlareDurationMs = 1000;
@@ -155,7 +154,6 @@ export function OnboardingFlow({
   const [queueInserted, setQueueInserted] = useState(false);
   const [screenTransitioning, setScreenTransitioning] = useState(false);
   const [startupSplashVisible, setStartupSplashVisible] = useState(startButtonDelayMs > 0);
-  const [startupLogoVisible, setStartupLogoVisible] = useState(startupLogoDelayMs === 0);
   const [permissionFallbackStep, setPermissionFallbackStep] = useState<OnboardingStep | null>(null);
   const stepRef = useRef<OnboardingStep>(state.step);
   const stateRef = useRef<OnboardingState>(state);
@@ -172,12 +170,10 @@ export function OnboardingFlow({
       stepRef.current = next.step;
       setState(next);
     }, 0);
-    const logoTimer = window.setTimeout(() => setStartupLogoVisible(true), startupLogoDelayMs);
     const splashTimer = window.setTimeout(() => setStartupSplashVisible(false), startButtonDelayMs);
     void refreshCapabilities();
     return () => {
       window.clearTimeout(loadTimer);
-      window.clearTimeout(logoTimer);
       window.clearTimeout(splashTimer);
     };
   }, [authRequired]);
@@ -804,11 +800,10 @@ export function OnboardingFlow({
           <style>{startButtonCss}</style>
           <div className="pointer-events-none absolute inset-0 grid place-items-center">
             <div
-              className="transition-opacity duration-300 ease-out"
+              data-startup-logo
               style={{
                 width: "min(20rem, calc(100vw - 3rem))",
                 aspectRatio: "779 / 368",
-                opacity: startupLogoVisible ? 1 : 0,
               }}
             >
               <GlareHover

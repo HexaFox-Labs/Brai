@@ -79,6 +79,9 @@ class BraiAccessibilityService : AccessibilityService() {
     fun captureVisibleConversationContext(): VisibleConversationContext? =
         if (isDeviceInteractive()) contextReader.capture() else null
 
+    fun canCaptureWindowWithoutHidingOverlays(): Boolean =
+        shouldUseWindowScreenshot(Build.VERSION.SDK_INT, activeWindowId())
+
     fun captureActiveWindowScreenshot(onComplete: (File?) -> Unit) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || !isDeviceInteractive()) {
             onComplete(null)
@@ -95,7 +98,12 @@ class BraiAccessibilityService : AccessibilityService() {
             }
         }
 
-        takeScreenshot(Display.DEFAULT_DISPLAY, mainExecutor, callback)
+        val windowId = activeWindowId()
+        if (shouldUseWindowScreenshot(Build.VERSION.SDK_INT, windowId)) {
+            takeScreenshotOfWindow(windowId!!, mainExecutor, callback)
+        } else {
+            takeScreenshot(Display.DEFAULT_DISPLAY, mainExecutor, callback)
+        }
     }
 
     fun insertNextPendingTranscriptIntoFocusedField(
@@ -248,6 +256,9 @@ class BraiAccessibilityService : AccessibilityService() {
         return node
     }
 
+    private fun activeWindowId(): Int? =
+        rootInActiveWindow?.windowId?.takeIf { it >= 0 }
+
     private fun retryAutoInsertTranscript() {
         val fileName = autoInsertTranscriptFile ?: return
         autoInsertTranscriptFile = null
@@ -308,6 +319,9 @@ class BraiAccessibilityService : AccessibilityService() {
 
 internal fun shouldShowDictationButton(hasEditableField: Boolean, inputMethodVisible: Boolean): Boolean =
     hasEditableField && inputMethodVisible
+
+internal fun shouldUseWindowScreenshot(sdkInt: Int, windowId: Int?): Boolean =
+    sdkInt >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE && windowId != null && windowId >= 0
 
 internal fun opaqueScreenshotBitmap(source: Bitmap): Bitmap {
     require(source.config != Bitmap.Config.HARDWARE) {

@@ -43,7 +43,7 @@ export function AppStartupSplash({ ready }: { ready: boolean }) {
         aria-label="Brai"
       >
         <div
-          className={reduceMotion ? "" : "animate-in fade-in-0 duration-700"}
+          data-startup-logo
           style={{ width: "min(20rem, calc(100vw - 3rem))", aspectRatio: "779 / 368" }}
         >
           <GlareHover

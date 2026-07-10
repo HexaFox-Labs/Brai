@@ -28,6 +28,8 @@ describe("BraiApp onboarding", () => {
     render(<BraiApp />);
 
     expect(await screen.findByRole("button", { name: "Приступить" })).toBeInTheDocument();
+    expect(document.querySelector("[data-startup-splash]")).toBeInTheDocument();
+    expect(document.querySelector("[data-startup-logo]")).not.toHaveStyle({ opacity: "0" });
     expect(screen.queryByText("ВВОД В ЭКСПЛУАТАЦИЮ")).not.toBeInTheDocument();
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Добавить" })).not.toBeInTheDocument();
@@ -105,7 +107,7 @@ describe("BraiApp onboarding", () => {
 
     render(<BraiApp />);
 
-    expect(screen.getByAltText("Brai")).toBeInTheDocument();
+    expect(document.querySelector("[data-startup-splash] img[alt='Brai']")).toBeInTheDocument();
     expect(screen.queryByText("Как распознавать голос?")).not.toBeInTheDocument();
     expect(await screen.findByText("Как распознавать голос?")).toBeInTheDocument();
   });

@@ -21,6 +21,13 @@ class BraiAccessibilityServiceTest {
     }
 
     @Test
+    fun modernAndroidCapturesTheTargetWindowWithoutHidingAccessibilityOverlays() {
+        assertFalse(shouldUseWindowScreenshot(sdkInt = 33, windowId = 7))
+        assertTrue(shouldUseWindowScreenshot(sdkInt = 34, windowId = 7))
+        assertFalse(shouldUseWindowScreenshot(sdkInt = 35, windowId = null))
+    }
+
+    @Test
     fun screenshotBitmapIsFlattenedOntoAnOpaqueBackground() {
         val source = Bitmap.createBitmap(2, 1, Bitmap.Config.ARGB_8888).apply {
             setPixel(0, 0, Color.TRANSPARENT)

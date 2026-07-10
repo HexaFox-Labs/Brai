@@ -231,24 +231,21 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
     );
   }
 
-  if (onboardingActive) {
-    return (
-      <OnboardingFlow
-        authRequired={startupReady && app.displaySyncStatus === "auth_required"}
-        authMode={app.authMode}
-        busy={app.busy}
-        onDone={() => setOnboardingVisible(false)}
-        onLogin={app.onLogin}
-        onOpenNativeCmdSettings={openNativeBraiCmdSettings}
-        onRequestOtp={app.onRequestOtp}
-        onVerifyOtp={app.onVerifyOtp}
-      />
-    );
-  }
-
   return (
     <>
-      <SidebarProvider
+      {onboardingActive ? (
+        <OnboardingFlow
+          authRequired={startupReady && app.displaySyncStatus === "auth_required"}
+          authMode={app.authMode}
+          busy={app.busy}
+          onDone={() => setOnboardingVisible(false)}
+          onLogin={app.onLogin}
+          onOpenNativeCmdSettings={openNativeBraiCmdSettings}
+          onRequestOtp={app.onRequestOtp}
+          onVerifyOtp={app.onVerifyOtp}
+        />
+      ) : (
+        <SidebarProvider
       open={false}
       className={cx(
         "app-shell h-dvh min-h-0 overflow-hidden [--sticky-top-offset:0px] max-[860px]:grid max-[860px]:grid-rows-[minmax(0,1fr)_auto] max-[860px]:[--mobile-top-padding:env(safe-area-inset-top)]",
@@ -352,7 +349,8 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
       {app.mobileContextPanel === "focus-history" && app.section === "focus" ? (
         <FocusContextPanelSheet panel="history" history={app.history} goal={app.goal} todayKey={app.todayKey} onClose={() => app.setMobileContextPanel(null)} onCloseStart={app.markMobileContextPanelClosing} onDeleteSession={app.onDeleteFocusSession} onEditInterval={app.onEditFocusInterval} onEditSession={app.onEditFocusSession} />
       ) : null}
-      </SidebarProvider>
+        </SidebarProvider>
+      )}
       {startupExpired ? null : <AppStartupSplash ready={startupReady} />}
     </>
   );

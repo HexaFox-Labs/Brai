@@ -47,6 +47,9 @@ internal class OverlayRecordingCoordinator(
     val isStartingContextAction: Boolean
         get() = activeButton == RecordingButton.Context && startingRecording
 
+    val isStartingRecording: Boolean
+        get() = startingRecording
+
     fun toggle(useScreenshot: Boolean) {
         when (BraiCmdBus.latest) {
             is RecorderState.Recording -> {
@@ -252,25 +255,21 @@ internal class OverlayRecordingCoordinator(
         recordingStartDispatched = false
         val generation = ++captureGeneration
         BraiCmdBus.post(RecorderState.Uploading)
-        hideForScreenshot()
-        handler.postDelayed({
-            service.captureActiveWindowScreenshot { screenshotFile ->
-                restoreAfterScreenshot()
-                if (generation != captureGeneration) {
-                    screenshotFile?.delete()
-                    return@captureActiveWindowScreenshot
-                }
-                startingRecording = false
-                if (screenshotFile == null) {
-                    BraiCmdBus.post(RecorderState.Error("Скриншот недоступен"))
-                    return@captureActiveWindowScreenshot
-                }
-                if (!RecordingService.enqueueScreenshot(service, screenshotFile)) {
-                    screenshotFile.delete()
-                    BraiCmdBus.post(RecorderState.Error("Не удалось сохранить скриншот в очереди"))
-                }
+        captureScreenshot(generation) capture@{ screenshotFile ->
+            if (generation != captureGeneration) {
+                screenshotFile?.delete()
+                return@capture
             }
-        }, SCREENSHOT_HIDE_DELAY_MS)
+            startingRecording = false
+            if (screenshotFile == null) {
+                BraiCmdBus.post(RecorderState.Error("Скриншот недоступен"))
+                return@capture
+            }
+            if (!RecordingService.enqueueScreenshot(service, screenshotFile)) {
+                screenshotFile.delete()
+                BraiCmdBus.post(RecorderState.Error("Не удалось сохранить скриншот в очереди"))
+            }
+        }
     }
 
     private fun startRecordingWithScreenshot(inboxTextPrefix: String = "") {
@@ -285,24 +284,36 @@ internal class OverlayRecordingCoordinator(
         recordingStartDispatched = false
         val generation = ++captureGeneration
         BraiCmdBus.post(RecorderState.Uploading)
-        hideForScreenshot()
-        handler.postDelayed({
-            service.captureActiveWindowScreenshot { screenshotFile ->
-                restoreAfterScreenshot()
-                if (generation != captureGeneration) {
-                    screenshotFile?.delete()
-                    return@captureActiveWindowScreenshot
-                }
-                if (screenshotFile == null) {
-                    startingRecording = false
-                    activeButton = null
-                    activeContextAction = null
-                    BraiCmdBus.post(RecorderState.Error("Скриншот недоступен"))
-                    return@captureActiveWindowScreenshot
-                }
-                beginRecording(null, screenshotFile, deliverToInbox = true, inboxTextPrefix = inboxTextPrefix)
+        captureScreenshot(generation) capture@{ screenshotFile ->
+            if (generation != captureGeneration) {
+                screenshotFile?.delete()
+                return@capture
             }
-        }, SCREENSHOT_HIDE_DELAY_MS)
+            if (screenshotFile == null) {
+                startingRecording = false
+                activeButton = null
+                activeContextAction = null
+                BraiCmdBus.post(RecorderState.Error("Скриншот недоступен"))
+                return@capture
+            }
+            beginRecording(null, screenshotFile, deliverToInbox = true, inboxTextPrefix = inboxTextPrefix)
+        }
+    }
+
+    private fun captureScreenshot(generation: Int, onComplete: (File?) -> Unit) {
+        val hideOverlay = !service.canCaptureWindowWithoutHidingOverlays()
+        if (hideOverlay) hideForScreenshot()
+        val capture = Runnable {
+            if (generation != captureGeneration) {
+                if (hideOverlay) restoreAfterScreenshot()
+                return@Runnable
+            }
+            service.captureActiveWindowScreenshot { screenshotFile ->
+                if (hideOverlay) restoreAfterScreenshot()
+                onComplete(screenshotFile)
+            }
+        }
+        if (hideOverlay) handler.postDelayed(capture, SCREENSHOT_HIDE_DELAY_MS) else capture.run()
     }
 
     private fun beginRecording(
@@ -313,7 +324,6 @@ internal class OverlayRecordingCoordinator(
     ) {
         startingRecording = true
         recordingStartDispatched = true
-        BraiCmdBus.post(RecorderState.Uploading)
         Haptics.recordingStart(service)
         RecordingService.start(
             service,

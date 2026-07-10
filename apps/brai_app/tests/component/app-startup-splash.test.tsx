@@ -31,6 +31,7 @@ describe("AppStartupSplash", () => {
     const splash = document.querySelector("[data-startup-splash]");
     expect(splash).toBeInTheDocument();
     expect(within(splash as HTMLElement).getByRole("img", { name: "Brai" })).toBeInTheDocument();
+    expect(splash?.querySelector("[data-startup-logo]")).not.toHaveClass("animate-in", "fade-in-0");
     expect(within(splash as HTMLElement).queryByRole("button")).not.toBeInTheDocument();
     expect(within(splash as HTMLElement).queryByText("Brai")).not.toBeInTheDocument();
   });
