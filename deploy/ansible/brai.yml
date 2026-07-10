@@ -320,6 +320,7 @@
         owner: "{{ brai_deploy_user }}"
         group: "{{ brai_deploy_user }}"
         mode: "2775"
+        recurse: true
       loop: "{{ brai_envs | dict2items | rejectattr('key', 'equalto', 'prod') | list | product(['web', 'mobile-update', 'data', 'source']) | list }}"
       loop_control:
         label: "{{ item.0.key }}/{{ item.1 }}"

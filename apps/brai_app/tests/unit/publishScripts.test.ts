@@ -300,6 +300,7 @@ describe("mobile OTA publish scripts", () => {
     expect(webShellBlock).toContain("brai_basic_auth_directive");
     expect(playbook.match(/{{ brai_supabase_studio_domain }}/g)?.length ?? 0).toBeGreaterThanOrEqual(6);
     expect(playbook).toContain("{{ brai_api_legacy_domains[0] }}");
+    expect(playbook).toMatch(/Ensure non-production deploy artifact ownership[\s\S]*recurse: true/);
   });
 
   it("uses the public API endpoint for production Android bundles", async () => {
