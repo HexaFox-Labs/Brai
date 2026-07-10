@@ -4,6 +4,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NODE_BIN="${NODE_BIN:-node}"
 ENVS_ROOT="${BRAI_ENVS_ROOT:-/srv/projects/brai-envs}"
+EXPLICIT_BRANCH=false
+for arg in "$@"; do
+  if [[ "$arg" == "--branch" ]]; then
+    EXPLICIT_BRANCH=true
+  fi
+done
 
 active_preview_branches_json() {
   : "${BRAI_DEPLOY_HOST:?BRAI_DEPLOY_HOST is required}"
@@ -62,6 +68,10 @@ while IFS= read -r branch; do
 done <<<"$CLEANUP_BRANCH_LIST"
 
 if [[ "${#CLEANUP_BRANCHES[@]}" -eq 0 ]]; then
+  if [[ "$EXPLICIT_BRANCH" == "true" ]]; then
+    echo "Explicit accepted branch cleanup found no merged candidate; retry after GitHub merge state is consistent." >&2
+    exit 1
+  fi
   "$NODE_BIN" "$SCRIPT_DIR/record-runtime-log.mjs" \
     --source deploy \
     --operation accepted_branch.cleanup \

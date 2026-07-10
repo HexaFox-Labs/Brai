@@ -2033,6 +2033,7 @@ test("accepted preview stale cleanup is required", () => {
   assert.match(cleanupScript, /BRAI_ACTIVE_PREVIEW_BRANCHES_JSON="\$ACTIVE_BRANCHES_JSON"/);
   assert.match(cleanupScript, /cleanup-accepted-branches\.mjs/);
   assert.match(cleanupScript, /cleanup-accepted-branches\.mjs" --dry-run/);
+  assert.match(cleanupScript, /Explicit accepted branch cleanup found no merged candidate/);
   assert.match(cleanupScript, /ci-ssh-release-slot\.sh/);
   assert.match(cleanupScript, /ci-ssh-prune-accepted-branches\.sh/);
   assert.match(cleanupScript, /accepted branch cleanup cannot continue safely/);
