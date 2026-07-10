@@ -44,7 +44,7 @@ test('email OTP message renders the reusable responsive card', () => {
   assert.match(message.html, /&lt;123456&gt;/);
   assert.doesNotMatch(message.html, /<123456>/);
   assert.match(message.text, /<123456>/);
-  assert.match(message.text, /Brai · brightos\.world/);
+  assert.match(message.text, /Brai · brai\.one/);
 });
 
 test('test auto-login mints a normal session only when explicitly enabled', async () => {
