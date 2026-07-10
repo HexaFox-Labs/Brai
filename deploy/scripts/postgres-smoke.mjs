@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { inspectOwnedSequences, unsafeOwnedSequenceAllocations } from "./supabase-branch.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const requireFromApi = createRequire(path.join(root, "services/brai_api/package.json"));
@@ -108,6 +109,28 @@ try {
   if (publicTablesWithoutRls.length > 0) {
     throw new Error(`Runtime tables without RLS in ${runtimeSchema}: ${publicTablesWithoutRls.map((row) => row.table_name).join(", ")}`);
   }
+  const sequenceClient = await pool.connect();
+  let ownedSequences;
+  let unsafeSequences;
+  try {
+    await sequenceClient.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+    ownedSequences = await inspectOwnedSequences(sequenceClient, {
+      schema: runtimeSchema,
+      lockOwnedTables: true
+    });
+    unsafeSequences = unsafeOwnedSequenceAllocations(ownedSequences);
+    if (unsafeSequences.length > 0) {
+      throw new Error(`Unsafe owned sequence allocation in ${runtimeSchema}: ${unsafeSequences.map((sequence) => (
+        `${sequence.table_name}.${sequence.column_name} (${sequence.sequence_schema}.${sequence.sequence_name}, ${sequence.allocation.reason}, next=${sequence.allocation.nextValue})`
+      )).join(", ")}`);
+    }
+    await sequenceClient.query("COMMIT");
+  } catch (error) {
+    await sequenceClient.query("ROLLBACK");
+    throw error;
+  } finally {
+    sequenceClient.release();
+  }
   console.log(JSON.stringify({
     ok: true,
     runtimeSchema,
@@ -124,7 +147,9 @@ try {
     rlsAutoTrigger,
     rlsFunctionSearchPath,
     rlsProtectedTables,
-    publicTablesWithoutRls: publicTablesWithoutRls.length
+    publicTablesWithoutRls: publicTablesWithoutRls.length,
+    ownedSequences: ownedSequences.length,
+    unsafeSequences: unsafeSequences.length
   }, null, 2));
 } finally {
   await pool.end();

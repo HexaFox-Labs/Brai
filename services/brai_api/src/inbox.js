@@ -4,9 +4,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { TextDecoder } from 'node:util';
+import { INBOX_WORKFLOW_DEFINITION_VERSION } from './store-workflows.js';
 import { scopedUserId } from './user-scope.js';
 
 export const INBOX_BODY_LIMIT_BYTES = 16 * 1024 * 1024;
+export const DEFAULT_INBOX_CODEX_BIN = '/srv/opt/codex-cli/bin/codex';
+export const DEFAULT_INBOX_CODEX_MODEL = 'gpt-5.4-mini';
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const PDF_SIGNATURE = Buffer.from('%PDF-');
@@ -59,6 +62,11 @@ const DEFAULT_NORMALIZER_PROMPT_TEMPLATE = [
   'Описание картинки:',
   '{{image_description}}'
 ].join('\n');
+const DEFAULT_NORMALIZER_CODEX_INSTRUCTIONS = [
+  'You are a deterministic JSON normalizer.',
+  "Follow the user's task exactly and return one JSON object matching the provided output schema.",
+  'Do not use tools, browse, inspect files, or add commentary.'
+].join(' ');
 
 export function inboxRequestTarget(req, body = {}) {
   const target = inboxTarget(body?.target ?? body?.destination)
@@ -453,7 +461,14 @@ export function prepareInboxNormalization({ store, inboxId, workflowId, runId, s
   if (!item || item.deleted_at_utc || item.item_roles_id) {
     return { skipped: true, reason: item?.item_roles_id ? 'already_normalized' : item ? 'deleted' : 'missing' };
   }
-  store.markInboxWorkflowStarted({ inboxId, workflowId, runId, nowIso: nowDate.toISOString() });
+  const active = store.markInboxWorkflowStep({
+    inboxId,
+    workflowId,
+    runId,
+    step: 'prepare_raw',
+    nowIso: nowDate.toISOString()
+  });
+  if (!active) return { skipped: true, reason: 'workflow_not_active' };
   return { ok: true, imageRequired: imagePathsForItem(item, storageRoot).length > 0 };
 }
 
@@ -472,7 +487,7 @@ export async function describeInboxImagesForWorkflow({
   const item = store.getInboxItem(inboxId);
   const imagePaths = item ? imagePathsForItem(item, storageRoot) : [];
   if (!item || imagePaths.length === 0) return { ok: true, imageDescription: '' };
-  store.markInboxWorkflowStep({
+  const active = store.markInboxWorkflowStep({
     inboxId,
     workflowId,
     runId,
@@ -480,6 +495,7 @@ export async function describeInboxImagesForWorkflow({
     attemptCount: 1,
     nowIso: nowDate.toISOString()
   });
+  if (!active) return { ok: false, error: 'workflow_not_active' };
   const agent = store.getAgent(INBOX_IMAGE_AGENT_ID);
   const result = await describeImages({ agent, codexBin, codexModel, codexTimeoutMs, imageDescriber, imagePaths });
   recordInboxImageAiLog(store, {
@@ -519,7 +535,7 @@ export async function normalizeInboxRawForWorkflow({
   if (!item || item.deleted_at_utc || item.item_roles_id) {
     return { ok: false, validationFailed: false, error: item?.item_roles_id ? 'already_normalized' : 'raw_record_missing' };
   }
-  store.markInboxWorkflowStep({
+  const active = store.markInboxWorkflowStep({
     inboxId,
     workflowId,
     runId,
@@ -527,8 +543,11 @@ export async function normalizeInboxRawForWorkflow({
     attemptCount: attempt,
     nowIso: nowDate.toISOString()
   });
+  if (!active) return { ok: false, validationFailed: false, error: 'workflow_not_active' };
   const classes = store.listInboxClasses();
-  const outputSchema = store.getInboxWorkflowOutputSchema();
+  const execution = store.getInboxWorkflowExecution(inboxId);
+  const workflowVersion = execution?.workflow_definition_version;
+  const outputSchema = store.getInboxWorkflowOutputSchema(workflowVersion);
   if (!outputSchema) {
     return { ok: false, validationFailed: false, error: 'workflow_output_schema_missing' };
   }
@@ -543,7 +562,8 @@ export async function normalizeInboxRawForWorkflow({
     classes,
     imageDescription,
     validationError,
-    outputSchema
+    outputSchema,
+    strictOutputSchema: workflowVersion === INBOX_WORKFLOW_DEFINITION_VERSION
   });
   recordInboxNormalizerAiLog(store, {
     agent,
@@ -573,6 +593,7 @@ export function applyNormalizedInboxForWorkflow({
   runId,
   normalized,
   imageDescription = '',
+  deferTerminal = false,
   nowDate = new Date()
 }) {
   store.markInboxWorkflowStep({
@@ -588,6 +609,7 @@ export function applyNormalizedInboxForWorkflow({
     runId,
     normalized,
     normalizationText: normalizeBlocks({ imageDescription, analysis: normalized.normalization }),
+    deferTerminal,
     nowIso: nowDate.toISOString()
   });
 }
@@ -789,9 +811,21 @@ async function describeImages({ agent, codexBin, codexModel, codexTimeoutMs, ima
   }
 }
 
-async function normalizeInbox({ agent, codexBin, codexModel, codexTimeoutMs, normalizer, item, classes, imageDescription, validationError, outputSchema }) {
+async function normalizeInbox({
+  agent,
+  codexBin,
+  codexModel,
+  codexTimeoutMs,
+  normalizer,
+  item,
+  classes,
+  imageDescription,
+  validationError,
+  outputSchema,
+  strictOutputSchema
+}) {
   const startedAt = Date.now();
-  const model = codexModel ?? optionalText(agent?.llm_model) ?? '';
+  const model = codexModel ?? optionalText(agent?.llm_model) ?? DEFAULT_INBOX_CODEX_MODEL;
   let result;
   try {
     result = normalizer
@@ -806,7 +840,9 @@ async function normalizeInbox({ agent, codexBin, codexModel, codexTimeoutMs, nor
           imageDescription,
           validationError
         ),
-        timeoutMs: Number.isFinite(codexTimeoutMs) ? codexTimeoutMs : agent?.llm_timeout_ms
+        timeoutMs: Number.isFinite(codexTimeoutMs) ? codexTimeoutMs : agent?.llm_timeout_ms,
+        outputSchema: strictOutputSchema ? outputSchema : null,
+        normalizerMode: true
       }), model };
   } catch (error) {
     return failedNormalization(errorText(error), model, Date.now() - startedAt, false);
@@ -1002,27 +1038,68 @@ function normalizeBlocks({ imageDescription, analysis }) {
   ].filter(Boolean).join('\n\n').trim();
 }
 
-function codexText({ codexBin = 'codex', codexModel = null, promptTemplate, timeoutMs = 3000, images = [] } = {}) {
+function codexText({
+  codexBin = DEFAULT_INBOX_CODEX_BIN,
+  codexModel = DEFAULT_INBOX_CODEX_MODEL,
+  promptTemplate,
+  timeoutMs = 3000,
+  images = [],
+  outputSchema = null,
+  normalizerMode = false
+} = {}) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'brai-inbox-ai-'));
   const outputPath = path.join(tmp, 'output.txt');
+  const schemaPath = outputSchema ? path.join(tmp, 'output-schema.json') : null;
+  const isolatedNormalizer = normalizerMode || Boolean(outputSchema);
+  const instructionsPath = isolatedNormalizer ? path.join(tmp, 'model-instructions.txt') : null;
   const timeout = Number.isFinite(timeoutMs) ? timeoutMs : 3000;
+  const executable = !codexBin || codexBin === 'codex' ? DEFAULT_INBOX_CODEX_BIN : codexBin;
+
+  if (isolatedNormalizer) {
+    try {
+      if (schemaPath) fs.writeFileSync(schemaPath, JSON.stringify(outputSchema), { mode: 0o600 });
+      fs.writeFileSync(instructionsPath, DEFAULT_NORMALIZER_CODEX_INSTRUCTIONS, { mode: 0o600 });
+    } catch (error) {
+      fs.rmSync(tmp, { recursive: true, force: true });
+      throw error;
+    }
+  }
 
   return new Promise((resolve, reject) => {
     let settled = false;
     let stderr = '';
-    const args = [
-      '--sandbox',
-      'read-only',
-      '--ask-for-approval',
-      'never'
-    ];
+    const args = [];
+    if (isolatedNormalizer) {
+      args.push(
+        '-c', 'model_reasoning_effort="low"',
+        '-c', 'model_verbosity="low"',
+        '-c', `model_instructions_file=${JSON.stringify(instructionsPath)}`,
+        '-c', 'features.apps=false',
+        '-c', 'features.image_generation=false',
+        '-c', 'features.shell_tool=false',
+        '-c', 'features.unified_exec=false',
+        '-c', 'features.multi_agent=false',
+        '-c', 'web_search="disabled"',
+        '-c', 'tools_view_image=false'
+      );
+    }
+    args.push('--sandbox', 'read-only', '--ask-for-approval', 'never');
     if (codexModel) args.push('--model', codexModel);
     args.push(
       'exec',
-      '--ephemeral',
-      '--skip-git-repo-check'
+      '--ephemeral'
     );
-    if (images.length > 0) {
+    if (isolatedNormalizer) {
+      args.push(
+        '--ignore-user-config',
+        '--skip-git-repo-check',
+        '--cd', tmp
+      );
+      if (schemaPath) args.push('--output-schema', schemaPath);
+    } else {
+      args.push('--skip-git-repo-check');
+    }
+    if (!schemaPath && images.length > 0) {
       args.push('--cd', os.tmpdir());
       for (const imagePath of images) args.push('--image', imagePath);
     }
@@ -1031,12 +1108,24 @@ function codexText({ codexBin = 'codex', codexModel = null, promptTemplate, time
       outputPath,
       '-'
     );
-    const child = spawn(codexBin, args, { stdio: ['pipe', 'ignore', 'pipe'] });
+    let child;
+    try {
+      child = spawn(executable, args, {
+        cwd: isolatedNormalizer ? tmp : undefined,
+        detached: true,
+        stdio: ['pipe', 'ignore', 'pipe']
+      });
+    } catch (error) {
+      fs.rmSync(tmp, { recursive: true, force: true });
+      reject(error);
+      return;
+    }
     const timer = setTimeout(() => {
-      child.kill('SIGKILL');
+      killProcessGroup(child);
       finish(reject, new Error('codex_inbox_timeout'));
     }, timeout);
 
+    child.stdin?.on('error', () => {});
     child.stderr?.on('data', (chunk) => {
       stderr = `${stderr}${chunk}`.slice(-4000);
     });
@@ -1046,7 +1135,11 @@ function codexText({ codexBin = 'codex', codexModel = null, promptTemplate, time
         finish(reject, new Error(cleanCodexError(stderr) || 'codex_inbox_failed'));
         return;
       }
-      finish(resolve, fs.existsSync(outputPath) ? fs.readFileSync(outputPath, 'utf8') : '');
+      try {
+        finish(resolve, fs.existsSync(outputPath) ? fs.readFileSync(outputPath, 'utf8') : '');
+      } catch (error) {
+        finish(reject, error);
+      }
     });
     child.stdin.end(promptTemplate);
 
@@ -1058,6 +1151,18 @@ function codexText({ codexBin = 'codex', codexModel = null, promptTemplate, time
       callback(value);
     }
   });
+}
+
+function killProcessGroup(child) {
+  try {
+    if (Number.isInteger(child.pid) && child.pid > 0) {
+      process.kill(-child.pid, 'SIGKILL');
+      return;
+    }
+  } catch {}
+  try {
+    child.kill('SIGKILL');
+  } catch {}
 }
 
 function usageBlock(model) {

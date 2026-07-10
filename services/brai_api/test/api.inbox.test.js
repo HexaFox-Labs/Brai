@@ -160,6 +160,8 @@ test('inbox sync create schedules AI processing', async () => {
         title: 'Нормализованная заметка',
         description: 'Пользователь добавил заметку и хочет сохранить контекст.',
         class_key: 'note',
+        class_title: '',
+        class_description: '',
         normalization: 'UI create event обработан normalizer agent.'
       };
     }
@@ -266,9 +268,20 @@ test('inbox sync create schedules AI processing', async () => {
     const workflow = await request(fixture.url, '/v1/inbox/ui-inbox-1/workflow');
     assert.equal(workflow.status, 200);
     assert.equal(workflow.body.execution.status, 'completed');
-    assert.deepEqual(workflow.body.definition.steps, ['ingest', 'raw_normalizer', 'apply_normalized_raw']);
+    assert.equal(workflow.body.definition.version, 2);
+    assert.equal(workflow.body.definition.output_schema_version, 'brai.inbox.normalized.v2');
+    assert.deepEqual(workflow.body.definition.steps, [
+      'ingest',
+      'dispatch',
+      'prepare_raw',
+      'image_describer',
+      'raw_normalizer',
+      'apply_normalized_raw',
+      'terminal_reconcile'
+    ]);
     assert.equal(workflow.body.attempts.length, 1);
     assert.equal(workflow.body.attempts[0].agent_id, 'inbox.normalizer');
+    assert.equal(workflow.body.attempts[0].agent_version, '3');
 
     fixture.store.markInboxWorkflowStarted({
       inboxId: 'ui-inbox-1',
@@ -381,6 +394,8 @@ test('inbox normalizer enforces the stored versioned output schema', async () =>
             title: 'Valid title',
             description: 'Valid description',
             class_key: 'note',
+            class_title: '',
+            class_description: '',
             normalization: 'Valid normalization',
             unexpected: true
           };
@@ -390,6 +405,8 @@ test('inbox normalizer enforces the stored versioned output schema', async () =>
           title: 'Valid title',
           description: 'Valid description',
           class_key: 'note',
+          class_title: '',
+          class_description: '',
           normalization: 'Valid normalization'
         };
       },
@@ -449,6 +466,8 @@ test('apply business errors stop without another LLM execution', async () => {
           title: 'Valid title',
           description: 'Valid description',
           class_key: 'note',
+          class_title: '',
+          class_description: '',
           normalization: 'Valid normalization'
         };
       },

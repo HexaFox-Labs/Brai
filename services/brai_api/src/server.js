@@ -73,6 +73,7 @@ export function createBraiServer({
 }) {
   fs.mkdirSync(dataRoot, { recursive: true });
   const store = new BraiStore(databaseUrl);
+  store.logger = logger;
   const braiCmdRuntime = createBraiCmdRuntime(braiCmd);
   const resolvedVaultRoot =
     typeof vaultRoot === 'string' && vaultRoot.trim()
@@ -124,15 +125,55 @@ export function createBraiServer({
         const state = inboxState(store, now());
         broadcast(sockets, { type: 'inbox_synced', inbox_state: state }, ownerUserId);
       }).catch((error) => {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        let queuedForRetry = false;
+        let terminalReconcilePending = false;
         try {
           withUserScope(ownerUserId, () => {
             const execution = store.getInboxWorkflowExecution(inboxId);
+            if (inboxWorkflowStarter && execution?.status === 'queued') {
+              queuedForRetry = true;
+              recordRuntimeLog(store, logger, {
+                source: 'workflow',
+                operation: 'inbox.workflow_dispatch',
+                status: 'failed',
+                severityText: 'ERROR',
+                reason: errorMessage,
+                message: 'Inbox workflow dispatch failed; queued for retry',
+                jsonData: {
+                  inbox_id: inboxId,
+                  workflow_id: execution.workflow_id,
+                  workflow_status: execution.status,
+                  retry_scheduled: true
+                }
+              });
+              return;
+            }
+            if (inboxWorkflowStarter && execution?.status === 'running') {
+              terminalReconcilePending = true;
+              recordRuntimeLog(store, logger, {
+                source: 'workflow',
+                operation: 'inbox.workflow_completion_observer',
+                status: 'failed',
+                severityText: 'WARN',
+                reason: errorMessage,
+                message: 'Inbox workflow completion observer failed; durable reconciliation remains active',
+                jsonData: {
+                  inbox_id: inboxId,
+                  workflow_id: execution.workflow_id,
+                  run_id: execution.run_id,
+                  workflow_status: execution.status,
+                  terminal_reconcile_pending: true
+                }
+              });
+              return;
+            }
             if (execution) {
               store.failInboxWorkflow({
                 inboxId,
                 workflowId: execution.workflow_id,
                 runId: execution.run_id,
-                reason: error instanceof Error ? error.message : String(error),
+                reason: errorMessage,
                 step: execution.current_step,
                 nowIso: now().toISOString()
               });
@@ -144,8 +185,13 @@ export function createBraiServer({
             inboxId
           });
         }
-        logger.error?.('Inbox AI processing failed', {
-          error: error instanceof Error ? error.message : String(error),
+        const message = queuedForRetry
+          ? 'Inbox workflow dispatch failed; queued for retry'
+          : terminalReconcilePending
+            ? 'Inbox workflow completion observer failed; durable reconciliation remains active'
+            : 'Inbox AI processing failed';
+        logger.error?.(message, {
+          error: errorMessage,
           inboxId
         });
       });

@@ -56,6 +56,7 @@ export async function createFixture(times, options = {}) {
     codexTimeoutMs: options.codexTimeoutMs,
     inboxImageDescriber: options.inboxImageDescriber,
     inboxNormalizer: options.inboxNormalizer,
+    inboxWorkflowStarter: options.inboxWorkflowStarter,
     inboxAutoProcess: options.inboxAutoProcess ?? false,
     braiCmd: options.braiCmd,
     branch: options.branch,
@@ -193,7 +194,11 @@ export function eventDomainCount(fixture, eventDomain) {
     .get(eventDomain).count);
 }
 
-export async function createTestDatabase() {
+export async function createTestDatabase(migrations = [
+  '0001_brai_baseline.sql',
+  '0010_agent_role_normalization_workflows.sql',
+  '0011_inbox_workflow_reliability.sql'
+]) {
   const baseUrl = process.env.BRAI_TEST_DATABASE_URL?.trim();
   if (!baseUrl) throw new Error('BRAI_TEST_DATABASE_URL is required for API tests');
   const schema = `brai_test_${process.pid}_${Date.now()}_${Math.random().toString(16).slice(2)}`.replace(/[^a-zA-Z0-9_]/g, '_');
@@ -202,10 +207,7 @@ export async function createTestDatabase() {
   try {
     await client.query(`CREATE SCHEMA ${quoteIdent(schema)}`);
     await client.query(`SET search_path TO ${quoteIdent(schema)}`);
-    for (const migration of [
-      '0001_brai_baseline.sql',
-      '0010_agent_role_normalization_workflows.sql'
-    ]) {
+    for (const migration of migrations) {
       await client.query(fs.readFileSync(path.resolve(import.meta.dirname, '../../../supabase/migrations', migration), 'utf8'));
     }
   } catch (error) {

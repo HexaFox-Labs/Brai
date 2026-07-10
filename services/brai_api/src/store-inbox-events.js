@@ -279,7 +279,7 @@ export const inboxEventMethods = {
     run();
 
     const serverRevision = this.getInboxServerRevision();
-    this.recordLog({
+    recordInboxTechnicalLog(this, {
       dt: receivedAt,
       source: 'sync',
       operation: 'inbox.events_sync',
@@ -707,4 +707,17 @@ function sanitizeClassKey(value) {
 function inboxOwnerDiffers(store, inboxId) {
   const existing = store.db.prepare('SELECT user_id FROM inbox WHERE id = ?').get(inboxId);
   return Boolean(existing) && existing.user_id !== scopedUserId();
+}
+
+export function recordInboxTechnicalLog(store, input) {
+  try {
+    store.recordLog(input);
+  } catch (error) {
+    try {
+      (store.logger ?? console).error?.('Inbox technical log failed', {
+        operation: input.operation,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    } catch {}
+  }
 }

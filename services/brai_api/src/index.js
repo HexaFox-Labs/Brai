@@ -66,6 +66,7 @@ const inboxWorkflow = await createInboxWorkflowRuntime({
   codexTimeoutMs
 });
 await inboxWorkflow.recoverQueued();
+inboxWorkflow.startQueuedReconciler();
 const runtime = createBraiServer({
   databaseUrl,
   dataRoot,
@@ -98,10 +99,16 @@ runtime.server.listen(port, '127.0.0.1', () => {
   console.log(`Brai API listening on 127.0.0.1:${port}`);
 });
 
+let stopping = false;
 for (const signal of ['SIGINT', 'SIGTERM']) {
-  process.on(signal, async () => {
-    await runtime.close();
-    await inboxWorkflow.close();
+  process.once(signal, async () => {
+    if (stopping) return;
+    stopping = true;
+    try {
+      await runtime.close();
+    } finally {
+      await inboxWorkflow.close();
+    }
     process.exit(0);
   });
 }

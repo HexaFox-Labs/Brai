@@ -1,8 +1,18 @@
 import { parseJsonArray, parseJsonObject, sanitizeText } from './store-helpers.js';
+import { recordInboxTechnicalLog } from './store-inbox-events.js';
 import { scopeSql, scopedUserId } from './user-scope.js';
 
 export const INBOX_WORKFLOW_DEFINITION_ID = 'inbox.raw-normalization';
-export const INBOX_WORKFLOW_DEFINITION_VERSION = 1;
+export const INBOX_WORKFLOW_DEFINITION_VERSION = 2;
+const SUPPORTED_INBOX_WORKFLOW_VERSIONS = new Set([1, INBOX_WORKFLOW_DEFINITION_VERSION]);
+const TERMINAL_TEMPORAL_STATUSES = new Set([
+  'COMPLETED',
+  'FAILED',
+  'CANCELLED',
+  'TERMINATED',
+  'TIMED_OUT',
+  'NOT_FOUND'
+]);
 
 export function inboxWorkflowId(inboxId) {
   return `brai:inbox:${inboxId}`;
@@ -19,12 +29,14 @@ export const workflowStoreMethods = {
     `).run(queue, INBOX_WORKFLOW_DEFINITION_ID, INBOX_WORKFLOW_DEFINITION_VERSION);
   },
 
-  getInboxWorkflowOutputSchema() {
+  getInboxWorkflowOutputSchema(version = INBOX_WORKFLOW_DEFINITION_VERSION) {
+    const workflowVersion = Number(version);
+    if (!Number.isInteger(workflowVersion) || !SUPPORTED_INBOX_WORKFLOW_VERSIONS.has(workflowVersion)) return null;
     const row = this.db.prepare(`
       SELECT output_schema_json
       FROM workflow_definitions
-      WHERE id = ? AND version = ? AND status = 'active'
-    `).get(INBOX_WORKFLOW_DEFINITION_ID, INBOX_WORKFLOW_DEFINITION_VERSION);
+      WHERE id = ? AND version = ?
+    `).get(INBOX_WORKFLOW_DEFINITION_ID, workflowVersion);
     if (!row) return null;
     const schema = parseJsonObject(row.output_schema_json);
     return schema.properties && Array.isArray(schema.required) ? schema : null;
@@ -79,6 +91,23 @@ export const workflowStoreMethods = {
     `).all(rowLimit);
   },
 
+  listRunningInboxWorkflowExecutions({ limit = 100 } = {}) {
+    const rowLimit = Math.max(1, Math.min(Number(limit) || 100, 500));
+    return this.db.prepare(`
+      SELECT
+        w.raw_record_id AS inbox_id,
+        w.user_id AS owner_user_id,
+        w.workflow_id,
+        w.run_id,
+        w.current_step
+      FROM workflow_executions w
+      WHERE w.role_contract_id = 'inbox'
+        AND w.status = 'running'
+      ORDER BY w.updated_at_utc, w.id
+      LIMIT ?
+    `).all(rowLimit);
+  },
+
   getInboxWorkflowExecution(inboxId) {
     const id = sanitizeText(inboxId);
     if (!id) return null;
@@ -98,20 +127,21 @@ export const workflowStoreMethods = {
     const id = sanitizeText(inboxId);
     const now = nowIso ?? new Date().toISOString();
     const scope = scopeSql();
-    this.db.prepare(`
+    const result = this.db.prepare(`
       UPDATE workflow_executions
-      SET workflow_id = ?, run_id = ?, status = 'running', current_step = 'raw_normalizer',
+      SET workflow_id = ?, run_id = ?, status = 'running', current_step = 'dispatch',
         started_at_utc = COALESCE(started_at_utc, ?), last_error = NULL, updated_at_utc = ?
       WHERE role_contract_id = 'inbox' AND raw_record_id = ?
         AND status IN ('queued', 'running') ${scope.clause}
     `).run(workflowId, runId, now, now, id, ...scope.params);
+    return result.changes > 0;
   },
 
   markInboxWorkflowStep({ inboxId, workflowId, runId, step, attemptCount = 0, nowIso }) {
     const id = sanitizeText(inboxId);
     const now = nowIso ?? new Date().toISOString();
     const scope = scopeSql();
-    this.db.prepare(`
+    const result = this.db.prepare(`
       UPDATE workflow_executions
       SET workflow_id = ?, run_id = COALESCE(?, run_id), status = 'running', current_step = ?,
         attempt_count = GREATEST(attempt_count, ?), started_at_utc = COALESCE(started_at_utc, ?),
@@ -119,6 +149,7 @@ export const workflowStoreMethods = {
       WHERE role_contract_id = 'inbox' AND raw_record_id = ?
         AND status IN ('queued', 'running') ${scope.clause}
     `).run(workflowId, runId, step, attemptCount, now, now, id, ...scope.params);
+    return result.changes > 0;
   },
 
   failInboxWorkflow({ inboxId, workflowId, runId, reason, step = 'raw_normalizer', needsReview = false, attemptCount = 0, nowIso }) {
@@ -136,7 +167,7 @@ export const workflowStoreMethods = {
         AND status IN ('queued', 'running') ${scope.clause}
     `).run(workflowId, runId, status, currentStep, attemptCount, error, now, now, id, ...scope.params);
     if (result.changes === 0) return;
-    this.recordLog({
+    recordInboxTechnicalLog(this, {
       dt: now,
       source: 'workflow',
       operation: 'inbox.raw_normalization',
@@ -148,11 +179,81 @@ export const workflowStoreMethods = {
     });
   },
 
-  applyNormalizedInbox({ inboxId, workflowId, runId, normalized, normalizationText, nowIso }) {
+  reconcileInboxWorkflowTerminal({ inboxId, workflowId, runId, temporalStatus, nowIso }) {
+    const id = sanitizeText(inboxId);
+    const operationId = sanitizeText(workflowId);
+    const temporalRunId = sanitizeText(runId);
+    const status = sanitizeText(temporalStatus)?.toUpperCase();
+    if (!id || !operationId || !status || !TERMINAL_TEMPORAL_STATUSES.has(status)) {
+      return { changed: false, status: null };
+    }
+    const now = nowIso ?? new Date().toISOString();
+    const scope = scopeSql('w');
+    const result = this.db.transaction(() => {
+      const row = this.db.prepare(`
+        SELECT w.id, w.current_step, i.item_roles_id, i.is_normalized
+        FROM workflow_executions w
+        JOIN inbox i ON i.id = w.raw_record_id
+        WHERE w.role_contract_id = 'inbox'
+          AND w.raw_record_id = ?
+          AND w.workflow_id = ?
+          AND w.run_id IS NOT DISTINCT FROM ?
+          AND w.status = 'running'
+          ${scope.clause}
+        LIMIT 1
+        FOR UPDATE OF w
+      `).get(id, operationId, temporalRunId, ...scope.params);
+      if (!row) return { changed: false, status: null, reason: null, step: null };
+
+      const domainCompleted = status === 'COMPLETED'
+        && Boolean(row.item_roles_id)
+        && Boolean(row.is_normalized);
+      const localStatus = domainCompleted ? 'completed' : 'failed';
+      const reason = domainCompleted
+        ? null
+        : status === 'COMPLETED'
+          ? 'temporal_completed_without_domain_result'
+          : `temporal_${status.toLowerCase()}`;
+      const updated = this.db.prepare(`
+        UPDATE workflow_executions
+        SET status = ?, last_error = ?, completed_at_utc = ?, updated_at_utc = ?
+        WHERE id = ?
+          AND status = 'running'
+          AND workflow_id = ?
+          AND run_id IS NOT DISTINCT FROM ?
+      `).run(localStatus, reason, now, now, row.id, operationId, temporalRunId);
+      if (updated.changes !== 1) return { changed: false, status: null, reason: null, step: null };
+      return { changed: true, status: localStatus, reason, step: row.current_step };
+    })();
+
+    if (result.changed) {
+      recordInboxTechnicalLog(this, {
+        dt: now,
+        source: 'workflow',
+        operation: 'inbox.workflow_terminal_reconcile',
+        status: result.status === 'completed' ? 'done' : 'failed',
+        severityText: result.status === 'completed' ? 'INFO' : 'ERROR',
+        reason: result.reason,
+        message: 'Inbox workflow terminal state reconciled from Temporal',
+        jsonData: {
+          workflow_id: operationId,
+          run_id: temporalRunId,
+          inbox_id: id,
+          temporal_status: status,
+          workflow_status: result.status,
+          workflow_step: result.step
+        }
+      });
+    }
+    return { changed: result.changed, status: result.status };
+  },
+
+  applyNormalizedInbox({ inboxId, workflowId, runId, normalized, normalizationText, deferTerminal = false, nowIso }) {
     const id = sanitizeText(inboxId);
     if (!id) throw businessError('inbox_id_required');
     const operationId = sanitizeText(workflowId);
     if (!operationId) throw businessError('workflow_id_required');
+    const temporalRunId = sanitizeText(runId);
     const now = nowIso ?? new Date().toISOString();
     const eventPayload = normalizedEventPayload({ workflowId: operationId, normalized, normalizationText });
     const run = this.db.transaction(() => {
@@ -160,13 +261,24 @@ export const workflowStoreMethods = {
       if (!inbox) throw businessError('raw_record_missing');
       if (inbox.deleted_at_utc) throw businessError('raw_record_deleted');
 
-      const execution = this.getInboxWorkflowExecution(id);
+      const executionScope = scopeSql('w');
+      const execution = this.db.prepare(`
+        SELECT w.*
+        FROM workflow_executions w
+        WHERE w.role_contract_id = 'inbox'
+          AND w.raw_record_id = ?
+          ${executionScope.clause}
+        ORDER BY w.id DESC
+        LIMIT 1
+        FOR UPDATE OF w
+      `).get(id, ...executionScope.params);
       if (!execution) throw businessError('workflow_execution_missing');
       if (
         execution.workflow_definition_id !== INBOX_WORKFLOW_DEFINITION_ID
-        || execution.workflow_definition_version !== INBOX_WORKFLOW_DEFINITION_VERSION
+        || !SUPPORTED_INBOX_WORKFLOW_VERSIONS.has(execution.workflow_definition_version)
       ) throw businessError('stale_workflow_version');
       if (execution.workflow_id !== operationId) throw businessError('workflow_id_conflict');
+      if (execution.run_id !== temporalRunId) throw businessError('workflow_run_id_conflict');
 
       if (inbox.item_roles_id) {
         const existingEvent = this.db.prepare(`
@@ -181,13 +293,13 @@ export const workflowStoreMethods = {
         ) throw businessError('idempotency_conflict');
         return { ok: true, idempotent: true, items_id: id, item_roles_id: inbox.item_roles_id };
       }
+      if (execution.status !== 'running') throw businessError('workflow_execution_not_running');
 
       const contract = this.db.prepare(`
         SELECT * FROM role_contracts
         WHERE id = 'inbox'
           AND workflow_definition_id = ?
-          AND workflow_definition_version = ?
-      `).get(INBOX_WORKFLOW_DEFINITION_ID, INBOX_WORKFLOW_DEFINITION_VERSION);
+      `).get(INBOX_WORKFLOW_DEFINITION_ID);
       if (!contract) throw businessError('role_contract_missing');
 
       if (this.db.prepare('SELECT id FROM items WHERE id = ?').get(id)) {
@@ -265,14 +377,24 @@ export const workflowStoreMethods = {
       });
       if (!normalizedEventSequence) throw businessError('normalized_event_conflict');
 
-      this.db.prepare(`
+      const localStatus = deferTerminal ? 'running' : 'completed';
+      const completedAt = deferTerminal ? null : now;
+      const updatedExecution = this.db.prepare(`
         UPDATE workflow_executions
-        SET workflow_id = ?, run_id = COALESCE(?, run_id), status = 'completed',
+        SET status = ?,
           current_step = 'apply_normalized_raw', last_error = NULL,
           completed_at_utc = ?, updated_at_utc = ?
         WHERE id = ?
-      `).run(operationId, runId, now, now, execution.id);
-      this.recordLog({
+          AND status = 'running'
+          AND workflow_id = ?
+          AND run_id IS NOT DISTINCT FROM ?
+      `).run(localStatus, completedAt, now, execution.id, operationId, temporalRunId);
+      if (updatedExecution.changes !== 1) throw businessError('workflow_execution_changed');
+      return { ok: true, idempotent: false, items_id: id, item_roles_id: role.id };
+    });
+    const result = run();
+    if (!result.idempotent) {
+      recordInboxTechnicalLog(this, {
         dt: now,
         source: 'workflow',
         operation: 'inbox.apply_normalized_raw',
@@ -281,11 +403,10 @@ export const workflowStoreMethods = {
         eventDomain: 'inbox',
         eventId: `${operationId}:normalized`,
         message: 'Inbox normalization applied',
-        jsonData: { workflow_id: operationId, run_id: runId, inbox_id: id, item_roles_id: role.id }
+        jsonData: { workflow_id: operationId, run_id: runId, inbox_id: id, item_roles_id: result.item_roles_id }
       });
-      return { ok: true, idempotent: false, items_id: id, item_roles_id: role.id };
-    });
-    return run();
+    }
+    return result;
   },
 
   getInboxWorkflowDetails(inboxId) {
