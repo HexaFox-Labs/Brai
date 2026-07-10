@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { orderTablesByDependencies } from "./copy-table-order.mjs";
+import { orderTablesByDependencies, tablesToReset } from "./copy-table-order.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(scriptDir, "../..");
@@ -19,7 +19,15 @@ const LEGACY_DATABASE_ENV_KEYS = new Set([
   "BRAI_DB",
   "BRAI_LEGACY_SQLITE_PATH",
 ]);
-const MIGRATION_TABLES = new Set(["schema_migrations", "supabase_migration_files"]);
+const TEST_DATA_RESET_PRESERVED_TABLES = new Set([
+  "agents",
+  "role_contracts",
+  "role_statuses",
+  "schema_migrations",
+  "supabase_migration_files",
+  "table_descriptions",
+  "workflow_definitions"
+]);
 const TEST_DATA_COPY_EXCLUDED_TABLES = new Set([
   "account",
   "session",
@@ -246,7 +254,7 @@ async function seedTestDataFromProduction(targetDatabaseUrl) {
 
 async function copySchemaData(pool, { sourceSchema, targetSchema }) {
   const targetTables = await schemaTables(pool, targetSchema);
-  const truncatableTables = targetTables.filter((table) => !MIGRATION_TABLES.has(table));
+  const truncatableTables = tablesToReset(targetTables, TEST_DATA_RESET_PRESERVED_TABLES);
   if (truncatableTables.length === 0) return;
 
   const sourceTables = new Set(await schemaTables(pool, sourceSchema));

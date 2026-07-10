@@ -1,3 +1,7 @@
+export function tablesToReset(tables, preservedTables) {
+  return tables.filter((table) => !preservedTables.has(table));
+}
+
 export function orderTablesByDependencies(tables, { dependencies = [], fallbackOrder = [] } = {}) {
   const uniqueTables = [...new Set(tables)];
   const tableSet = new Set(uniqueTables);
