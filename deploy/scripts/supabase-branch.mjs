@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { orderTablesByDependencies } from "./copy-table-order.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(scriptDir, "../..");
@@ -249,7 +250,9 @@ async function copySchemaData(pool, { sourceSchema, targetSchema }) {
   if (truncatableTables.length === 0) return;
 
   const sourceTables = new Set(await schemaTables(pool, sourceSchema));
-  const copyTables = orderedTables(
+  const copyTables = await orderedTables(
+    pool,
+    targetSchema,
     truncatableTables.filter((table) => sourceTables.has(table) && !TEST_DATA_COPY_EXCLUDED_TABLES.has(table))
   );
 
@@ -300,13 +303,32 @@ async function commonColumns(pool, sourceSchema, targetSchema, table) {
   return result.rows.map((row) => row.column_name);
 }
 
-function orderedTables(tables) {
-  const order = new Map(migrationTableOrder().map((table, index) => [table, index]));
-  return [...tables].sort((left, right) => {
-    const leftOrder = order.get(left) ?? Number.MAX_SAFE_INTEGER;
-    const rightOrder = order.get(right) ?? Number.MAX_SAFE_INTEGER;
-    return leftOrder - rightOrder || left.localeCompare(right);
+async function orderedTables(pool, schema, tables) {
+  const dependencies = await foreignKeyDependencies(pool, schema);
+  return orderTablesByDependencies(tables, {
+    dependencies,
+    fallbackOrder: migrationTableOrder()
   });
+}
+
+async function foreignKeyDependencies(pool, schema) {
+  const result = await pool.query(`
+    SELECT DISTINCT
+      child.relname AS table_name,
+      parent.relname AS referenced_table
+    FROM pg_constraint fk
+    JOIN pg_class child ON child.oid = fk.conrelid
+    JOIN pg_namespace child_namespace ON child_namespace.oid = child.relnamespace
+    JOIN pg_class parent ON parent.oid = fk.confrelid
+    JOIN pg_namespace parent_namespace ON parent_namespace.oid = parent.relnamespace
+    WHERE fk.contype = 'f'
+      AND child_namespace.nspname = $1
+      AND parent_namespace.nspname = $1
+  `, [schema]);
+  return result.rows.map((row) => ({
+    table: row.table_name,
+    referencedTable: row.referenced_table
+  }));
 }
 
 function migrationTableOrder() {
