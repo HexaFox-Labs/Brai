@@ -107,6 +107,7 @@ export function setupBraiAppTest() {
     );
     Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 360 });
     window.history.replaceState(null, "", "/");
+    delete window.__BRAI_RUNTIME_CONFIG__;
     window.localStorage.clear();
     document.cookie = "sidebar_state=; path=/; max-age=0";
     delete document.documentElement.dataset.sidebarState;
@@ -115,6 +116,7 @@ export function setupBraiAppTest() {
   afterEach(() => {
     delete window.Capacitor;
     delete window.BraiAndroidBack;
+    delete window.__BRAI_RUNTIME_CONFIG__;
     delete document.documentElement.dataset.sidebarState;
     vi.restoreAllMocks();
     vi.unstubAllGlobals();

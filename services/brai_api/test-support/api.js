@@ -62,7 +62,7 @@ export async function createFixture(times, options = {}) {
     branch: options.branch,
     commit: options.commit,
     databaseBranch: options.databaseBranch,
-    testAutoLogin: options.testAutoLogin,
+    testEmailLogin: options.testEmailLogin,
     now: () => new Date(times[Math.min(index++, times.length - 1)]),
     logger: options.logger ?? { error: () => {} }
   });
@@ -197,7 +197,9 @@ export function eventDomainCount(fixture, eventDomain) {
 export async function createTestDatabase(migrations = [
   '0001_brai_baseline.sql',
   '0010_agent_role_normalization_workflows.sql',
-  '0011_inbox_workflow_reliability.sql'
+  '0011_inbox_workflow_reliability.sql',
+  '0012_inbox_raw_input_preservation.sql',
+  '0013_drop_legacy_event_tables.sql'
 ]) {
   const baseUrl = process.env.BRAI_TEST_DATABASE_URL?.trim();
   if (!baseUrl) throw new Error('BRAI_TEST_DATABASE_URL is required for API tests');

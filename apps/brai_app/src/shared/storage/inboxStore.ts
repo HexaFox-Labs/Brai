@@ -36,7 +36,7 @@ export async function enqueueInboxEvent(params: {
       type: params.type,
       occurredAtUtc: now,
       inboxId,
-      payload: normalizedPayload(params.payload),
+      payload: normalizedPayload(params.payload, params.type, meta.deviceId),
       baseServerRevision: params.baseServerRevision,
       payloadVersion: 1,
       status: "pending",
@@ -155,8 +155,8 @@ export function projectInboxState(
         id: event.inboxId,
         title,
         description_md: normalizeDescription(event.payload.description_md),
-        source: "",
-        source_key: "",
+        source: event.payload.source ?? "",
+        source_key: event.payload.source_key ?? "",
         response_required: false,
         related_inbox_id: null,
         record_type_id: 4,
@@ -165,7 +165,7 @@ export function projectInboxState(
         preliminary_section: "",
         urgency: "",
         attachment_links: [],
-        explanation_text: "",
+        explanation_text: event.payload.explanation_text ?? "",
         normalization_text: "",
         is_normalized: false,
         item_roles_id: null,
@@ -223,10 +223,18 @@ export function sortInbox(items: InboxItem[]): InboxItem[] {
   });
 }
 
-function normalizedPayload(payload: InboxEventPayload): InboxEventPayload {
-  return {
-    title: payload.title == null ? undefined : cleanTitle(payload.title),
+function normalizedPayload(payload: InboxEventPayload, type: InboxEventType, deviceId: string): InboxEventPayload {
+  const title = payload.title == null ? undefined : cleanTitle(payload.title);
+  const normalized = {
+    title,
     description_md: payload.description_md == null ? undefined : normalizeDescription(payload.description_md),
+  };
+  if (type !== "create") return normalized;
+  return {
+    ...normalized,
+    source: payload.source?.trim() || "brai-app",
+    source_key: payload.source_key?.trim() || deviceId,
+    explanation_text: normalizeDescription(payload.explanation_text ?? title ?? ""),
   };
 }
 

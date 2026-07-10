@@ -47,6 +47,9 @@ const DEFAULT_IMAGE_PROMPT_TEMPLATE = [
 const DEFAULT_NORMALIZER_PROMPT_TEMPLATE = [
   'Разбери Inbox-запись на русском языке.',
   'Нужно сопоставить голосовой транскрипт, текстовый контекст и описание картинки.',
+  'Сохраняй исходное намерение пользователя и все названные им сущности, имена и названия.',
+  'Исправляй очевидные опечатки, но не меняй смысл.',
+  'Если хотя бы один вход непустой, не называй запись пустой и не утверждай, что контекст отсутствует.',
   'Верни только JSON без Markdown с полями:',
   '{"title":"короткий заголовок до 80 символов","description":"понятное описание чего хотел пользователь","class_key":"ключ класса","class_title":"русское название класса если ключ новый","class_description":"краткое описание класса если ключ новый","normalization":"технический разбор"}',
   '',
@@ -469,7 +472,20 @@ export function prepareInboxNormalization({ store, inboxId, workflowId, runId, s
     nowIso: nowDate.toISOString()
   });
   if (!active) return { skipped: true, reason: 'workflow_not_active' };
-  return { ok: true, imageRequired: imagePathsForItem(item, storageRoot).length > 0 };
+  const imageRequired = imagePathsForItem(item, storageRoot).length > 0;
+  if (!rawInboxText(item) && !cleanText(item.description_md) && !imageRequired) {
+    store.failInboxWorkflow({
+      inboxId,
+      workflowId,
+      runId,
+      reason: 'raw_input_empty',
+      step: 'prepare_raw',
+      needsReview: true,
+      nowIso: nowDate.toISOString()
+    });
+    return { skipped: true, reason: 'raw_input_empty' };
+  }
+  return { ok: true, imageRequired };
 }
 
 export async function describeInboxImagesForWorkflow({
@@ -563,7 +579,7 @@ export async function normalizeInboxRawForWorkflow({
     imageDescription,
     validationError,
     outputSchema,
-    strictOutputSchema: workflowVersion === INBOX_WORKFLOW_DEFINITION_VERSION
+    strictOutputSchema: workflowVersion >= 2 && workflowVersion <= INBOX_WORKFLOW_DEFINITION_VERSION
   });
   recordInboxNormalizerAiLog(store, {
     agent,
@@ -923,13 +939,17 @@ function cleanNormalization(value) {
 function renderNormalizerPrompt(template, item, classes, imageDescription, validationError = '') {
   const prompt = template
     .replaceAll('{{classes}}', JSON.stringify(classes, null, 2))
-    .replaceAll('{{text}}', item.explanation_text || '')
+    .replaceAll('{{text}}', rawInboxText(item))
     .replaceAll('{{description}}', item.description_md || '')
     .replaceAll('{{image_description}}', imageDescription || '')
     .replaceAll('{{validation_error}}', validationError || '');
   return validationError
     ? `${prompt}\n\nОшибка валидации предыдущего ответа:\n${validationError}\nИсправь JSON и верни только валидный объект.`
     : prompt;
+}
+
+function rawInboxText(item) {
+  return cleanText(item?.explanation_text) || cleanText(item?.title);
 }
 
 function parseNormalizerJson(value) {
@@ -987,7 +1007,7 @@ function recordInboxNormalizerAiLog(store, {
       schema: 'brai.ai_log.v1',
       inputs: [
         { ref: 'inbox.id', value: inboxId },
-        { ref: 'inbox.explanation_text', value: item.explanation_text || '' },
+        { ref: 'inbox.explanation_text', value: rawInboxText(item) },
         { ref: 'inbox.description_text', value: item.description_md || '' },
         { ref: 'inbox.normalization_text.image_description', value: imageDescription || '' },
         { ref: 'inbox_classes.keys', value: classes.map((entry) => entry.key) }

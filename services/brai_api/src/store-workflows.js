@@ -3,8 +3,8 @@ import { recordInboxTechnicalLog } from './store-inbox-events.js';
 import { scopeSql, scopedUserId } from './user-scope.js';
 
 export const INBOX_WORKFLOW_DEFINITION_ID = 'inbox.raw-normalization';
-export const INBOX_WORKFLOW_DEFINITION_VERSION = 2;
-const SUPPORTED_INBOX_WORKFLOW_VERSIONS = new Set([1, INBOX_WORKFLOW_DEFINITION_VERSION]);
+export const INBOX_WORKFLOW_DEFINITION_VERSION = 3;
+const SUPPORTED_INBOX_WORKFLOW_VERSIONS = new Set([1, 2, INBOX_WORKFLOW_DEFINITION_VERSION]);
 const TERMINAL_TEMPORAL_STATUSES = new Set([
   'COMPLETED',
   'FAILED',
@@ -422,16 +422,86 @@ export const workflowStoreMethods = {
         workflow_id, run_id, attempt_number, json_data
       FROM ai_logs
       WHERE workflow_id = ?
+        AND run_id IS NOT DISTINCT FROM ?
       ORDER BY dt ASC, id ASC
       LIMIT 50
-    `).all(execution.workflow_id).map((row) => ({ ...row, json_data: parseJsonObject(row.json_data) }));
+    `).all(execution.workflow_id, execution.run_id).map((row) => ({ ...row, json_data: parseJsonObject(row.json_data) }));
+    const resolvedDefinition = definition ? { ...definition, steps: parseJsonArray(definition.steps_json) } : null;
     return {
       execution,
-      definition: definition ? { ...definition, steps: parseJsonArray(definition.steps_json) } : null,
+      definition: resolvedDefinition,
+      step_states: resolvedDefinition
+        ? inboxStepStates({ execution, steps: resolvedDefinition.steps, attempts, item: this.getInboxItem(inboxId) })
+        : [],
       attempts
     };
   }
 };
+
+function inboxStepStates({ execution, steps, attempts, item }) {
+  const currentIndex = steps.indexOf(execution.current_step);
+  const terminal = ['completed', 'failed', 'needs_review'].includes(execution.status);
+  const failedIndex = ['failed', 'needs_review'].includes(execution.status) ? currentIndex : -1;
+  const inline = execution.run_id?.startsWith('inline:') === true;
+  const attemptsFor = (agentId) => attempts.filter((attempt) => attempt.agent_id === agentId);
+  const imageAttempts = attemptsFor('inbox.image_describer');
+  const normalizerAttempts = attemptsFor('inbox.normalizer');
+  const progressedPast = (step) => currentIndex > steps.indexOf(step);
+  const failedAt = (step) => failedIndex === steps.indexOf(step);
+  const skippedAfterFailure = (step) => failedIndex >= 0 && steps.indexOf(step) > failedIndex;
+  const state = (id, value, reason = null) => ({ id, state: value, reason });
+
+  return steps.map((step) => {
+    if (step === 'ingest') return state(step, 'completed');
+    if (step === 'dispatch') {
+      if (inline) return state(step, 'skipped', 'inline_execution');
+      if (execution.status === 'queued') return state(step, 'pending');
+      if (execution.status === 'running' && execution.current_step === step) return state(step, 'running');
+      return state(step, execution.run_id ? 'completed' : 'pending');
+    }
+    if (step === 'prepare_raw') {
+      if (failedAt(step)) return state(step, 'failed');
+      if (execution.status === 'running' && execution.current_step === step) return state(step, 'running');
+      if (progressedPast(step) || terminal) return state(step, 'completed');
+      return state(step, 'pending');
+    }
+    if (step === 'image_describer') {
+      if (imageAttempts.some((attempt) => attempt.status === 'done')) return state(step, 'completed');
+      if (failedAt(step) || (imageAttempts.some((attempt) => attempt.status === 'failed') && terminal)) {
+        return state(step, 'failed');
+      }
+      if (execution.status === 'running' && execution.current_step === step) return state(step, 'running');
+      if (skippedAfterFailure(step)) return state(step, 'skipped', 'upstream_failed');
+      if (progressedPast(step) || terminal) return state(step, 'skipped', 'not_required');
+      return state(step, 'pending');
+    }
+    if (step === 'raw_normalizer') {
+      if (failedAt(step) && terminal) return state(step, 'failed');
+      if (normalizerAttempts.some((attempt) => attempt.status === 'done')) return state(step, 'completed');
+      if (execution.status === 'running' && execution.current_step === step) return state(step, 'running');
+      if (skippedAfterFailure(step)) return state(step, 'skipped', 'upstream_failed');
+      if (progressedPast(step)) return state(step, 'completed');
+      return state(step, 'pending');
+    }
+    if (step === 'apply_normalized_raw') {
+      if (item?.is_normalized && item?.item_roles_id) return state(step, 'completed');
+      if (failedAt(step)) return state(step, 'failed');
+      if (execution.status === 'running' && execution.current_step === step) return state(step, 'running');
+      if (skippedAfterFailure(step)) return state(step, 'skipped', 'upstream_failed');
+      return state(step, 'pending');
+    }
+    if (step === 'terminal_reconcile') {
+      if (inline) return state(step, 'skipped', 'inline_execution');
+      if (terminal) return state(step, 'completed');
+      if (execution.status === 'running' && item?.is_normalized && item?.item_roles_id) return state(step, 'running');
+      return state(step, 'pending');
+    }
+    if (failedAt(step)) return state(step, 'failed');
+    if (execution.status === 'running' && execution.current_step === step) return state(step, 'running');
+    if (skippedAfterFailure(step)) return state(step, 'skipped', 'upstream_failed');
+    return state(step, progressedPast(step) || execution.status === 'completed' ? 'completed' : 'pending');
+  });
+}
 
 function businessError(code) {
   const error = new Error(code);

@@ -40,7 +40,9 @@ const parsedCodexTimeoutMs = Number(process.env.BRAI_CODEX_TIMEOUT_MS);
 const codexTimeoutMs = Number.isFinite(parsedCodexTimeoutMs) ? parsedCodexTimeoutMs : null;
 const releaseDir =
   process.env.BRAI_RELEASE_DIR ?? path.resolve(serviceRoot, '..', '..', 'deploy', 'releases');
-const testAutoLogin = /^(1|true|yes)$/i.test(process.env.BRAI_TEST_AUTO_LOGIN ?? '');
+const databaseBranch = process.env.BRAI_SUPABASE_BRANCH ?? '';
+const testEmailLogin = /^(1|true|yes)$/i.test(process.env.BRAI_TEST_EMAIL_LOGIN ?? '')
+  && /^brai[-_]((preview[-_])|dev(?:$|[-_]))/i.test(databaseBranch);
 
 if (!token) {
   console.error('BRAI_TOKEN is required');
@@ -90,7 +92,7 @@ const runtime = createBraiServer({
   codexFallbackModel,
   codexTimeoutMs,
   inboxWorkflowStarter: inboxWorkflow.start,
-  testAutoLogin,
+  testEmailLogin,
   braiCmd: {
     config: braiCmdConfigFromEnv(process.env)
   }

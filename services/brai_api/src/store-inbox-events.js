@@ -531,12 +531,13 @@ export const inboxEventMethods = {
       if (event.type === 'create') {
         const title = sanitizeText(payload.title);
         if (!title) continue;
+        const uiEvent = event.device_id !== 'inbox-api';
         item = {
           id: inboxId,
           title,
           description_text: normalizeMarkdownSource(payload.description_md ?? item?.description_text ?? ''),
-          source: sanitizeText(payload.source) ?? item?.source ?? '',
-          source_key: sanitizeText(payload.source_key) ?? item?.source_key ?? '',
+          source: sanitizeText(payload.source) ?? item?.source ?? (uiEvent ? 'brai-app' : ''),
+          source_key: sanitizeText(payload.source_key) ?? item?.source_key ?? (uiEvent ? event.device_id : ''),
           response_required: normalizeBoolean(payload.response_required) ? 1 : 0,
           related_inbox_id: sanitizeText(payload.related_inbox_id) ?? item?.related_inbox_id ?? null,
           record_type_id: normalizeInboxRecordTypeId(payload.record_type_id, item?.record_type_id ?? 4),
@@ -550,7 +551,7 @@ export const inboxEventMethods = {
           )),
           explanation_text: typeof payload.explanation_text === 'string'
             ? normalizeMarkdownSource(payload.explanation_text)
-            : item?.explanation_text ?? '',
+            : item?.explanation_text ?? (uiEvent ? normalizeMarkdownSource(title) : ''),
           normalization_text: item?.normalization_text ?? '',
           is_normalized: item?.is_normalized ?? 0,
           initial_event_id: item?.initial_event_id ?? event.id,

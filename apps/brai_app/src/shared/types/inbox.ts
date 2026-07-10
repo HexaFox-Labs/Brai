@@ -52,6 +52,11 @@ export interface InboxWorkflowDetails {
     input_schema_version: string;
     output_schema_version: string;
   } | null;
+  step_states?: Array<{
+    id: string;
+    state: "pending" | "running" | "completed" | "failed" | "skipped";
+    reason: null | "not_required" | "inline_execution" | "upstream_failed";
+  }>;
   attempts: Array<{
     id: number;
     agent_id: string;
@@ -66,6 +71,9 @@ export interface InboxWorkflowDetails {
 export interface InboxEventPayload {
   title?: string;
   description_md?: string;
+  source?: string;
+  source_key?: string;
+  explanation_text?: string;
   preliminary_section?: string;
   normalization_text?: string;
   is_normalized?: boolean;

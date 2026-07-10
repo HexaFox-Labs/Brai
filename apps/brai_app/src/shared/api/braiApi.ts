@@ -111,6 +111,13 @@ export class BraiApi {
     });
   }
 
+  async testEmailLogin(email: string): Promise<AuthSession> {
+    return this.request("/auth/test-email-login", {
+      method: "POST",
+      json: { email },
+    });
+  }
+
   async login(password: string): Promise<AuthSession> {
     return this.request("/auth/login", {
       method: "POST",

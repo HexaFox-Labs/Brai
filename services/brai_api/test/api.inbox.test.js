@@ -40,6 +40,9 @@ test('inbox sync is idempotent and returns canonical state', async () => {
     assert.equal(first.body.state.inbox.length, 1);
     assert.equal(first.body.state.inbox[0].title, 'Идея');
     assert.equal(first.body.state.inbox[0].description_md, '**важно**\nвторая');
+    assert.equal(first.body.state.inbox[0].explanation_text, 'Идея');
+    assert.equal(first.body.state.inbox[0].source, 'brai-app');
+    assert.equal(first.body.state.inbox[0].source_key, 'web-device');
     assert.equal(first.body.state.inbox[0].record_type_id, 4);
     assert.deepEqual(
       fixture.store.listQueuedInboxWorkflowStarts().map((entry) => entry.inbox_id),
@@ -153,6 +156,7 @@ test('inbox sync create schedules AI processing', async () => {
     inboxAutoProcess: true,
     inboxNormalizer: async ({ item, imageDescription, classes }) => {
       assert.equal(item.title, 'Разобрать заметку');
+      assert.equal(item.explanation_text, 'Разобрать заметку');
       assert.equal(item.description_md, 'сырой контекст после правки');
       assert.equal(imageDescription, '');
       assert.ok(classes.some((entry) => entry.key === 'note'));
@@ -190,6 +194,9 @@ test('inbox sync create schedules AI processing', async () => {
 
     const item = fixture.store.db.prepare('SELECT * FROM inbox WHERE id = ?').get('ui-inbox-1');
     assert.equal(item.title, 'Нормализованная заметка');
+    assert.equal(item.explanation_text, 'Разобрать заметку');
+    assert.equal(item.source, 'brai-app');
+    assert.equal(item.source_key, 'web-device');
     assert.equal(item.preliminary_section, 'note');
     assert.ok(item.item_roles_id);
     assert.equal(fixture.store.db.prepare('SELECT COUNT(*) AS count FROM items WHERE id = ?').get('ui-inbox-1').count, 1);
@@ -268,8 +275,8 @@ test('inbox sync create schedules AI processing', async () => {
     const workflow = await request(fixture.url, '/v1/inbox/ui-inbox-1/workflow');
     assert.equal(workflow.status, 200);
     assert.equal(workflow.body.execution.status, 'completed');
-    assert.equal(workflow.body.definition.version, 2);
-    assert.equal(workflow.body.definition.output_schema_version, 'brai.inbox.normalized.v2');
+    assert.equal(workflow.body.definition.version, 3);
+    assert.equal(workflow.body.definition.output_schema_version, 'brai.inbox.normalized.v3');
     assert.deepEqual(workflow.body.definition.steps, [
       'ingest',
       'dispatch',
@@ -281,7 +288,17 @@ test('inbox sync create schedules AI processing', async () => {
     ]);
     assert.equal(workflow.body.attempts.length, 1);
     assert.equal(workflow.body.attempts[0].agent_id, 'inbox.normalizer');
-    assert.equal(workflow.body.attempts[0].agent_version, '3');
+    assert.equal(workflow.body.attempts[0].agent_version, '4');
+    assert.deepEqual(workflow.body.step_states.find((step) => step.id === 'image_describer'), {
+      id: 'image_describer',
+      state: 'skipped',
+      reason: 'not_required'
+    });
+    assert.deepEqual(workflow.body.step_states.find((step) => step.id === 'raw_normalizer'), {
+      id: 'raw_normalizer',
+      state: 'completed',
+      reason: null
+    });
 
     fixture.store.markInboxWorkflowStarted({
       inboxId: 'ui-inbox-1',
@@ -292,6 +309,41 @@ test('inbox sync create schedules AI processing', async () => {
     const terminalExecution = fixture.store.getInboxWorkflowExecution('ui-inbox-1');
     assert.equal(terminalExecution.status, 'completed');
     assert.notEqual(terminalExecution.run_id, 'late-start-update');
+  } finally {
+    await fixture.close();
+  }
+});
+
+test('empty Inbox semantic input becomes needs_review without an AI execution', async () => {
+  const fixture = await createFixture(['2026-06-26T12:00:00.000Z']);
+  try {
+    fixture.store.db.prepare(`
+      INSERT INTO inbox (id, title, created_at_utc, updated_at_utc)
+      VALUES ('empty-inbox', '', ?, ?)
+    `).run('2026-06-26T12:00:00.000Z', '2026-06-26T12:00:00.000Z');
+    fixture.store.ensureInboxWorkflowExecution({
+      inboxId: 'empty-inbox',
+      nowIso: '2026-06-26T12:00:00.000Z'
+    });
+
+    const result = await processInboxItem({
+      store: fixture.store,
+      inboxId: 'empty-inbox',
+      storageRoot: '/tmp',
+      normalizer: async () => assert.fail('normalizer must not run'),
+      nowDate: new Date('2026-06-26T12:00:00.000Z')
+    });
+
+    assert.deepEqual(result, { skipped: true, reason: 'raw_input_empty' });
+    assert.deepEqual(fixture.store.db.prepare(`
+      SELECT status, current_step, last_error
+      FROM workflow_executions WHERE raw_record_id = 'empty-inbox'
+    `).get(), {
+      status: 'needs_review',
+      current_step: 'prepare_raw',
+      last_error: 'raw_input_empty'
+    });
+    assert.equal(fixture.store.db.prepare("SELECT COUNT(*)::int AS count FROM ai_logs WHERE flow_id = 'empty-inbox'").get().count, 0);
   } finally {
     await fixture.close();
   }

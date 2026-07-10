@@ -67,7 +67,7 @@ export function createBraiServer({
   branch = process.env.BRAI_BRANCH || null,
   commit = process.env.BRAI_COMMIT || null,
   databaseBranch = process.env.BRAI_SUPABASE_BRANCH || null,
-  testAutoLogin = false,
+  testEmailLogin = false,
   now = () => new Date(),
   logger = console
 }) {
@@ -256,15 +256,48 @@ export function createBraiServer({
           sendJson(req, res, 200, { authenticated: true, user: publicAuthUser(store.primaryUser()) });
           return;
         }
-        if (testAutoLogin && sessionSecret) {
-          const primary = store.primaryUser();
-          if (primary?.id) {
-            const cookie = createSessionCookie(sessionSecret, now(), shouldUseSecureCookie(req));
-            sendJson(req, res, 200, { authenticated: true, user: publicAuthUser(primary) }, { 'set-cookie': cookie });
-            return;
-          }
-        }
         sendJson(req, res, 200, { authenticated: false, user: null });
+        return;
+      }
+
+      if (url.pathname === '/auth/test-email-login' && req.method === 'POST') {
+        if (!testEmailLogin) {
+          sendJson(req, res, 404, { error: 'not_found' });
+          return;
+        }
+        if (!isTestEmailLoginOrigin(req.headers.origin)) {
+          sendJson(req, res, 403, { error: 'origin_not_allowed' });
+          return;
+        }
+        const body = await readJson(req);
+        const email = cleanEmail(body.email);
+        const primary = store.primaryUser();
+        if (!email || !primary?.id || cleanEmail(primary.email) !== email) {
+          recordRuntimeLog(store, logger, {
+            traceId,
+            source: 'auth',
+            operation: 'auth.test_email_login',
+            status: 'failed',
+            severityText: 'WARN',
+            reason: email ? 'invalid_email' : 'email_required',
+            message: 'Test email login rejected',
+            jsonData: { route: url.pathname, email_present: Boolean(email) }
+          });
+          sendJson(req, res, email ? 401 : 400, { error: email ? 'invalid_email' : 'email_required' });
+          return;
+        }
+
+        const cookie = createSessionCookie(sessionSecret, now(), shouldUseSecureCookie(req));
+        recordRuntimeLog(store, logger, {
+          traceId,
+          source: 'auth',
+          operation: 'auth.test_email_login',
+          status: 'done',
+          userId: primary.id,
+          message: 'Test email login completed',
+          jsonData: { route: url.pathname, secure_cookie: shouldUseSecureCookie(req) }
+        });
+        sendJson(req, res, 200, { authenticated: true, user: publicAuthUser(primary) }, { 'set-cookie': cookie });
         return;
       }
 
@@ -1191,6 +1224,12 @@ function isTrustedAppOrigin(origin) {
   if (origin === 'capacitor://localhost') return true;
   if (origin === 'https://localhost' || origin === 'http://localhost') return true;
   return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+}
+
+function isTestEmailLoginOrigin(origin) {
+  if (origin === 'https://dev.brightos.world') return true;
+  if (/^https:\/\/[a-e]\.test\.brightos\.world$/.test(origin ?? '')) return true;
+  return /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin ?? '');
 }
 
 function requiresTrustedOrigin(req, authContext) {

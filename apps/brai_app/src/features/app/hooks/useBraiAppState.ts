@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
 import { BraiApi } from "@/shared/api/braiApi";
-import { defaultApiBase } from "@/shared/config/runtime";
+import { defaultApiBase, isProductionEnvironment } from "@/shared/config/runtime";
 import {
   acknowledgeAndroidActionsWidgetStatusChanges,
   clearAndroidActionsWidgetData,
@@ -92,7 +92,9 @@ export function useBraiAppState(initialSection: SectionId) {
   const [mobileContextPanel, setMobileContextPanel] = useState<MobileContextPanel | null>(null);
   const [mobileContextPanelClosing, setMobileContextPanelClosing] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [authMode] = useState<"otp" | "password">(() => (isNativeShell() ? "password" : "otp"));
+  const [authMode] = useState<"email" | "otp" | "password">(() =>
+    isNativeShell() ? "password" : isProductionEnvironment() ? "otp" : "email",
+  );
   const mobileViewport = useMobileNavigationViewport();
 
   function setTimerSnapshot(nextState: TimerState) {
@@ -637,6 +639,24 @@ export function useBraiAppState(initialSection: SectionId) {
     }
   }
 
+  async function onEmailLogin(email: string) {
+    setBusy(true);
+    try {
+      const result = await api.testEmailLogin(email);
+      if (result.authenticated) {
+        await ensureClientUser(result.user?.id ?? null);
+        resetUserSnapshots();
+        setSyncStatus("connecting");
+        await refreshAll();
+      }
+    } catch (error) {
+      setSyncStatus("auth_required");
+      throw error;
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function onLogin(password: string) {
     setBusy(true);
     try {
@@ -1001,7 +1021,7 @@ export function useBraiAppState(initialSection: SectionId) {
     setSyncStatus,
   });
 
-  return { actionOverlayOpen, actions, actionsInfoActive, active, authMode, bundlePublishedAt, busy, displaySyncStatus, focusBackground, focusContextPanel, focusGoalActive, focusHistoryActive, goal, history, inbox, inboxInfoActive, localSnapshotReady, markMobileContextPanelClosing, mobileContextPanel, mobileMenuOpen, ...actionCommands, ...inboxCommands, onDeleteFocusSession, onEditFocusInterval, onEditFocusSession, onLogin, onLogout, onRequestOtp, onStart, onStartActionFocus, onStop, onStopActionFocus, onSwitchActionFocus, onVerifyOtp, openSettingsPage, otaCheckedAt, otaRefreshing, otaState, refreshEngineOnce, refreshOtaStateOnce, section, selectSection, setActionOverlayOpen, setFocusBackground, setMobileContextPanel: setMobileContextPanelState, setMobileMenuOpen, setTheme, swipeNavigation, theme, timer, timerBusy, todayKey, toggleActionsInfoPanel, toggleFocusContextPanel, toggleInboxInfoPanel, totalPendingCount, versionCheckedAt, versionError, versionRefreshing, versionState };
+  return { actionOverlayOpen, actions, actionsInfoActive, active, authMode, bundlePublishedAt, busy, displaySyncStatus, focusBackground, focusContextPanel, focusGoalActive, focusHistoryActive, goal, history, inbox, inboxInfoActive, localSnapshotReady, markMobileContextPanelClosing, mobileContextPanel, mobileMenuOpen, ...actionCommands, ...inboxCommands, onDeleteFocusSession, onEditFocusInterval, onEditFocusSession, onEmailLogin, onLogin, onLogout, onRequestOtp, onStart, onStartActionFocus, onStop, onStopActionFocus, onSwitchActionFocus, onVerifyOtp, openSettingsPage, otaCheckedAt, otaRefreshing, otaState, refreshEngineOnce, refreshOtaStateOnce, section, selectSection, setActionOverlayOpen, setFocusBackground, setMobileContextPanel: setMobileContextPanelState, setMobileMenuOpen, setTheme, swipeNavigation, theme, timer, timerBusy, todayKey, toggleActionsInfoPanel, toggleFocusContextPanel, toggleInboxInfoPanel, totalPendingCount, versionCheckedAt, versionError, versionRefreshing, versionState };
 }
 
 function loadFocusContextPanelPreference(): FocusContextPanel {

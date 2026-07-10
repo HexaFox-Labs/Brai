@@ -27,6 +27,80 @@ describe("BraiApp shell", () => {
     expect(screen.getByRole("button", { name: "Открыть правое меню" })).toBeInTheDocument();
   });
 
+  it("uses explicit email-only login on Preview web", async () => {
+    window.__BRAI_RUNTIME_CONFIG__ = { environment: "preview-a", previewSlot: "A" };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url.endsWith("/auth/session")) {
+        return new Response(JSON.stringify({ authenticated: false, user: null }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.endsWith("/auth/test-email-login")) {
+        return new Response(JSON.stringify({ authenticated: true, user: { id: "primary", email: "primary@example.com", name: "Primary" } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return Promise.reject(new Error("offline"));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<BraiApp />);
+
+    const email = await screen.findByRole("textbox", { name: "Email" });
+    expect(screen.queryByLabelText("Код из письма")).not.toBeInTheDocument();
+    fireEvent.change(email, { target: { value: "primary@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "Войти" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      "/api/auth/test-email-login",
+      expect.objectContaining({ method: "POST" }),
+    ));
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/auth/otp/"))).toBe(false);
+  });
+
+  it("keeps Android login password-only", async () => {
+    stubAndroidCapacitor();
+    window.__BRAI_RUNTIME_CONFIG__ = { environment: "preview-a", previewSlot: "A" };
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url.endsWith("/auth/session")) {
+        return new Response(JSON.stringify({ authenticated: false, user: null }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return Promise.reject(new Error("offline"));
+    }));
+
+    render(<BraiApp />);
+
+    expect(await screen.findByLabelText("Пароль")).toHaveAttribute("type", "password");
+    expect(screen.queryByRole("textbox", { name: "Email" })).not.toBeInTheDocument();
+  });
+
+  it("keeps production Web on the OTP flow", async () => {
+    window.__BRAI_RUNTIME_CONFIG__ = { environment: "prod" };
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url.endsWith("/auth/session")) {
+        return new Response(JSON.stringify({ authenticated: false, user: null }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return Promise.reject(new Error("offline"));
+    }));
+
+    render(<BraiApp />);
+
+    expect(await screen.findByRole("textbox", { name: "Email" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Получить код" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Войти" })).not.toBeInTheDocument();
+  });
+
   it("keeps collapsed desktop rail action icons clickable", async () => {
     Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 1200 });
     document.cookie = "sidebar_state=false; path=/";

@@ -18,6 +18,7 @@ const LEGACY_DATABASE_ENV_KEYS = new Set([
   "BRAI_DB",
   "BRAI_LEGACY_SQLITE_PATH",
 ]);
+const RETIRED_RUNTIME_ENV_KEYS = new Set(["BRAI_TEST_AUTO_LOGIN"]);
 const TEST_DATA_RESET_PRESERVED_TABLES = new Set([
   "agents",
   "role_contracts",
@@ -51,7 +52,8 @@ async function main() {
     upsertEnvFile(envFile, {
       BRAI_DATABASE_URL: databaseUrl,
       BRAI_SUPABASE_BRANCH: name,
-      BRAI_TEST_AUTO_LOGIN: "true"
+      BRAI_TEST_EMAIL_LOGIN: "true",
+      ...rotatedSessionSecret(envFile)
     });
     await applyMigrations(databaseUrl);
     const seededFromProduction = await seedTestDataFromProduction(databaseUrl);
@@ -68,7 +70,8 @@ async function main() {
     upsertEnvFile(envFile, {
       BRAI_DATABASE_URL: databaseUrl,
       BRAI_SUPABASE_BRANCH: name,
-      BRAI_TEST_AUTO_LOGIN: "true"
+      BRAI_TEST_EMAIL_LOGIN: "true",
+      ...rotatedSessionSecret(envFile)
     });
     await applyMigrations(databaseUrl);
     const seededFromProduction = await seedTestDataFromProduction(databaseUrl);
@@ -617,8 +620,17 @@ function normalizeEnvLine(line, replacedKeys) {
   const match = line.match(/^\s*(?:export\s+)?([A-Z0-9_]+)=(.*)$/);
   if (!match) return "";
   const [, key, rawValue] = match;
-  if (replacedKeys.has(key) || LEGACY_DATABASE_ENV_KEYS.has(key)) return "";
+  if (replacedKeys.has(key) || LEGACY_DATABASE_ENV_KEYS.has(key) || RETIRED_RUNTIME_ENV_KEYS.has(key)) return "";
   return `${key}=${shellQuote(parseEnvValue(rawValue))}`;
+}
+
+function rotatedSessionSecret(filePath) {
+  if (!fs.existsSync(filePath)) return {};
+  const legacyAutoLogin = fs.readFileSync(filePath, "utf8").split(/\r?\n/).some((line) => {
+    const match = line.match(/^\s*(?:export\s+)?BRAI_TEST_AUTO_LOGIN=(.*)$/);
+    return match && /^(1|true|yes)$/i.test(parseEnvValue(match[1]));
+  });
+  return legacyAutoLogin ? { BRAI_SESSION_SECRET: crypto.randomBytes(32).toString("base64url") } : {};
 }
 
 function parseEnvValue(value) {

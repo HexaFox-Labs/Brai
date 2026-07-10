@@ -287,6 +287,8 @@ test("preview env setup rewrites existing shell-unsafe values safely", () => {
     "BRAI_AUTH_FROM=Brai <auth@mail.brightos.world>",
     "BRAI_DATA_STORE=sqlite",
     "BRAI_LEGACY_SQLITE_PATH=/srv/projects/brai/data/brai.sqlite",
+    "BRAI_TEST_AUTO_LOGIN=true",
+    "BRAI_SESSION_SECRET=old-auto-login-secret",
     "BROKEN NON ASSIGNMENT",
     ""
   ].join("\n"));
@@ -330,10 +332,13 @@ test("preview env setup rewrites existing shell-unsafe values safely", () => {
   assert.doesNotMatch(contents, /BRAI_DATA_STORE|BRAI_LEGACY_SQLITE_PATH|BROKEN NON ASSIGNMENT/);
   assert.match(contents, /^BRAI_DATABASE_URL='postgres:\/\/brai:brai@127\.0\.0\.1:5432\/brai\?options=-c\+search_path%3Dbrai_preview_supabase_only_runtime_e3117d5f%2Cpublic'$/m);
   assert.match(contents, /^BRAI_SUPABASE_BRANCH='brai_preview_supabase_only_runtime_e3117d5f'$/m);
-  assert.match(contents, /^BRAI_TEST_AUTO_LOGIN='true'$/m);
+  assert.match(contents, /^BRAI_TEST_EMAIL_LOGIN='true'$/m);
+  assert.doesNotMatch(contents, /BRAI_TEST_AUTO_LOGIN/);
+  assert.match(contents, /^BRAI_SESSION_SECRET='[^']{32,}'$/m);
+  assert.doesNotMatch(contents, /old-auto-login-secret/);
 });
 
-test("dev env setup enables test auto-login", () => {
+test("dev env setup enables explicit test email login", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "brai-supabase-dev-env-"));
   const envFile = path.join(dir, "brai-api.env");
   const result = spawnSync("node", [
@@ -355,7 +360,8 @@ test("dev env setup enables test auto-login", () => {
 
   const contents = fs.readFileSync(envFile, "utf8");
   assert.match(contents, /^BRAI_SUPABASE_BRANCH='brai_dev'$/m);
-  assert.match(contents, /^BRAI_TEST_AUTO_LOGIN='true'$/m);
+  assert.match(contents, /^BRAI_TEST_EMAIL_LOGIN='true'$/m);
+  assert.doesNotMatch(contents, /BRAI_TEST_AUTO_LOGIN/);
 });
 
 test("branch database URL override requires explicit preview marker", () => {

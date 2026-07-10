@@ -1043,15 +1043,44 @@ function InboxAiProcessPanel({ item }: { item: InboxItem }) {
   useEffect(() => {
     if (!hasWorkflow) return;
     let active = true;
-    void new BraiApi(defaultApiBase()).inboxWorkflow(item.id)
-      .then((value) => {
-        if (active) setResult({ inboxId: item.id, details: value, error: "" });
-      })
-      .catch((reason) => {
-        if (active) setResult({ inboxId: item.id, details: null, error: reason instanceof Error ? reason.message : "Не удалось загрузить workflow" });
-      });
+    let loading = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const api = new BraiApi(defaultApiBase());
+    const load = async () => {
+      if (loading) return;
+      loading = true;
+      timer = null;
+      try {
+        const value = await api.inboxWorkflow(item.id);
+        if (!active) return;
+        setResult({ inboxId: item.id, details: value, error: "" });
+        if (["queued", "running"].includes(value.execution.status) && document.visibilityState !== "hidden") {
+          timer = setTimeout(load, 1500);
+        }
+      } catch (reason) {
+        if (active) {
+          setResult({ inboxId: item.id, details: null, error: reason instanceof Error ? reason.message : "Не удалось загрузить workflow" });
+          if (["queued", "running"].includes(item.workflow_status ?? "") && document.visibilityState !== "hidden") {
+            timer = setTimeout(load, 1500);
+          }
+        }
+      } finally {
+        loading = false;
+      }
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible" && !timer) void load();
+      if (document.visibilityState === "hidden" && timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    void load();
     return () => {
       active = false;
+      if (timer) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [hasWorkflow, item.id, item.temporal_run_id, item.workflow_attempt_count, item.workflow_status]);
 
@@ -1069,11 +1098,7 @@ function InboxAiProcessPanel({ item }: { item: InboxItem }) {
   }
 
   const failed = details.execution.status === "failed" || details.execution.status === "needs_review";
-  const steps = details.definition?.steps ?? [];
-  const currentStep = details.execution.current_step === "image_describer"
-    ? "raw_normalizer"
-    : details.execution.current_step;
-  const currentStepIndex = steps.indexOf(currentStep);
+  const stepStates = details.step_states;
   return (
     <ScrollArea className="min-h-0" role="tabpanel">
       <div className="grid gap-4 py-4">
@@ -1082,32 +1107,29 @@ function InboxAiProcessPanel({ item }: { item: InboxItem }) {
             {failed ? <XCircle className="size-4 text-destructive" aria-hidden="true" /> : details.execution.status === "completed" ? <CheckCircle2 className="size-4 text-primary" aria-hidden="true" /> : <LoaderCircle className="size-4 animate-spin text-primary" aria-hidden="true" />}
             {details.execution.status}
           </div>
-          <div className="text-muted-foreground">Шаг: {details.execution.current_step}</div>
+          {details.execution.status === "running" || details.execution.status === "queued" ? (
+            <div className="text-muted-foreground">Шаг: {details.execution.current_step}</div>
+          ) : failed ? (
+            <div className="text-muted-foreground">Последний runtime-шаг: {details.execution.current_step}</div>
+          ) : null}
           <div className="text-muted-foreground">Попытки: {details.execution.attempt_count}</div>
           {details.execution.last_error ? <div className="text-destructive">{details.execution.last_error}</div> : null}
         </div>
 
         <div className="grid gap-2">
           <h3 className="m-0 text-sm font-semibold">Шаги workflow</h3>
-          {steps.map((step, index) => {
-            const stepState = details.execution.status === "completed" || index < currentStepIndex
-              ? "completed"
-              : index === currentStepIndex && failed
-                ? "failed"
-                : index === currentStepIndex
-                  ? "running"
-                  : "pending";
+          {!stepStates ? <p className="m-0 text-sm text-muted-foreground">Состояния шагов недоступны.</p> : stepStates.map((step) => {
             return (
               <div
-                className={cx("flex items-center gap-2 text-sm", stepState === "failed" ? "text-destructive" : "text-muted-foreground")}
-                data-workflow-step-state={stepState}
-                key={step}
+                className={cx("flex items-center gap-2 text-sm", step.state === "failed" ? "text-destructive" : "text-muted-foreground")}
+                data-workflow-step-state={step.state}
+                key={step.id}
               >
-                {stepState === "completed" ? <CheckCircle2 className="size-3.5 text-primary" aria-hidden="true" /> : null}
-                {stepState === "running" ? <LoaderCircle className="size-3.5 animate-spin text-primary" aria-hidden="true" /> : null}
-                {stepState === "failed" ? <XCircle className="size-3.5" aria-hidden="true" /> : null}
-                {stepState === "pending" ? <Circle className="size-3.5" aria-hidden="true" /> : null}
-                {step}
+                {step.state === "completed" ? <CheckCircle2 className="size-3.5 text-primary" aria-hidden="true" /> : null}
+                {step.state === "running" ? <LoaderCircle className="size-3.5 animate-spin text-primary" aria-hidden="true" /> : null}
+                {step.state === "failed" ? <XCircle className="size-3.5" aria-hidden="true" /> : null}
+                {step.state === "pending" || step.state === "skipped" ? <Circle className="size-3.5" aria-hidden="true" /> : null}
+                {step.id}{step.state === "skipped" ? " · пропущен" : ""}
               </div>
             );
           })}

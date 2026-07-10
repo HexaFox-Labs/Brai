@@ -89,6 +89,7 @@ test('Inbox text normalizer runs isolated Codex exec with the stored schema and 
     assert.equal(capture.instructionsMode, 0o600);
     assert.match(capture.instructions, /deterministic JSON normalizer/);
     assert.match(capture.prompt, /Хочу купить пушистого кота/);
+    assert.match(capture.prompt, /Сохраняй исходное намерение пользователя/);
     assert.equal(fs.existsSync(cliCwd), false);
     assert.equal(store.logs.length, 1);
     assert.equal(store.logs[0].jsonData.usage.model, DEFAULT_INBOX_CODEX_MODEL);
@@ -221,7 +222,7 @@ test('a pinned v1 execution keeps local Codex isolation without silently adoptin
   }
 });
 
-function normalizerStore({ workflowVersion = 2, outputSchema = OUTPUT_SCHEMA } = {}) {
+function normalizerStore({ workflowVersion = 3, outputSchema = OUTPUT_SCHEMA } = {}) {
   const logs = [];
   return {
     logs,
@@ -237,7 +238,7 @@ function normalizerStore({ workflowVersion = 2, outputSchema = OUTPUT_SCHEMA } =
     listInboxClasses: () => [{ key: 'wish', title: 'Желание' }],
     getInboxWorkflowExecution: () => ({ workflow_definition_version: workflowVersion }),
     getInboxWorkflowOutputSchema: () => outputSchema,
-    getAgent: () => ({ version: '3', llm_model: '', llm_prompt_template: null, llm_timeout_ms: 1_000 }),
+    getAgent: () => ({ version: '4', llm_model: '', llm_prompt_template: null, llm_timeout_ms: 1_000 }),
     recordAiLog: (entry) => logs.push(entry)
   };
 }

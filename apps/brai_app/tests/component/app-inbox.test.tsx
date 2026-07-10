@@ -31,7 +31,12 @@ describe("BraiApp inbox", () => {
         expect.arrayContaining([
           expect.objectContaining({
             type: "create",
-            payload: { title: "Новое письмо", description_md: "Контекст письма" },
+            payload: expect.objectContaining({
+              title: "Новое письмо",
+              description_md: "Контекст письма",
+              explanation_text: "Новое письмо",
+              source: "brai-app",
+            }),
           }),
         ]),
       );
@@ -205,6 +210,11 @@ describe("BraiApp inbox", () => {
             attempt_count: 1,
             last_error: null,
           },
+          step_states: [
+            { id: "ingest", state: "completed", reason: null },
+            { id: "raw_normalizer", state: "running", reason: null },
+            { id: "apply_normalized_raw", state: "pending", reason: null },
+          ],
           attempts: [{
             id: 41,
             agent_id: "inbox.normalizer",
