@@ -27,31 +27,26 @@ describe("BraiApp shell", () => {
     expect(screen.getByRole("button", { name: "Открыть правое меню" })).toBeInTheDocument();
   });
 
-  it("grants Brai Cmd access before enabling overlays in the signed-in app", async () => {
+  it("enables dictation and context after the signed-in cabinet opens", async () => {
     stubAndroidCapacitor();
 
     render(<BraiApp />);
 
-    await waitFor(() => expect(cmdPlugin.ensureAccess).toHaveBeenCalledWith({ displayName: "Brai" }));
     await waitFor(() => expect(cmdPlugin.setOverlayEnabled).toHaveBeenCalledWith({ enabled: true }));
     await waitFor(() => expect(cmdPlugin.setVoiceOnlyMode).toHaveBeenCalledWith({ enabled: false }));
     expect(cmdPlugin.setQueuePausedMode).toHaveBeenCalledWith({ enabled: false });
-    const voiceEnableIndex = cmdPlugin.setVoiceOnlyMode.mock.calls.findIndex(([options]) => options.enabled === false);
-    expect(cmdPlugin.setOverlayEnabled.mock.invocationCallOrder[0]).toBeLessThan(
-      cmdPlugin.setVoiceOnlyMode.mock.invocationCallOrder[voiceEnableIndex],
-    );
+    expect(cmdPlugin.ensureAccess).toHaveBeenCalledWith({ displayName: "Test" });
   });
 
-  it("keeps Brai Cmd overlays locked when native access cannot be granted", async () => {
+  it("does not tie cabinet overlays to the legacy native access-name request", async () => {
     stubAndroidCapacitor();
     cmdPlugin.ensureAccess.mockResolvedValueOnce({ accessGranted: false });
 
     render(<BraiApp />);
 
-    await waitFor(() => expect(cmdPlugin.ensureAccess).toHaveBeenCalledWith({ displayName: "Brai" }));
-    expect(cmdPlugin.setOverlayEnabled).not.toHaveBeenCalledWith({ enabled: true });
-    expect(cmdPlugin.setVoiceOnlyMode).not.toHaveBeenCalledWith({ enabled: false });
-    expect(cmdPlugin.setQueuePausedMode).not.toHaveBeenCalledWith({ enabled: false });
+    await waitFor(() => expect(cmdPlugin.setOverlayEnabled).toHaveBeenCalledWith({ enabled: true }));
+    expect(cmdPlugin.setVoiceOnlyMode).toHaveBeenCalledWith({ enabled: false });
+    expect(cmdPlugin.ensureAccess).toHaveBeenCalledWith({ displayName: "Test" });
   });
 
   it("keeps collapsed desktop rail action icons clickable", async () => {

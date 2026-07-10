@@ -34,7 +34,7 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        new ConfigStore(this).setOverlayEnabled(false);
+        new ConfigStore(this).setOnboardingVoiceOnly(true);
         getWindow().setBackgroundDrawable(new ColorDrawable(STARTUP_BACKGROUND));
         getWindow().setStatusBarColor(STARTUP_BACKGROUND);
         getWindow().setNavigationBarColor(STARTUP_BACKGROUND);

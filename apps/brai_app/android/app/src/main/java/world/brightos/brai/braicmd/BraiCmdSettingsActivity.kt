@@ -36,14 +36,8 @@ class BraiCmdSettingsActivity : Activity() {
     private lateinit var notificationRow: StatusRow
     private lateinit var testButton: Button
     private lateinit var testStatus: TextView
-    private lateinit var accessCard: LinearLayout
-    private lateinit var nameInput: EditText
-    private lateinit var accessButton: Button
-    private lateinit var accessStatus: TextView
     private lateinit var postProcessingSwitch: Switch
     private lateinit var postProcessingPromptInput: EditText
-
-    private var serverOk = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -130,16 +124,13 @@ class BraiCmdSettingsActivity : Activity() {
         root.addView(ui.sectionTitle("2. Сервер"))
         addConnectionCard(root)
 
-        root.addView(ui.sectionTitle("3. Доступ"))
-        addAccessCard(root)
-
-        root.addView(ui.sectionTitle("4. Контекст"))
+        root.addView(ui.sectionTitle("3. Контекст"))
         addContextCard(root)
 
-        root.addView(ui.sectionTitle("5. Настройки"))
+        root.addView(ui.sectionTitle("4. Настройки"))
         addSettingsCard(root)
 
-        root.addView(ui.sectionTitle("6. Пост-обработка"))
+        root.addView(ui.sectionTitle("5. Пост-обработка"))
         addPostProcessingCard(root)
 
         val scrollView = ScrollView(this).apply {
@@ -181,46 +172,6 @@ class BraiCmdSettingsActivity : Activity() {
         }
         card.addView(testStatus, ui.matchWrap().apply { setMargins(0, ui.dp(10), 0, 0) })
         root.addView(card, ui.matchWrap())
-    }
-
-    private fun addAccessCard(root: LinearLayout) {
-        accessCard = ui.panel()
-        accessCard.addView(TextView(this).apply {
-            text = "Имя для статистики"
-            textSize = 16f
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(COLOR_TEXT)
-        })
-        nameInput = EditText(this).apply {
-            hint = "Ваше имя"
-            setSingleLine(true)
-            textSize = 16f
-            setTextColor(COLOR_TEXT)
-            setHintTextColor(COLOR_MUTED)
-            setPadding(ui.dp(12), 0, ui.dp(12), 0)
-            background = ui.roundedBackground(COLOR_INPUT, COLOR_BORDER)
-            setText(config.displayName)
-            addTextChangedListener(object : TextWatcher {
-                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
-                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = refreshStatus()
-                override fun afterTextChanged(s: Editable?) = Unit
-            })
-        }
-        accessCard.addView(nameInput, ui.matchHeight(ui.dp(46)).apply { setMargins(0, ui.dp(10), 0, ui.dp(10)) })
-
-        accessButton = ui.actionButton("Получить доступ") { requestAccess() }
-        accessCard.addView(accessButton, ui.matchHeight(ui.dp(44)))
-
-        accessStatus = TextView(this).apply {
-            textSize = 14f
-            typeface = Typeface.DEFAULT_BOLD
-            setPadding(ui.dp(10), ui.dp(9), ui.dp(10), ui.dp(9))
-            setLineSpacing(ui.dp(2).toFloat(), 1.0f)
-            background = ui.roundedBackground(COLOR_INFO_BADGE)
-            setTextColor(COLOR_INFO)
-        }
-        accessCard.addView(accessStatus, ui.matchWrap().apply { setMargins(0, ui.dp(10), 0, 0) })
-        root.addView(accessCard, ui.matchWrap())
     }
 
     private fun addPostProcessingCard(root: LinearLayout) {
@@ -404,50 +355,16 @@ class BraiCmdSettingsActivity : Activity() {
     private fun testServer() {
         testButton.isEnabled = false
         testButton.alpha = 0.65f
-        serverOk = false
         updateConnectionStatus("Проверка подключения...", COLOR_INFO_BADGE, COLOR_INFO)
         Thread {
             val result = runCatching { NetworkClient(this).publicHealthCheck() }
             runOnUiThread {
                 result.fold(
                     onSuccess = {
-                        serverOk = true
                         updateConnectionStatus(if (it == "ok") "Сервер работает" else "Сервер работает: $it", COLOR_OK_BADGE, COLOR_OK)
                     },
                     onFailure = {
-                        serverOk = false
                         updateConnectionStatus("Сервер не отвечает\n${it.message}", COLOR_BAD_BADGE, COLOR_BAD)
-                    }
-                )
-                refreshStatus()
-            }
-        }.start()
-    }
-
-    private fun requestAccess() {
-        val name = nameInput.text?.toString().orEmpty().trim()
-        if (name.isBlank()) return
-        accessButton.isEnabled = false
-        accessButton.alpha = 0.65f
-        updateAccessStatus("Запрашиваю доступ...", COLOR_INFO_BADGE, COLOR_INFO)
-        Thread {
-            val result = runCatching {
-                val client = NetworkClient(this)
-                val access = client.requestAccess(name)
-                require(access.token.isNotBlank()) { "Сервер не вернул токен" }
-                config.authToken = access.token
-                config.displayName = access.displayName.ifBlank { name }
-                client.healthCheck()
-                access
-            }
-            runOnUiThread {
-                result.fold(
-                    onSuccess = {
-                        updateAccessStatus("Доступ активен для ${config.displayName}", COLOR_OK_BADGE, COLOR_OK)
-                    },
-                    onFailure = {
-                        config.authToken = ""
-                        updateAccessStatus(cleanError(it), COLOR_BAD_BADGE, COLOR_BAD)
                     }
                 )
                 refreshStatus()
@@ -461,39 +378,21 @@ class BraiCmdSettingsActivity : Activity() {
         val micOk = hasPermission(Manifest.permission.RECORD_AUDIO)
         val notificationsOk = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || hasPermission(Manifest.permission.POST_NOTIFICATIONS)
         val permissionsOk = accessibilityOk && overlayOk && micOk && notificationsOk
-        val hasToken = config.authToken.isNotBlank()
-        val hasName = this::nameInput.isInitialized && nameInput.text?.toString()?.trim()?.isNotBlank() == true
 
         updateRequiredRow(accessibilityRow, accessibilityOk)
         updateRequiredRow(overlayRow, overlayOk)
         updateRequiredRow(micRow, micOk)
         updateRequiredRow(notificationRow, notificationsOk)
 
-        if (!permissionsOk) serverOk = false
         testButton.isEnabled = permissionsOk
         testButton.alpha = if (permissionsOk) 1f else 0.45f
         if (!permissionsOk) updateConnectionStatus("Сначала включите все разрешения", COLOR_INFO_BADGE, COLOR_INFO)
 
-        accessCard.visibility = if ((permissionsOk && serverOk) || hasToken) View.VISIBLE else View.GONE
-        nameInput.isEnabled = !hasToken
-        accessButton.visibility = if (hasToken) View.GONE else View.VISIBLE
-        accessButton.isEnabled = permissionsOk && serverOk && hasName
-        accessButton.alpha = if (accessButton.isEnabled) 1f else 0.45f
-
-        if (hasToken) {
-            updateAccessStatus("Доступ активен для ${config.displayName.ifBlank { "пользователя" }}", COLOR_OK_BADGE, COLOR_OK)
-        } else if (permissionsOk && serverOk) {
-            updateAccessStatus("Введите имя и получите персональный доступ", COLOR_INFO_BADGE, COLOR_INFO)
-        } else {
-            updateAccessStatus("Появится после проверки сервера", COLOR_INFO_BADGE, COLOR_INFO)
-        }
-
-        val ready = permissionsOk && hasToken
+        val ready = permissionsOk
         overallStatus.text = when {
-            ready -> "Готово: можно отправлять команды"
+            ready -> "Готово: Brai CMD настроен"
             !permissionsOk -> "Нужно включить все разрешения"
-            !serverOk -> "Проверьте подключение к серверу"
-            else -> "Получите доступ для этого устройства"
+            else -> "Проверьте настройки Brai CMD"
         }
         overallStatus.setTextColor(if (ready) COLOR_OK else COLOR_BAD)
         overallStatus.background = ui.roundedBackground(if (ready) COLOR_OK_BADGE else COLOR_BAD_BADGE, if (ready) COLOR_OK else COLOR_BAD)
@@ -512,12 +411,6 @@ class BraiCmdSettingsActivity : Activity() {
         testStatus.text = textValue
         testStatus.setTextColor(textColor)
         testStatus.background = ui.roundedBackground(backgroundColor)
-    }
-
-    private fun updateAccessStatus(textValue: String, backgroundColor: Int, textColor: Int) {
-        accessStatus.text = textValue
-        accessStatus.setTextColor(textColor)
-        accessStatus.background = ui.roundedBackground(backgroundColor)
     }
 
     private fun hasPermission(permission: String): Boolean =

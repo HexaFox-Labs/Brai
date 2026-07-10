@@ -87,9 +87,7 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
   }, [app.theme, onboardingVisible]);
 
   useEffect(() => {
-    let cancelled = false;
     if (app.displaySyncStatus === "auth_required") {
-      void setBraiCmdOverlayEnabled(false);
       void setBraiCmdVoiceOnlyMode(true);
       return;
     }
@@ -98,21 +96,13 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
       !app.localSnapshotReady ||
       app.displaySyncStatus === "connecting"
     ) return;
-    void ensureBraiCmdAccess("Brai").then(async (access) => {
-      if (cancelled) return;
-      if (!access?.accessGranted) return;
-      await setBraiCmdOverlayEnabled(true);
-      if (cancelled) {
-        await setBraiCmdOverlayEnabled(false);
-        return;
-      }
-      await setBraiCmdVoiceOnlyMode(false);
-      await setBraiCmdQueuePausedMode(false);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [app.displaySyncStatus, app.localSnapshotReady, onboardingVisible]);
+    void Promise.all([
+      ensureBraiCmdAccess(app.authDisplayName),
+      setBraiCmdOverlayEnabled(true),
+      setBraiCmdVoiceOnlyMode(false),
+      setBraiCmdQueuePausedMode(false),
+    ]);
+  }, [app.authDisplayName, app.displaySyncStatus, app.localSnapshotReady, onboardingVisible]);
 
   useEffect(() => installAndroidBackHandler(() => {
     if (window.history.state?.braiMobileMenu || window.history.state?.braiMobileDockMenu || window.history.state?.braiMobileSheet || window.history.state?.braiActivityEditor || window.history.state?.braiMobileActionCreate || window.history.state?.braiInboxEditor || window.history.state?.braiMobileInboxCreate || window.history.state?.braiFactoryLog) return false;

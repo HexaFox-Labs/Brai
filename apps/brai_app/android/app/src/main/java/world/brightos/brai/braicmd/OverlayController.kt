@@ -43,15 +43,13 @@ class OverlayController(private val service: BraiAccessibilityService) {
     private val settingsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         if (key in overlaySettingKeys) {
             if (key in contextActionSettingKeys) closeContextMenu(animated = false)
-            if ((key == AppConstants.KEY_AUTH_TOKEN && config.authToken.isBlank()) ||
-                (key == AppConstants.KEY_OVERLAY_ENABLED && !config.overlayEnabled)
-            ) {
+            if (key == AppConstants.KEY_OVERLAY_ENABLED && !config.overlayEnabled) {
                 hideInputButtonView()
                 hideScreenshotButton()
                 return@OnSharedPreferenceChangeListener
             }
             applyIconSettings()
-            if ((key == AppConstants.KEY_AUTH_TOKEN || key == AppConstants.KEY_OVERLAY_ENABLED) && inputButtonRequested) showIfAllowed()
+            if (key == AppConstants.KEY_OVERLAY_ENABLED && inputButtonRequested) showIfAllowed()
             updateScreenshotButtonVisibility()
         }
     }
@@ -173,7 +171,7 @@ class OverlayController(private val service: BraiAccessibilityService) {
 
     fun showIfAllowed() {
         inputButtonRequested = true
-        if (!config.overlayEnabled || config.authToken.isBlank() || !Settings.canDrawOverlays(service)) {
+        if (!config.overlayEnabled || !Settings.canDrawOverlays(service)) {
             hideInputButtonView()
             hideScreenshotButton()
             return
@@ -728,7 +726,7 @@ class OverlayController(private val service: BraiAccessibilityService) {
         (screenshotButtonSizePx() * CONTEXT_ACTION_BUTTON_SCALE).roundToInt().coerceAtLeast(service.dp(28))
 
     private fun contextButtonAllowed(): Boolean =
-        config.overlayEnabled && config.authToken.isNotBlank() && !config.onboardingVoiceOnly && enabledContextMenuActions().isNotEmpty()
+        config.overlayEnabled && !config.onboardingVoiceOnly && enabledContextMenuActions().isNotEmpty()
 
     private fun enabledContextMenuActions(): List<ContextMenuAction> =
         contextMenuActions.filter { action ->
@@ -761,7 +759,6 @@ class OverlayController(private val service: BraiAccessibilityService) {
             AppConstants.KEY_MAIN_ICON_SIZE_PERCENT,
             AppConstants.KEY_SCREENSHOT_ICON_OPACITY_PERCENT,
             AppConstants.KEY_SCREENSHOT_ICON_SIZE_PERCENT,
-            AppConstants.KEY_AUTH_TOKEN,
             AppConstants.KEY_OVERLAY_ENABLED,
             AppConstants.KEY_ONBOARDING_VOICE_ONLY
         ) + contextActionSettingKeys

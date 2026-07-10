@@ -228,8 +228,14 @@ export function OnboardingFlow({
 
   useEffect(() => {
     if (!isAndroid) return;
-    void setBraiCmdOverlayEnabled(state.step.startsWith("training-") || state.step === "voice-ready");
-  }, [isAndroid, state.step]);
+    const dictationAvailable = state.complete || state.step.startsWith("training-") || state.step === "voice-ready";
+    void setBraiCmdOverlayEnabled(dictationAvailable);
+  }, [isAndroid, state.complete, state.step]);
+
+  useEffect(() => {
+    if (!isAndroid || !state.complete || !authRequired) return;
+    void ensureBraiCmdAccess(state.name.trim() || "Brai");
+  }, [authRequired, isAndroid, state.complete, state.name]);
 
   useEffect(() => {
     if (!isAndroid) return;
@@ -347,7 +353,7 @@ export function OnboardingFlow({
   }
 
   async function completeSetup() {
-    await setBraiCmdOverlayEnabled(false);
+    await setBraiCmdOverlayEnabled(true);
     await setBraiCmdQueuePausedMode(false);
     const current = stateRef.current;
     transitionTo({ ...current, complete: true, step: "login-check", history: [...current.history, current.step] });
