@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import dynamic from "next/dynamic";
 import { Edit3, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, Plus } from "lucide-react";
 import type { AppState, BinaryFiles } from "@excalidraw/excalidraw/types";
@@ -10,9 +10,11 @@ import { BraiApi, type BraiApiError, type DrawSceneSummary } from "@/shared/api/
 import { defaultApiBase } from "@/shared/config/runtime";
 import { Button } from "@/shared/ui/button";
 import { ScrollArea } from "@/shared/ui/scroll-area";
-import { cx } from "../../appUtils";
+import { cx, plainEditableText, setPlainEditableText } from "../../appUtils";
+import { isMobileNavigationViewport } from "../../navigation/useSectionSwipeNavigation";
 
 type SaveStatus = "loading" | "idle" | "saving" | "saved" | "error";
+type EditTarget = { name: string; source: "list" | "main" };
 
 const DEFAULT_DRAW_NAME = "Новый рисунок.excalidraw";
 const DrawsCanvas = dynamic(() => import("./DrawsCanvas").then((module) => module.DrawsCanvas), {
@@ -37,6 +39,7 @@ export function DrawsSection({ theme }: { theme: ThemeMode }) {
   const [status, setStatus] = useState<SaveStatus>("loading");
   const [listOpen, setListOpen] = useState(true);
   const [fullScreen, setFullScreen] = useState(false);
+  const [editingTitle, setEditingTitle] = useState<EditTarget | null>(null);
   const saveTimerRef = useRef<number | null>(null);
   const loadedRef = useRef(false);
   const pendingSceneRef = useRef<Record<string, unknown> | null>(null);
@@ -98,10 +101,9 @@ export function DrawsSection({ theme }: { theme: ThemeMode }) {
   }, []);
 
   const createDraw = useCallback(() => {
-    const title = window.prompt("Название сцены", defaultUntitledName(draws));
-    if (!title) return;
-    const name = toDrawFileName(title);
+    const name = toDrawFileName(defaultUntitledName(draws));
     setActiveName(name);
+    setEditingTitle({ name, source: "main" });
     setDraws((current) => upsertDraw(current, {
       name,
       title: name.replace(/\.excalidraw$/, ""),
@@ -110,10 +112,7 @@ export function DrawsSection({ theme }: { theme: ThemeMode }) {
     }));
   }, [draws]);
 
-  const renameDraw = useCallback(async (name: string) => {
-    const current = draws.find((draw) => draw.name === name);
-    const title = window.prompt("Новое название", current?.title ?? name.replace(/\.excalidraw$/, ""));
-    if (!title) return;
+  const renameDraw = useCallback(async (name: string, title: string) => {
     const nextName = toDrawFileName(title);
     if (nextName === name) return;
     if (saveTimerRef.current != null) {
@@ -122,8 +121,8 @@ export function DrawsSection({ theme }: { theme: ThemeMode }) {
     }
     setStatus("saving");
     try {
-      if (name === activeName && pendingSceneRef.current) {
-        await api.saveDraw(name, pendingSceneRef.current);
+      if (name === activeName) {
+        await api.saveDraw(name, pendingSceneRef.current ?? scene ?? emptyScene());
         pendingSceneRef.current = null;
       }
       const renamed = await api.renameDraw(name, nextName);
@@ -136,7 +135,7 @@ export function DrawsSection({ theme }: { theme: ThemeMode }) {
     } catch {
       setStatus("error");
     }
-  }, [activeName, api, draws]);
+  }, [activeName, api, scene]);
 
   const onChange = useCallback((elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
     if (!loadedRef.current) return;
@@ -176,9 +175,6 @@ export function DrawsSection({ theme }: { theme: ThemeMode }) {
             <p className="truncate text-xs text-muted-foreground">{saveStatusLabel(status)}</p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            <Button type="button" size="icon-sm" variant="ghost" aria-label="Скрыть список рисунков" title="Скрыть список рисунков" onClick={() => setListOpen(false)}>
-              <PanelLeftClose className="size-4" aria-hidden="true" />
-            </Button>
             <Button type="button" size="icon-sm" variant="ghost" aria-label="Создать сцену" title="Создать сцену" onClick={createDraw}>
               <Plus className="size-4" aria-hidden="true" />
             </Button>
@@ -195,14 +191,21 @@ export function DrawsSection({ theme }: { theme: ThemeMode }) {
                 )}
                 onContextMenu={(event) => {
                   event.preventDefault();
-                  void renameDraw(draw.name);
+                  setEditingTitle({ name: draw.name, source: "list" });
                 }}
+                onClick={() => setActiveName(draw.name)}
               >
-                <button type="button" className="grid min-w-0 px-2 py-2 text-left text-sm" onClick={() => setActiveName(draw.name)}>
-                  <span className="truncate font-medium">{draw.title}</span>
+                <div className="grid min-w-0 px-2 py-2 text-left text-sm">
+                  <DrawTitleEditor
+                    editing={editingTitle?.name === draw.name && editingTitle.source === "list"}
+                    label={`Название рисунка: ${draw.title}`}
+                    title={draw.title}
+                    onCommit={(title) => renameDraw(draw.name, title)}
+                    onEditDone={() => setEditingTitle(null)}
+                  />
                   <span className="truncate text-xs text-muted-foreground">{formatUpdatedAt(draw.updated_at_utc)}</span>
-                </button>
-                <Button type="button" size="icon-xs" variant="ghost" aria-label={`Переименовать ${draw.title}`} title="Переименовать" onClick={() => void renameDraw(draw.name)}>
+                </div>
+                <Button type="button" size="icon-xs" variant="ghost" aria-label={`Переименовать ${draw.title}`} title="Переименовать" onClick={() => setEditingTitle({ name: draw.name, source: "list" })}>
                   <Edit3 className="size-3" aria-hidden="true" />
                 </Button>
               </div>
@@ -221,15 +224,21 @@ export function DrawsSection({ theme }: { theme: ThemeMode }) {
       ) : null}
       <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-md border border-border bg-background" data-nav-swipe-exclusion>
         <div className="flex min-h-10 items-center justify-between gap-2 border-b border-border bg-card/80 px-2 py-1">
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium">{activeName.replace(/\.excalidraw$/, "")}</p>
+          <Button type="button" size="icon-sm" variant="ghost" aria-label={listOpen ? "Скрыть список рисунков" : "Показать список рисунков"} title={listOpen ? "Скрыть список рисунков" : "Показать список рисунков"} disabled={fullScreen} onClick={() => setListOpen((open) => !open)}>
+            {listOpen ? <PanelLeftClose className="size-4" aria-hidden="true" /> : <PanelLeftOpen className="size-4" aria-hidden="true" />}
+          </Button>
+          <div className="min-w-0 flex-1">
+            <DrawTitleEditor
+              editing={editingTitle?.name === activeName && editingTitle.source === "main"}
+              label={`Название рисунка: ${activeName.replace(/\.excalidraw$/, "")}`}
+              title={activeName.replace(/\.excalidraw$/, "")}
+              onCommit={(title) => renameDraw(activeName, title)}
+              onEditDone={() => setEditingTitle(null)}
+            />
             <p className="truncate text-xs text-muted-foreground">{saveStatusLabel(status)}</p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            <Button type="button" size="icon-sm" variant="ghost" aria-label={listOpen ? "Скрыть список рисунков" : "Показать список рисунков"} title={listOpen ? "Скрыть список рисунков" : "Показать список рисунков"} disabled={fullScreen} onClick={() => setListOpen((open) => !open)}>
-              {listOpen ? <PanelLeftClose className="size-4" aria-hidden="true" /> : <PanelLeftOpen className="size-4" aria-hidden="true" />}
-            </Button>
-            <Button type="button" size="icon-sm" variant="ghost" aria-label="Переименовать рисунок" title="Переименовать рисунок" onClick={() => void renameDraw(activeName)}>
+            <Button type="button" size="icon-sm" variant="ghost" aria-label="Переименовать рисунок" title="Переименовать рисунок" onClick={() => setEditingTitle({ name: activeName, source: "main" })}>
               <Edit3 className="size-4" aria-hidden="true" />
             </Button>
             <Button type="button" size="icon-sm" variant="ghost" aria-label={fullScreen ? "Выйти из полноэкранного режима" : "На весь экран"} title={fullScreen ? "Выйти из полноэкранного режима" : "На весь экран"} onClick={() => setFullScreen((open) => !open)}>
@@ -269,10 +278,93 @@ function defaultUntitledName(draws: DrawSceneSummary[]): string {
   return `Новый рисунок ${Date.now()}`;
 }
 
+function DrawTitleEditor({
+  editing,
+  label,
+  title,
+  onCommit,
+  onEditDone,
+}: {
+  editing: boolean;
+  label: string;
+  title: string;
+  onCommit: (title: string) => Promise<void>;
+  onEditDone: () => void;
+}) {
+  const titleRef = useRef<HTMLSpanElement | null>(null);
+
+  useLayoutEffect(() => {
+    if (!titleRef.current || document.activeElement === titleRef.current) return;
+    setPlainEditableText(titleRef.current, title);
+  }, [title]);
+
+  useEffect(() => {
+    if (!editing || !titleRef.current) return;
+    titleRef.current.focus();
+    const range = document.createRange();
+    range.selectNodeContents(titleRef.current);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  }, [editing]);
+
+  async function saveTitle() {
+    const nextTitle = cleanDrawTitle(titleRef.current ? plainEditableText(titleRef.current) : "");
+    if (!nextTitle) {
+      setPlainEditableText(titleRef.current, title);
+      onEditDone();
+      return;
+    }
+    if (nextTitle !== title) await onCommit(nextTitle);
+    onEditDone();
+  }
+
+  function onInput() {
+    const nextTitle = limitDrawTitle(titleRef.current ? plainEditableText(titleRef.current) : "");
+    setPlainEditableText(titleRef.current, nextTitle);
+  }
+
+  function onKeyDown(event: KeyboardEvent<HTMLSpanElement>) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      titleRef.current?.blur();
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setPlainEditableText(titleRef.current, title);
+      onEditDone();
+      titleRef.current?.blur();
+    }
+  }
+
+  return (
+    <span
+      ref={titleRef}
+      className="block min-w-0 truncate font-medium focus:text-primary focus:outline-0"
+      contentEditable={!isMobileNavigationViewport() || editing}
+      suppressContentEditableWarning
+      tabIndex={0}
+      role="textbox"
+      aria-label={label}
+      onBlur={() => void saveTitle()}
+      onInput={onInput}
+      onKeyDown={onKeyDown}
+    />
+  );
+}
+
 function toDrawFileName(title: string): string {
-  const trimmed = title.trim().replace(/[\\/\0]/g, " ").replace(/\.+/g, ".").slice(0, 96) || "Новый рисунок";
+  const trimmed = cleanDrawTitle(title) || "Новый рисунок";
   const name = trimmed.endsWith(".excalidraw") ? trimmed : `${trimmed}.excalidraw`;
   return name.includes("..") ? name.replace(/\.\./g, ".") : name;
+}
+
+function cleanDrawTitle(title: string): string {
+  return limitDrawTitle(title).trim().replace(/[\\/\0]/g, " ").replace(/\.+/g, ".").replace(/\.excalidraw$/, "").trim();
+}
+
+function limitDrawTitle(title: string): string {
+  return title.replace(/\s+/g, " ").slice(0, 96);
 }
 
 function saveStatusLabel(status: SaveStatus): string {
