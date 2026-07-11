@@ -40,12 +40,17 @@ export function createBraiAuth({
       error.status = 503;
       throw error;
     }
-    await resend.emails.send({
+    const result = await resend.emails.send({
       from: fromEmail,
       to: email,
       subject: 'Ваш одноразовый код Brai',
       ...renderOtpEmail({ otp })
     });
+    if (result.error) {
+      const error = new Error(result.error.message || 'resend_email_send_failed');
+      error.status = result.error.statusCode ?? 502;
+      throw error;
+    }
   });
 
   const options = {
@@ -102,7 +107,7 @@ export function renderOtpEmail({ otp }) {
     attachments: [
       {
         content: LOGO_ATTACHMENT_CONTENT,
-        filename: false,
+        filename: 'brai-logo.png',
         contentId: LOGO_CONTENT_ID,
         contentType: 'image/png'
       }

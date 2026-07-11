@@ -42,7 +42,7 @@ test('email OTP message renders the reusable responsive card', () => {
   assert.doesNotMatch(message.html, /data:image/);
   assert.equal(message.attachments[0].contentId, 'brai-logo');
   assert.equal(message.attachments[0].contentType, 'image/png');
-  assert.equal(message.attachments[0].filename, false);
+  assert.equal(message.attachments[0].filename, 'brai-logo.png');
   assert.equal(
     message.attachments[0].content,
     fs.readFileSync(new URL('../../../assets/brand/brai-logo-email-white-bg.png', import.meta.url)).toString('base64')
