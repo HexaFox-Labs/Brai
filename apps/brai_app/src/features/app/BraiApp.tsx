@@ -20,6 +20,7 @@ import { ActionsSection } from "./sections/actions/ActionsSection";
 import { ActionsInfoPanel } from "./sections/actions/ActionsInfoPanel";
 import { ArchiveSection } from "./sections/actions/ArchiveSection";
 import { BraiCmdSection } from "./sections/brai-cmd/BraiCmdSection";
+import { DrawsSection } from "./sections/draws/DrawsSection";
 import { EvilEyeSection } from "./sections/EvilEyeSection";
 import { EngineSection } from "./sections/engine/EngineSection";
 import { FactorySection } from "./sections/factory/FactorySection";
@@ -208,6 +209,8 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
           />
         ) : screenSection === "evil-eye" ? (
           <EvilEyeSection />
+        ) : screenSection === "draws" ? (
+          <DrawsSection />
         ) : screenSection === "engine" ? (
           <EngineSection
             appVersionState={app.versionState}
@@ -296,6 +299,7 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
       <MainDock
         section={app.section}
         hidden={app.actionOverlayOpen || app.mobileContextPanel != null}
+        mobileViewport={mobileViewport}
         onSection={app.selectSection}
         swipeHandlers={app.swipeNavigation.handlers}
         timer={app.timer}
@@ -328,6 +332,7 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
           onClose={() => setMobileDockMenu(null)}
           onSettings={app.openSettingsPage}
           onBraiCmd={openBraiCmd}
+          onDraws={() => app.selectSection("draws")}
           onEngine={() => app.selectSection("engine")}
           onArchive={() => app.selectSection("archive")}
           onLogout={app.onLogout}

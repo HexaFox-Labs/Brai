@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { WebSocket } from 'ws';
 import {
   TOKEN,
@@ -13,6 +16,21 @@ import {
   tableCount,
   waitFor
 } from '../test-support/api.js';
+
+function seedPrimaryUser(fixture, id = 'test-user') {
+  fixture.store.db
+    .prepare(`
+      INSERT INTO "user" ("id", "name", "email", "emailVerified", "createdAt", "updatedAt")
+      VALUES (?, ?, ?, true, ?, ?)
+    `)
+    .run(id, 'Test User', `${id}@example.com`, '2026-07-01T09:00:00.000Z', '2026-07-01T09:00:00.000Z');
+  fixture.store.db
+    .prepare(`
+      INSERT INTO app_settings (key, value, updated_at_utc)
+      VALUES ('primary_user_id', ?, ?)
+    `)
+    .run(id, '2026-07-01T09:00:00.000Z');
+}
 
 test('timer lifecycle stores duration and groups history', async () => {
   const fixture = await createFixture([
@@ -85,6 +103,51 @@ test('health exposes safe deployment metadata and CORS denies untrusted origins'
     assert.equal(cliHealth.headers.get('access-control-allow-origin'), '*');
   } finally {
     await fixture.close();
+  }
+});
+
+test('draw scenes are stored under the authenticated user Draws vault folder', async () => {
+  const vaultRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'brai-draws-'));
+  const fixture = await createFixture(['2026-07-11T09:00:00.000Z'], { vaultRoot });
+
+  try {
+    seedPrimaryUser(fixture, 'draw-user');
+    const scene = {
+      type: 'excalidraw',
+      version: 2,
+      source: 'test',
+      elements: [{ id: 'rect-1', type: 'rectangle' }],
+      appState: { viewBackgroundColor: '#ffffff' },
+      files: {}
+    };
+
+    const saved = await request(fixture.url, `/v1/draws/${encodeURIComponent('Схема.excalidraw')}`, {
+      method: 'POST',
+      body: JSON.stringify({ scene })
+    });
+    assert.equal(saved.status, 200);
+    assert.equal(saved.body.name, 'Схема.excalidraw');
+
+    const filePath = path.join(vaultRoot, 'draw-user', 'Draws', 'Схема.excalidraw');
+    assert.equal(fs.existsSync(filePath), true);
+    assert.equal(JSON.parse(fs.readFileSync(filePath, 'utf8')).source, 'test');
+
+    const list = await request(fixture.url, '/v1/draws');
+    assert.equal(list.status, 200);
+    assert.deepEqual(list.body.draws.map((draw) => draw.name), ['Схема.excalidraw']);
+
+    const loaded = await request(fixture.url, `/v1/draws/${encodeURIComponent('Схема.excalidraw')}`);
+    assert.equal(loaded.status, 200);
+    assert.equal(loaded.body.scene.source, 'test');
+
+    const traversal = await request(fixture.url, `/v1/draws/${encodeURIComponent('../secret')}`, {
+      method: 'POST',
+      body: JSON.stringify({ scene })
+    });
+    assert.equal(traversal.status, 400);
+  } finally {
+    await fixture.close();
+    fs.rmSync(vaultRoot, { recursive: true, force: true });
   }
 });
 

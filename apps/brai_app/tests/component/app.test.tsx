@@ -121,7 +121,7 @@ describe("BraiApp shell", () => {
     expect(document.querySelector(".mobile-dock-overflow-sheet")).toBeInTheDocument();
     expect(document.querySelector(".mobile-dock-overflow-backdrop")).toHaveClass("z-[110]");
     expect(document.querySelector(".mobile-context-sheet")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Заглушка: Дата" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Draws" })).toBeInTheDocument();
   });
 
   it("keeps the left dock overflow available and hides the mobile FAB while the right overflow is open", async () => {

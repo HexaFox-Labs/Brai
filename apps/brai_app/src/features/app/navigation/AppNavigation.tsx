@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, type TouchEventHandler } from "react";
-import { Archive, CalendarDays, ChevronDown, ChevronUp, Command, Cpu, Download, Ellipsis, Flag, LogOut, Menu, Settings, Tag, type LucideIcon } from "lucide-react";
+import { Archive, ChevronDown, ChevronUp, Command, Cpu, Download, Ellipsis, Flag, LogOut, Menu, Pencil, Settings, Tag, type LucideIcon } from "lucide-react";
 import type { AppVersionState } from "@/shared/api/braiApi";
 import { useAppVersion, useEnvironmentBadgeLabel } from "@/shared/config/runtime";
 import { installAndroidBackHandler } from "@/shared/platform/platform";
@@ -203,7 +203,6 @@ export function MobileProfileDrawer({
 }
 
 const MOBILE_DOCK_PLACEHOLDER_ITEMS = [
-  { label: "Дата", icon: CalendarDays },
   { label: "Флаг", icon: Flag },
   { label: "Тег", icon: Tag },
   { label: "Архив", icon: Archive },
@@ -220,6 +219,7 @@ export function MobileDockOverflowSheet({
   onClose,
   onSettings,
   onBraiCmd,
+  onDraws,
   onEngine,
   onArchive,
   onLogout,
@@ -234,6 +234,7 @@ export function MobileDockOverflowSheet({
   onClose: () => void;
   onSettings: () => void;
   onBraiCmd: () => void;
+  onDraws: () => void;
   onEngine: () => void;
   onArchive: () => void;
   onLogout: () => Promise<void>;
@@ -355,6 +356,7 @@ export function MobileDockOverflowSheet({
           </>
         ) : (
           <div className="mobile-dock-overflow-icons flex min-h-0 w-full items-center justify-around gap-2">
+            <MobileDockOverflowActionButton icon={Pencil} label="Draws" active={section === "draws"} onClick={() => closeThen(onDraws)} />
             {MOBILE_DOCK_PLACEHOLDER_ITEMS.map(({ icon: Icon, label }) => (
               <MobileDockOverflowActionButton key={label} icon={Icon} label={`Заглушка: ${label}`} disabled />
             ))}
@@ -369,11 +371,13 @@ function MobileDockOverflowActionButton({
   disabled,
   icon: Icon,
   label,
+  active = false,
   onClick,
 }: {
   disabled?: boolean;
   icon: LucideIcon;
   label: string;
+  active?: boolean;
   onClick?: () => void;
 }) {
   return (
@@ -381,7 +385,7 @@ function MobileDockOverflowActionButton({
       type="button"
       className={cx(
         "nav-button flex h-11 w-11 items-center justify-center rounded-full border-0 text-neutral-500 dark:text-neutral-300",
-        "bg-transparent",
+        active ? "bg-accent text-accent-foreground" : "bg-transparent",
       )}
       aria-label={label}
       disabled={disabled}
@@ -423,7 +427,7 @@ function PageMenu({
   onArchive: () => void;
   onLogout: () => void | Promise<void>;
 }) {
-  const showActionMenu = forceActionMenu || section === "actions" || section === "settings" || section === "brai-cmd" || section === "archive" || section === "engine";
+  const showActionMenu = forceActionMenu || section === "actions" || section === "draws" || section === "settings" || section === "brai-cmd" || section === "archive" || section === "engine";
 
   return (
     <>
@@ -584,12 +588,14 @@ function ProfileText() {
 export function MainDock({
   section,
   hidden,
+  mobileViewport,
   onSection,
   swipeHandlers,
   timer,
 }: {
   section: SectionId;
   hidden: boolean;
+  mobileViewport: boolean;
   onSection: (section: SectionId) => void;
   timer: TimerState;
   swipeHandlers?: {
@@ -599,7 +605,7 @@ export function MainDock({
     onTouchCancel: TouchEventHandler<HTMLElement>;
   };
 }) {
-  const dockItems = navItems.map((item) => {
+  const dockItems = navItems.filter((item) => !mobileViewport || item.id !== "draws").map((item) => {
     const Icon = item.icon;
     const focusActive = item.id === "focus" && Boolean(timer.active_session);
     return {
