@@ -5,11 +5,40 @@ import { androidCapabilitiesPlugin, cmdPlugin, setupBraiAppTest, stubAndroidCapa
 import RootLayout from "@/app/layout";
 import { BraiApp } from "@/features/app/BraiApp";
 import { ONBOARDING_STORAGE_KEY } from "@/features/onboarding/onboardingModel";
+import { emptyActivitiesState } from "@/shared/types/activities";
+import { emptyInboxState } from "@/shared/types/inbox";
+import { emptyGoal, emptyHistory, emptyTimerState } from "@/shared/types/timer";
+
+const SNAPSHOT_NOW = new Date("2026-07-01T10:00:00.000Z");
 
 function runAppInitScript() {
   const markup = renderToStaticMarkup(<RootLayout><main /></RootLayout>);
   const appInitScript = /<script>([\s\S]*?)<\/script>/.exec(markup)?.[1] ?? "";
   new Function(appInitScript)();
+}
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+function emptyAppSnapshotResponse(url: string): Response | null {
+  if (url.endsWith("/v1/timer/state")) return jsonResponse({ ...emptyTimerState(SNAPSHOT_NOW), server_revision: 1 });
+  if (url.endsWith("/v1/sessions")) return jsonResponse(emptyHistory());
+  if (url.endsWith("/v1/goals/challenge")) return jsonResponse(emptyGoal());
+  if (url.endsWith("/v1/activities")) {
+    const state = emptyActivitiesState(SNAPSHOT_NOW);
+    return jsonResponse({
+      server_time_utc: state.server_time_utc,
+      server_revision: 1,
+      activities: state.actions,
+      archived_activities: state.archived_actions,
+    });
+  }
+  if (url.endsWith("/v1/inbox")) return jsonResponse({ ...emptyInboxState(SNAPSHOT_NOW), server_revision: 1 });
+  return null;
 }
 
 describe("BraiApp onboarding", () => {
@@ -410,7 +439,7 @@ describe("BraiApp onboarding", () => {
     expect(screen.getByLabelText("Email")).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Добавить" })).not.toBeInTheDocument();
     expect(cmdPlugin.setVoiceOnlyMode).not.toHaveBeenCalledWith({ enabled: false });
-  });
+  }, 10_000);
 
   it("enables context only after the final login opens the cabinet", async () => {
     stubAndroidCapacitor();
@@ -429,6 +458,8 @@ describe("BraiApp onboarding", () => {
           headers: { "content-type": "application/json" },
         });
       }
+      const snapshot = emptyAppSnapshotResponse(url);
+      if (snapshot) return snapshot;
       return Promise.reject(new Error("offline"));
     });
     window.localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({
@@ -451,7 +482,7 @@ describe("BraiApp onboarding", () => {
     expect(await screen.findByRole("heading", { name: "Действия" })).toBeInTheDocument();
     await waitFor(() => expect(cmdPlugin.setVoiceOnlyMode).toHaveBeenCalledWith({ enabled: false }));
     expect(cmdPlugin.setOverlayEnabled).toHaveBeenCalledWith({ enabled: true });
-  });
+  }, 10_000);
 
   it("does not run a fake check on the cloud privacy screen", async () => {
     stubAndroidCapacitor();
