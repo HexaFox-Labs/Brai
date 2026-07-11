@@ -55,7 +55,7 @@ brai_envs:
     api_port: 3034
     service: brai-api-preview-d.service
   preview-e:
-    domain: e.test.brightos.world
+    domain: e.test.brai.one
     path: preview-e
     api_port: 3035
     service: brai-api-preview-e.service

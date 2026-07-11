@@ -28,7 +28,7 @@ def braiNonProductionAndroidApis = [
     previewb: 'https://b.test.brightos.world/api',
     previewc: 'https://c.test.brightos.world/api',
     previewd: 'https://d.test.brightos.world/api',
-    previewe: 'https://e.test.brightos.world/api',
+    previewe: 'https://e.test.brai.one/api',
 ]
 
 def braiRequestedNonProductionFlavor = {
@@ -153,11 +153,11 @@ android {
             manifestPlaceholders = [braiAppLabel: braiAppLabel('Brai E')]
             buildConfigField "String", "BRAI_APP_BUILD", '"1-e"'
             buildConfigField "String", "BRAI_FALLBACK_BUNDLE_VERSION", "\"${braiWebVersion}\""
-            buildConfigField "String", "BRAI_OTA_MANIFEST_URL", '"https://e.test.brightos.world/mobile-update/manifest.json"'
+            buildConfigField "String", "BRAI_OTA_MANIFEST_URL", '"https://e.test.brai.one/mobile-update/manifest.json"'
             buildConfigField "String", "BRAI_ENVIRONMENT", '"preview-e"'
             buildConfigField "String", "BRAI_PREVIEW_SLOT", '"E"'
             buildConfigField "String", "BRAI_APK_RELEASE_KEY", '"e"'
-            buildConfigField "String", "BRAI_OTA_CHANNEL", '"e.test.brightos.world/mobile-update"'
+            buildConfigField "String", "BRAI_OTA_CHANNEL", '"e.test.brai.one/mobile-update"'
             buildConfigField "String", "BRAI_APP_LABEL", "\"${braiAppLabel('Brai E')}\""
         }
     }

@@ -82,7 +82,7 @@
     },
     "preview-e": {
       "branch": "codex/*",
-      "domain": "e.test.brightos.world",
+      "domain": "e.test.brai.one",
       "displayName": "Preview E",
       "displayLabel": "E",
       "androidApp": "Brai E",
