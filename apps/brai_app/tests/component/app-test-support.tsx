@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, vi } from "vitest";
-import { clientDb } from "@/shared/storage/db";
+import { clientDb, setMeta } from "@/shared/storage/db";
 
 const otaPlugin = vi.hoisted(() => ({
   getState: vi.fn(),
@@ -9,7 +9,24 @@ const otaPlugin = vi.hoisted(() => ({
 }));
 
 const cmdPlugin = vi.hoisted(() => ({
+  addListener: vi.fn(),
+  ensureAccess: vi.fn(),
+  getState: vi.fn(),
   openSettings: vi.fn(),
+  retryQueue: vi.fn(),
+  setAccessKey: vi.fn(),
+  setOverlayEnabled: vi.fn(),
+  setQueuePausedMode: vi.fn(),
+  setVoiceOnlyMode: vi.fn(),
+}));
+
+const androidCapabilitiesPlugin = vi.hoisted(() => ({
+  getState: vi.fn(),
+  openAccessibilitySettings: vi.fn(),
+  openAppSettings: vi.fn(),
+  openOverlaySettings: vi.fn(),
+  requestMicrophone: vi.fn(),
+  requestNotifications: vi.fn(),
 }));
 
 const actionsWidgetPlugin = vi.hoisted(() => ({
@@ -20,12 +37,13 @@ const actionsWidgetPlugin = vi.hoisted(() => ({
   saveSnapshot: vi.fn(),
 }));
 
-export { actionsWidgetPlugin, cmdPlugin, otaPlugin };
+export { actionsWidgetPlugin, androidCapabilitiesPlugin, cmdPlugin, otaPlugin };
 
 vi.mock("@capacitor/core", () => ({
   registerPlugin: vi.fn((name: string) => {
     if (name === "BraiCmd") return cmdPlugin;
     if (name === "BraiActionsWidget") return actionsWidgetPlugin;
+    if (name === "BraiAndroidCapabilities") return androidCapabilitiesPlugin;
     return otaPlugin;
   }),
 }));
@@ -42,11 +60,40 @@ export function setupBraiAppTest() {
   beforeEach(async () => {
     const db = clientDb();
     await Promise.all(db.tables.map((table) => table.clear()));
+    await setMeta("currentUserId", "test-user");
     otaPlugin.getState.mockReset();
     otaPlugin.checkForUpdates.mockReset();
     otaPlugin.markReady.mockReset();
     cmdPlugin.openSettings.mockReset();
+    cmdPlugin.addListener.mockReset();
+    cmdPlugin.ensureAccess.mockReset();
+    cmdPlugin.getState.mockReset();
+    cmdPlugin.retryQueue.mockReset();
+    cmdPlugin.setAccessKey.mockReset();
+    cmdPlugin.setOverlayEnabled.mockReset();
+    cmdPlugin.setQueuePausedMode.mockReset();
+    cmdPlugin.setVoiceOnlyMode.mockReset();
+    androidCapabilitiesPlugin.getState.mockReset();
+    androidCapabilitiesPlugin.openAccessibilitySettings.mockReset();
+    androidCapabilitiesPlugin.openAppSettings.mockReset();
+    androidCapabilitiesPlugin.openOverlaySettings.mockReset();
+    androidCapabilitiesPlugin.requestMicrophone.mockReset();
+    androidCapabilitiesPlugin.requestNotifications.mockReset();
     cmdPlugin.openSettings.mockResolvedValue({});
+    cmdPlugin.addListener.mockResolvedValue({ remove: vi.fn(async () => undefined) });
+    cmdPlugin.ensureAccess.mockResolvedValue({ accessGranted: true });
+    cmdPlugin.getState.mockResolvedValue({ accessGranted: true });
+    cmdPlugin.retryQueue.mockResolvedValue({ queuePausedMode: false });
+    cmdPlugin.setAccessKey.mockResolvedValue({ accessGranted: true });
+    cmdPlugin.setOverlayEnabled.mockResolvedValue({ overlayEnabled: true });
+    cmdPlugin.setQueuePausedMode.mockResolvedValue({ queuePausedMode: true });
+    cmdPlugin.setVoiceOnlyMode.mockResolvedValue({ voiceOnlyMode: true });
+    androidCapabilitiesPlugin.getState.mockResolvedValue({});
+    androidCapabilitiesPlugin.openAccessibilitySettings.mockResolvedValue({});
+    androidCapabilitiesPlugin.openAppSettings.mockResolvedValue({});
+    androidCapabilitiesPlugin.openOverlaySettings.mockResolvedValue({});
+    androidCapabilitiesPlugin.requestMicrophone.mockResolvedValue({ microphoneGranted: true });
+    androidCapabilitiesPlugin.requestNotifications.mockResolvedValue({ notificationsGranted: true });
     actionsWidgetPlugin.acknowledgeStatusChanges.mockReset();
     actionsWidgetPlugin.addListener.mockReset();
     actionsWidgetPlugin.clear.mockReset();
@@ -105,10 +152,25 @@ export function setupBraiAppTest() {
         dispatchEvent: vi.fn(),
       })),
     );
+    vi.stubGlobal("IntersectionObserver", class {
+      readonly root = null;
+      readonly rootMargin = "";
+      readonly thresholds = [];
+      disconnect() {}
+      observe() {}
+      takeRecords() { return []; }
+      unobserve() {}
+    });
+    vi.stubGlobal("ResizeObserver", class {
+      disconnect() {}
+      observe() {}
+      unobserve() {}
+    });
     Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 360 });
     window.history.replaceState(null, "", "/");
     delete window.__BRAI_RUNTIME_CONFIG__;
     window.localStorage.clear();
+    window.localStorage.setItem("brai_onboarding_state_v1", JSON.stringify({ complete: true, step: "login-check", history: [], path: null, profileVersion: null, voiceMode: null, name: "" }));
     document.cookie = "sidebar_state=; path=/; max-age=0";
     delete document.documentElement.dataset.sidebarState;
   });

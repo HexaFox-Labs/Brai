@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { openProfileMenuItem, setupBraiAppTest, stubAndroidCapacitor } from "./app-test-support";
+import { cmdPlugin, openProfileMenuItem, setupBraiAppTest, stubAndroidCapacitor } from "./app-test-support";
 import { BraiApp } from "@/features/app/BraiApp";
 import { resolveAuthMode } from "@/features/app/appModel";
 import { AuthPanel } from "@/features/app/chrome/AppChrome";
@@ -27,6 +27,28 @@ describe("BraiApp shell", () => {
     expect(screen.getAllByLabelText("Информация о действиях").length).toBeGreaterThan(0);
     expect(screen.getByRole("textbox", { name: "Добавить" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Открыть правое меню" })).toBeInTheDocument();
+  });
+
+  it("enables dictation and context after the signed-in cabinet opens", async () => {
+    stubAndroidCapacitor();
+
+    render(<BraiApp />);
+
+    await waitFor(() => expect(cmdPlugin.setOverlayEnabled).toHaveBeenCalledWith({ enabled: true }));
+    await waitFor(() => expect(cmdPlugin.setVoiceOnlyMode).toHaveBeenCalledWith({ enabled: false }));
+    expect(cmdPlugin.setQueuePausedMode).toHaveBeenCalledWith({ enabled: false });
+    expect(cmdPlugin.ensureAccess).toHaveBeenCalledWith({ displayName: "Test" });
+  });
+
+  it("does not tie cabinet overlays to the legacy native access-name request", async () => {
+    stubAndroidCapacitor();
+    cmdPlugin.ensureAccess.mockResolvedValueOnce({ accessGranted: false });
+
+    render(<BraiApp />);
+
+    await waitFor(() => expect(cmdPlugin.setOverlayEnabled).toHaveBeenCalledWith({ enabled: true }));
+    expect(cmdPlugin.setVoiceOnlyMode).toHaveBeenCalledWith({ enabled: false });
+    expect(cmdPlugin.ensureAccess).toHaveBeenCalledWith({ displayName: "Test" });
   });
 
   it("uses explicit email-only login on Preview web", async () => {
@@ -63,6 +85,7 @@ describe("BraiApp shell", () => {
 
     render(<BraiApp />);
 
+    fireEvent.click(await screen.findByRole("button", { name: "Войти" }));
     expect(await screen.findByRole("textbox", { name: "Email" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Войти" })).toBeInTheDocument();
     expect(screen.queryByLabelText("Пароль")).not.toBeInTheDocument();
@@ -88,6 +111,7 @@ describe("BraiApp shell", () => {
 
     render(<BraiApp />);
 
+    fireEvent.click(await screen.findByRole("button", { name: "Войти" }));
     expect(await screen.findByRole("textbox", { name: "Email" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Получить код" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Войти" })).not.toBeInTheDocument();

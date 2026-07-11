@@ -308,6 +308,7 @@ export function createBraiServer({
         }
         const text = await response.text();
         const payload = parseJson(text);
+        let vaultPrepared = null;
         if (response.ok && payload?.user?.id) {
           const finalized = await prepareSignedInAuthUser({
             store,
@@ -323,6 +324,7 @@ export function createBraiServer({
             sendJson(req, res, finalized.status, finalized.body);
             return;
           }
+          vaultPrepared = finalized.vaultPrepared;
         }
         recordRuntimeLog(store, logger, {
           traceId,
@@ -336,7 +338,8 @@ export function createBraiServer({
           jsonData: {
             route: url.pathname,
             status_code: response.status,
-            user_created_or_authenticated: Boolean(payload?.user?.id)
+            user_created_or_authenticated: Boolean(payload?.user?.id),
+            vault_prepared: vaultPrepared
           }
         });
         relayAuthText(req, res, response, text, payload);
@@ -434,6 +437,7 @@ export function createBraiServer({
         }
         const text = await response.text();
         const payload = parseJson(text);
+        let vaultPrepared = null;
         if (response.ok && payload?.user?.id) {
           const finalized = await prepareSignedInAuthUser({
             store,
@@ -449,6 +453,7 @@ export function createBraiServer({
             sendJson(req, res, finalized.status, finalized.body);
             return;
           }
+          vaultPrepared = finalized.vaultPrepared;
         }
         recordRuntimeLog(store, logger, {
           traceId,
@@ -462,7 +467,8 @@ export function createBraiServer({
           jsonData: {
             route: url.pathname,
             status_code: response.status,
-            user_created_or_authenticated: Boolean(payload?.user?.id)
+            user_created_or_authenticated: Boolean(payload?.user?.id),
+            vault_prepared: vaultPrepared
           }
         });
         relayAuthText(req, res, response, text, payload);
@@ -1146,9 +1152,11 @@ async function betterAuthSession(req, auth) {
 }
 
 async function prepareSignedInAuthUser({ store, logger, traceId, route, operation, payload, ensureUserVault, now }) {
+  let vaultPrepared = true;
   try {
     await ensureUserVault({ userId: payload.user.id, email: payload.user.email });
   } catch (error) {
+    vaultPrepared = false;
     logger.error?.('Failed to prepare user vault', {
       error: error instanceof Error ? error.message : String(error),
       userId: payload.user.id
@@ -1162,12 +1170,11 @@ async function prepareSignedInAuthUser({ store, logger, traceId, route, operatio
       userId: payload.user.id,
       reason: 'vault_prepare_failed',
       message: 'Auth sign-in vault preparation failed',
-      jsonData: { route, status_code: 503 }
+      jsonData: { route, error_name: error instanceof Error ? error.name : 'Error' }
     });
-    return { ok: false, status: 503, body: { error: 'vault_prepare_failed' } };
   }
   store.claimFirstUser(payload.user.id, now().toISOString());
-  return { ok: true };
+  return { ok: true, vaultPrepared };
 }
 
 function hasLegacyToken(req, token, parsedUrl = null) {
