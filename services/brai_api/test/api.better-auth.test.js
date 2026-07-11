@@ -45,7 +45,7 @@ test('email OTP message renders the reusable responsive card', () => {
   assert.match(message.html, /&lt;123456&gt;/);
   assert.doesNotMatch(message.html, /<123456>/);
   assert.match(message.text, /<123456>/);
-  assert.match(message.text, /Brai · brightos\.world/);
+  assert.match(message.text, /Brai · brai\.one/);
 });
 
 test('test email login requires an explicit matching primary email', async () => {
@@ -229,7 +229,7 @@ test('email OTP signs in, claims legacy data, and isolates the next user', async
 
     await jsonRequest(fixture.url, '/v1/activities/events/sync', {
       method: 'POST',
-      headers: { cookie: second.cookie, origin: 'https://app.brightos.world' },
+      headers: { cookie: second.cookie, origin: 'https://app.brai.one' },
       body: JSON.stringify({
         device: { device_id: 'second-web', platform: 'web' },
         events: [
