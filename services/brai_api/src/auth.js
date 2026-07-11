@@ -7,7 +7,7 @@ import { isPostgresUrl, postgresPoolMax } from './postgres-sync-db.js';
 
 const DEFAULT_FROM = 'Brai <auth@mail.brai.one>';
 const OTP_EXPIRES_IN_SECONDS = 5 * 60;
-const LOGO_URL = 'https://brai.one/brai-logo.png';
+const LOGO_URL = 'https://brai.one/brai-logo-email-white-bg.png';
 const DEFAULT_ALLOWED_HOSTS = [
   'brai.one',
   'app.brai.one',
@@ -40,12 +40,17 @@ export function createBraiAuth({
       error.status = 503;
       throw error;
     }
-    await resend.emails.send({
+    const result = await resend.emails.send({
       from: fromEmail,
       to: email,
       subject: 'Ваш одноразовый код Brai',
       ...renderOtpEmail({ otp })
     });
+    if (result.error) {
+      const error = new Error(result.error.message || 'resend_email_send_failed');
+      error.status = result.error.statusCode ?? 502;
+      throw error;
+    }
   });
   const sender = async ({ email, otp, type }) => {
     const capture = testOtpCapture.getStore();
