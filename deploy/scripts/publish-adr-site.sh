@@ -8,7 +8,7 @@ source "$SCRIPT_DIR/permissions.sh"
 OUT="${BRAI_ADR_BUILD_DIR:-$ROOT/.log4brains/out}"
 TARGET="${BRAI_ADR_TARGET:-/srv/projects/brai-envs/prod/adr}"
 
-"$ROOT/scripts/use-node22.sh" npx --no-install log4brains build --out "$OUT"
+"$ROOT/scripts/run-log4brains.sh" build --out "$OUT"
 
 if [[ ! -d "$OUT" ]]; then
   echo "Missing Log4brains static output at $OUT" >&2

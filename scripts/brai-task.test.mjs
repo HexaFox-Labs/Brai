@@ -453,6 +453,9 @@ test("delivery classifier separates infra-docs from runtime preview", () => {
   assert.equal(deliveryClassForFile(".log4brains.yml"), "infra");
   assert.equal(deliveryClassForFile(".socraticodecontextartifacts.json"), "infra");
   assert.equal(deliveryClassForFile("deploy/scripts/publish-adr-site.sh"), "infra");
+  assert.equal(deliveryClassForFile("scripts/run-log4brains.sh"), "infra");
+  assert.equal(deliveryClassForFile("tools/log4brains/package.json"), "infra");
+  assert.equal(deliveryClassForFile("tools/log4brains/package-lock.json"), "infra");
   assert.equal(deliveryClassForFile("package.json"), "unknown");
 
   assert.equal(classifyDelivery(["docs/foo.md"]).deliveryClass, "infra-docs");
@@ -465,21 +468,18 @@ test("delivery classifier separates infra-docs from runtime preview", () => {
   assert.equal(classifyDelivery(["supabase/migrations/0004_empty_rls_function_search_path.sql"]).deliveryClass, "infra-docs");
   assert.equal(classifyDelivery(["supabase/migrations/0014_stable_runtime_rls_trigger.sql"]).deliveryClass, "infra-docs");
   assert.equal(classifyDelivery([".log4brains.yml", ".socraticodecontextartifacts.json", "deploy/scripts/publish-adr-site.sh"]).deliveryClass, "infra-docs");
+  assert.equal(classifyDelivery(["scripts/run-log4brains.sh", "tools/log4brains/package.json", "tools/log4brains/package-lock.json"]).deliveryClass, "infra-docs");
   assert.equal(
-    classifyDelivery(["package.json", "package-lock.json"], {
+    classifyDelivery(["package.json"], {
       diffs: {
         "package.json": [
-          '+    "adr:list": "scripts/use-node22.sh npx --no-install log4brains adr list",',
-          '+    "adr:preview": "scripts/use-node22.sh npx --no-install log4brains preview",',
-          '+    "adr:build": "scripts/use-node22.sh npx --no-install log4brains build",',
+          '+    "adr:list": "scripts/run-log4brains.sh adr list",',
+          '+    "adr:preview": "scripts/run-log4brains.sh preview",',
+          '+    "adr:build": "scripts/run-log4brains.sh build",',
           '-    "publish:apk": "deploy/scripts/publish-capacitor-apk.sh"',
           '+    "publish:apk": "deploy/scripts/publish-capacitor-apk.sh",',
           '+    "publish:adr": "deploy/scripts/publish-adr-site.sh"',
-          '-    "@fission-ai/openspec": "1.4.1"',
-          '+    "@fission-ai/openspec": "1.4.1",',
-          '+    "log4brains": "1.1.0"',
         ].join("\n"),
-        "package-lock.json": '+        "log4brains": "1.1.0"',
       },
     }).deliveryClass,
     "infra-docs",

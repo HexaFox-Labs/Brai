@@ -1779,6 +1779,9 @@ function deliveryClassForFile(file) {
     file === ".codex/hooks.json" ||
     file === "deploy/environments.json" ||
     file === "apps/brai_app/tests/unit/publishScripts.test.ts" ||
+    file === "scripts/run-log4brains.sh" ||
+    file === "tools/log4brains/package.json" ||
+    file === "tools/log4brains/package-lock.json" ||
     file.startsWith("admin/deploy/") ||
     file.startsWith("deploy/ansible/") ||
     file.startsWith("deploy/systemd/") ||
@@ -1878,9 +1881,6 @@ function isTechnicalRuntimeChange(file, context) {
 
 function isInfraDocsConfigChange(file, context) {
   if (file === "package.json") return isRootAdrPackageJsonDiff(diffForFile(file, context));
-  if (file === "package-lock.json") {
-    return isRootAdrPackageJsonDiff(diffForFile("package.json", context)) && /log4brains/.test(diffForFile(file, context));
-  }
   return false;
 }
 
@@ -1919,11 +1919,12 @@ function isClientPackageTestScriptDiff(diff) {
 function isRootAdrPackageJsonDiff(diff) {
   const lines = changedDiffLines(diff).map((line) => line.trim()).filter(Boolean);
   const allowed = [
-    /^[+]\s*"adr:(list|preview|build)":\s*"scripts\/use-node22\.sh npx --no-install log4brains (adr list|preview|build)",?$/,
+    /^[+]\s*"adr:list":\s*"scripts\/run-log4brains\.sh adr list",?$/,
+    /^[+]\s*"adr:preview":\s*"scripts\/run-log4brains\.sh preview",?$/,
+    /^[+]\s*"adr:build":\s*"scripts\/run-log4brains\.sh build",?$/,
     /^[+]\s*"publish:adr":\s*"deploy\/scripts\/publish-adr-site\.sh",?$/,
     /^[+-]\s*"publish:apk":\s*"deploy\/scripts\/publish-capacitor-apk\.sh",?$/,
     /^[+-]\s*"@fission-ai\/openspec":\s*"1\.4\.1",?$/,
-    /^[+]\s*"log4brains":\s*"1\.1\.0",?$/,
   ];
   return lines.length > 0 && lines.every((line) => allowed.some((pattern) => pattern.test(line)));
 }
