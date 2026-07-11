@@ -1763,7 +1763,8 @@ function deliveryClassForFile(file) {
   if (
     file === "supabase/migrations/0002_enable_rls_public_tables.sql" ||
     file === "supabase/migrations/0003_fix_rls_function_search_path.sql" ||
-    file === "supabase/migrations/0004_empty_rls_function_search_path.sql"
+    file === "supabase/migrations/0004_empty_rls_function_search_path.sql" ||
+    file === "supabase/migrations/0014_stable_runtime_rls_trigger.sql"
   ) return "infra";
   if (/^deploy\/scripts\/[^/]+\.test\.mjs$/.test(file)) return "technical";
   if (
