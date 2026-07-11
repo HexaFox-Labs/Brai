@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, vi } from "vitest";
-import { clientDb } from "@/shared/storage/db";
+import { clientDb, setMeta } from "@/shared/storage/db";
 
 const otaPlugin = vi.hoisted(() => ({
   getState: vi.fn(),
@@ -60,6 +60,7 @@ export function setupBraiAppTest() {
   beforeEach(async () => {
     const db = clientDb();
     await Promise.all(db.tables.map((table) => table.clear()));
+    await setMeta("currentUserId", "test-user");
     otaPlugin.getState.mockReset();
     otaPlugin.checkForUpdates.mockReset();
     otaPlugin.markReady.mockReset();
