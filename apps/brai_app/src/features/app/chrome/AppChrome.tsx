@@ -309,7 +309,7 @@ export function AuthPanel({
   busy: boolean;
   mode: "email" | "otp" | "password";
   onEmailLogin: (email: string) => Promise<void>;
-  onLogin: (password: string) => Promise<void>;
+  onLogin: (password: string) => Promise<unknown>;
   onRequestOtp: (email: string) => Promise<void>;
   onVerifyOtp: (email: string, otp: string) => Promise<void>;
 }) {
