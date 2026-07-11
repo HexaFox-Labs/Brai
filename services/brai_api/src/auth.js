@@ -80,7 +80,15 @@ export function createBraiAuth({
       fallback: 'https://app.brai.one'
     },
     advanced: {
-      trustedProxyHeaders: true
+      trustedProxyHeaders: true,
+      cookies: {
+        session_token: {
+          attributes: {
+            sameSite: 'none',
+            secure: true
+          }
+        }
+      }
     },
     plugins: [
       emailOTP({

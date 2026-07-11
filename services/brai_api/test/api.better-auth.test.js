@@ -95,6 +95,8 @@ test('test email login creates or reuses a Better Auth user without sending OTP 
     assert.equal(sentOtps.length, 0);
     const firstCookie = first.headers.get('set-cookie');
     assert.match(firstCookie, /better-auth\.session_token=/);
+    assert.match(firstCookie, /SameSite=None/i);
+    assert.match(firstCookie, /Secure/i);
 
     const activities = await jsonRequest(fixture.url, '/v1/activities', {
       headers: { cookie: firstCookie, origin: 'capacitor://localhost' }
