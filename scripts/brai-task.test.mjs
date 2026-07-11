@@ -450,6 +450,9 @@ test("delivery classifier separates infra-docs from runtime preview", () => {
   assert.equal(deliveryClassForFile("supabase/migrations/0004_empty_rls_function_search_path.sql"), "infra");
   assert.equal(deliveryClassForFile("supabase/migrations/0014_stable_runtime_rls_trigger.sql"), "infra");
   assert.equal(deliveryClassForFile("deploy/web/index.html"), "blocked");
+  assert.equal(deliveryClassForFile(".log4brains.yml"), "infra");
+  assert.equal(deliveryClassForFile(".socraticodecontextartifacts.json"), "infra");
+  assert.equal(deliveryClassForFile("deploy/scripts/publish-adr-site.sh"), "infra");
   assert.equal(deliveryClassForFile("package.json"), "unknown");
 
   assert.equal(classifyDelivery(["docs/foo.md"]).deliveryClass, "infra-docs");
@@ -461,6 +464,26 @@ test("delivery classifier separates infra-docs from runtime preview", () => {
   assert.equal(classifyDelivery(["supabase/migrations/0003_fix_rls_function_search_path.sql"]).deliveryClass, "infra-docs");
   assert.equal(classifyDelivery(["supabase/migrations/0004_empty_rls_function_search_path.sql"]).deliveryClass, "infra-docs");
   assert.equal(classifyDelivery(["supabase/migrations/0014_stable_runtime_rls_trigger.sql"]).deliveryClass, "infra-docs");
+  assert.equal(classifyDelivery([".log4brains.yml", ".socraticodecontextartifacts.json", "deploy/scripts/publish-adr-site.sh"]).deliveryClass, "infra-docs");
+  assert.equal(
+    classifyDelivery(["package.json", "package-lock.json"], {
+      diffs: {
+        "package.json": [
+          '+    "adr:list": "scripts/use-node22.sh npx --no-install log4brains adr list",',
+          '+    "adr:preview": "scripts/use-node22.sh npx --no-install log4brains preview",',
+          '+    "adr:build": "scripts/use-node22.sh npx --no-install log4brains build",',
+          '-    "publish:apk": "deploy/scripts/publish-capacitor-apk.sh"',
+          '+    "publish:apk": "deploy/scripts/publish-capacitor-apk.sh",',
+          '+    "publish:adr": "deploy/scripts/publish-adr-site.sh"',
+          '-    "@fission-ai/openspec": "1.4.1"',
+          '+    "@fission-ai/openspec": "1.4.1",',
+          '+    "log4brains": "1.1.0"',
+        ].join("\n"),
+        "package-lock.json": '+        "log4brains": "1.1.0"',
+      },
+    }).deliveryClass,
+    "infra-docs",
+  );
   assert.deepEqual(classifyDeployDelivery(["deploy/scripts/complete-operation-activities.sh"], {
     eventName: "push",
     ref: "refs/heads/codex/operation-done-helper",
@@ -541,7 +564,11 @@ test("delivery classifier separates infra-docs from runtime preview", () => {
   );
   assert.equal(classifyDelivery(["apps/brai_app/src/app/page.tsx"]).deliveryClass, "runtime-preview");
   assert.equal(classifyDelivery(["docs/foo.md", "apps/brai_app/src/app/page.tsx"]).deliveryClass, "runtime-preview");
-  assert.equal(classifyDelivery(["package.json"]).fallback, "unknown_path");
+  const genericPackageChange = classifyDelivery(["package.json"], {
+    diffs: { "package.json": '+    "left-pad": "1.3.0",' },
+  });
+  assert.equal(genericPackageChange.deliveryClass, "runtime-preview");
+  assert.equal(genericPackageChange.fallback, "unknown_path");
   assert.equal(classifyDelivery(["deploy/web/index.html"]).deliveryClass, "blocked");
 });
 
