@@ -49,6 +49,9 @@ describe("mobile OTA publish scripts", () => {
     await expect(readFile(path.join(root, "deploy/web/index.html"), "utf8")).resolves.toContain(
       "unified",
     );
+    await expect(readFile(path.join(root, "deploy/web/focus/index.html"), "utf8")).resolves.toContain(
+      "unified route",
+    );
     await expect(readFile(path.join(root, "deploy/site/versions.html"), "utf8")).resolves.toContain(
       "landing-versions",
     );
@@ -768,6 +771,7 @@ describe("mobile OTA publish scripts", () => {
       "publish-environment-web-layer.sh",
       "publish-mobile-bundle.sh",
       "publish-web.sh",
+      "normalize-next-static-export.mjs",
       "resolve-required-apk-version.mjs",
       "write-client-runtime-config.mjs",
     ]) {
@@ -1027,6 +1031,9 @@ async function writeStaticExport(root: string, marker: string) {
   await mkdir(path.join(out, "_next"), { recursive: true });
   await mkdir(path.join(root, "apps/brai_app/public"), { recursive: true });
   await writeFile(path.join(out, "index.html"), `<main>${marker}</main>`);
+  await mkdir(path.join(out, "focus"), { recursive: true });
+  await writeFile(path.join(out, "focus.html"), `<main>${marker} route</main>`);
+  await writeFile(path.join(out, "focus", "__next.focus.txt"), "rsc");
   await writeFile(path.join(out, "_next/app.js"), "console.log('ok')");
   await writeFile(path.join(out, "version.json"), JSON.stringify({ marker }));
   await writeFile(path.join(root, "apps/brai_app/public/version.json"), JSON.stringify({ version: "9.9.9" }));
