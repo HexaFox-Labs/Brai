@@ -445,6 +445,7 @@ test("delivery classifier separates infra-docs from runtime preview", () => {
   assert.equal(deliveryClassForFile("deploy/scripts/publish-client-web-layer.sh"), "infra");
   assert.equal(deliveryClassForFile("deploy/scripts/publish-mobile-bundle.sh"), "infra");
   assert.equal(deliveryClassForFile("deploy/scripts/publish-capacitor-apk.sh"), "infra");
+  assert.equal(deliveryClassForFile("deploy/scripts/codex-cli-smoke.sh"), "infra");
   assert.equal(deliveryClassForFile("deploy/scripts/complete-operation-activities.sh"), "infra");
   assert.equal(deliveryClassForFile("deploy/scripts/list-operation-activities.sh"), "infra");
   assert.equal(deliveryClassForFile("deploy/scripts/sync-local-main-checkout.sh"), "infra");
@@ -687,14 +688,10 @@ test("API test wrapper can read protected test env through brai-deploy group", (
   assert.match(workflow, /run: scripts\/brai-api-test\.sh/);
 });
 
-test("production deploy runs a schema-constrained Codex CLI smoke as brai", () => {
+test("production deploy does not add a privileged Codex CLI smoke step", () => {
   const deploy = fs.readFileSync(new URL("../deploy/scripts/deploy-branch.sh", import.meta.url), "utf8");
-  const smoke = fs.readFileSync(new URL("../deploy/scripts/codex-cli-smoke.sh", import.meta.url), "utf8");
-  assert.match(deploy, /sudo[^\n]*-u brai env/);
-  assert.match(deploy, /codex-cli-smoke\.sh/);
-  assert.match(smoke, /--output-schema/);
-  assert.match(smoke, /--ephemeral/);
-  assert.match(smoke, /"ok":true/);
+  assert.doesNotMatch(deploy, /codex-cli-smoke\.sh/);
+  assert.doesNotMatch(deploy, /sudo[^\n]*-u brai env/);
 });
 
 test("operation activity completion helper rejects unsafe ids", () => {

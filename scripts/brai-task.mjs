@@ -1898,6 +1898,7 @@ function deliveryClassForFile(file) {
       "deploy/scripts/cleanup-accepted-branches.mjs",
       "deploy/scripts/cleanup-test-schemas.mjs",
       "deploy/scripts/complete-operation-activities.sh",
+      "deploy/scripts/codex-cli-smoke.sh",
       "deploy/scripts/create-operation-activity.sh",
       "deploy/scripts/list-operation-activities.sh",
       "deploy/scripts/deploy-branch.sh",
