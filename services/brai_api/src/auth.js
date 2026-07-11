@@ -8,7 +8,7 @@ import { isPostgresUrl, postgresPoolMax } from './postgres-sync-db.js';
 const DEFAULT_FROM = 'Brai <auth@mail.brai.one>';
 const OTP_EXPIRES_IN_SECONDS = 5 * 60;
 const LOGO_CONTENT_ID = 'brai-logo';
-const LOGO_ATTACHMENT_CONTENT = readFileSync(new URL('../../../assets/brand/brai-logo-white-bg.png', import.meta.url)).toString('base64');
+const LOGO_ATTACHMENT_CONTENT = readFileSync(new URL('../../../assets/brand/brai-logo-email-white-bg.png', import.meta.url)).toString('base64');
 const DEFAULT_ALLOWED_HOSTS = [
   'brai.one',
   'app.brai.one',
@@ -102,7 +102,7 @@ export function renderOtpEmail({ otp }) {
     attachments: [
       {
         content: LOGO_ATTACHMENT_CONTENT,
-        filename: 'brai-logo.png',
+        filename: false,
         contentId: LOGO_CONTENT_ID,
         contentType: 'image/png'
       }
