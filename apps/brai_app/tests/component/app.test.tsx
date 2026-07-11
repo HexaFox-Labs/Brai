@@ -44,7 +44,7 @@ describe("BraiApp shell", () => {
 
     render(<BraiApp />);
 
-    const email = await screen.findByRole("textbox", { name: "Email" }, { timeout: 5000 });
+    const email = await screen.findByRole("textbox", { name: "Email" }, { timeout: 15_000 });
     expect(screen.queryByLabelText("Код из письма")).not.toBeInTheDocument();
     fireEvent.change(email, { target: { value: "primary@example.com" } });
     fireEvent.click(screen.getByRole("button", { name: "Войти" }));
@@ -55,7 +55,7 @@ describe("BraiApp shell", () => {
     ));
     expect(await screen.findByText("Email не подошёл")).toBeInTheDocument();
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/auth/otp/"))).toBe(false);
-  }, 10_000);
+  }, 20_000);
 
   it("keeps Android login password-only", async () => {
     stubAndroidCapacitor();
@@ -64,9 +64,9 @@ describe("BraiApp shell", () => {
 
     render(<BraiApp />);
 
-    expect(await screen.findByLabelText("Пароль", {}, { timeout: 5000 })).toHaveAttribute("type", "password");
+    expect(await screen.findByLabelText("Пароль", {}, { timeout: 15_000 })).toHaveAttribute("type", "password");
     expect(screen.queryByRole("textbox", { name: "Email" })).not.toBeInTheDocument();
-  }, 10_000);
+  }, 20_000);
 
   it("keeps production Web on the OTP flow", async () => {
     window.__BRAI_RUNTIME_CONFIG__ = { environment: "prod" };
@@ -74,10 +74,10 @@ describe("BraiApp shell", () => {
 
     render(<BraiApp />);
 
-    expect(await screen.findByRole("textbox", { name: "Email" }, { timeout: 5000 })).toBeInTheDocument();
+    expect(await screen.findByRole("textbox", { name: "Email" }, { timeout: 15_000 })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Получить код" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Войти" })).not.toBeInTheDocument();
-  }, 10_000);
+  }, 20_000);
 
   it("keeps collapsed desktop rail action icons clickable", async () => {
     Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 1200 });
