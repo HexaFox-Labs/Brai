@@ -11,7 +11,7 @@ const indexPath = path.join(releaseDir, "releases.json");
 const targets = apkReleaseTargets(root);
 const data = readIndex();
 if (args["render-only"] === "true") {
-  renderReleasePage(data, path.join(releaseDir, "index.html"));
+  publishReleaseMetadata(data, false);
 } else {
   const releaseKey = required(args, "release");
   const fileName = required(args, "file");
@@ -42,8 +42,7 @@ if (args["render-only"] === "true") {
     capabilities: apkCapabilities(),
   };
 
-  writeJson(indexPath, data);
-  renderReleasePage(data, path.join(releaseDir, "index.html"));
+  publishReleaseMetadata(data, true);
 }
 
 function readIndex() {
@@ -81,11 +80,9 @@ function applicationIdForBuild(target, apkBuildKind) {
   return apkBuildKind === "preview" ? `${target.applicationId}.work` : target.applicationId;
 }
 
-function renderReleasePage(data, htmlPath) {
+function renderReleasePage(data) {
   const cards = targets.map((target) => sectionCard(data.sections[target.releaseKey])).join("\n");
-  fs.writeFileSync(
-    htmlPath,
-    `<!doctype html>
+  return `<!doctype html>
 <html lang="ru">
   <head>
     <meta charset="utf-8">
@@ -115,9 +112,7 @@ function renderReleasePage(data, htmlPath) {
     </main>
   </body>
 </html>
-`,
-  );
-  chmodPublicFile(htmlPath);
+`;
 }
 
 function sectionCard(section) {
@@ -195,9 +190,25 @@ function sha256(filePath) {
   return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
 }
 
-function writeJson(filePath, value) {
-  fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
-  chmodPublicFile(filePath);
+function publishReleaseMetadata(value, includeIndex) {
+  fs.mkdirSync(releaseDir, { recursive: true });
+  const suffix = `${process.pid}.${crypto.randomBytes(6).toString("hex")}.tmp`;
+  const stagedIndex = path.join(releaseDir, `.releases.json.${suffix}`);
+  const stagedHtml = path.join(releaseDir, `.index.html.${suffix}`);
+  try {
+    if (includeIndex) {
+      fs.writeFileSync(stagedIndex, `${JSON.stringify(value, null, 2)}\n`);
+      chmodPublicFile(stagedIndex);
+    }
+    fs.writeFileSync(stagedHtml, renderReleasePage(value));
+    chmodPublicFile(stagedHtml);
+    if (process.env.BRAI_RELEASE_METADATA_FAIL_AFTER_STAGE === "1") throw new Error("injected release metadata failure");
+    if (includeIndex) fs.renameSync(stagedIndex, indexPath);
+    fs.renameSync(stagedHtml, path.join(releaseDir, "index.html"));
+  } finally {
+    fs.rmSync(stagedIndex, { force: true });
+    fs.rmSync(stagedHtml, { force: true });
+  }
 }
 
 function chmodPublicFile(filePath) {

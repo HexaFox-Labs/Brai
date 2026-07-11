@@ -11,6 +11,7 @@ SOURCE_GROUP="${BRAI_MAIN_SOURCE_GROUP:-mark}"
 RESCUE_ROOT="${BRAI_MAIN_RESCUE_ROOT:-/srv/projects/brai-rescue}"
 LOCK_FILE="${BRAI_MAIN_SYNC_LOCK:-/tmp/brai-main-checkout-sync.lock}"
 API_ENV_FILE="${BRAI_API_ENV_FILE:-/etc/brai/brai-api.env}"
+INSTALLED_GUARD_TASK="${BRAI_INSTALLED_GUARD_TASK:-/srv/opt/brai-codex-plugins/plugins/brai-guard/hooks/brai-task.mjs}"
 
 PRUNE_MODE=0
 PRUNE_ACCEPTED_BRANCHES=()
@@ -282,6 +283,7 @@ git_cmd clean -fd \
   -e apps/brai_app/node_modules/ \
   -e services/brai_api/node_modules/ \
   -e services/brai_temporal/node_modules/
+install -D -m 0755 scripts/brai-task.mjs "$INSTALLED_GUARD_TASK"
 git_cmd config core.hooksPath .githooks
 
 if [ "${BRAI_MAIN_SYNC_LOCK_CHECKOUT:-1}" = "1" ]; then
