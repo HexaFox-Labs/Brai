@@ -1714,7 +1714,11 @@ function classifyDelivery(files, { base = acceptedBaseRef(), head = "HEAD", bran
   const paths = { blocked: [], docs: [], infra: [], technical: [], runtime: [], unknown: [] };
   for (const file of files) {
     const category = deliveryClassForFile(file);
-    paths[category === "runtime" && isTechnicalRuntimeChange(file, { base, head, diffs }) ? "technical" : category].push(file);
+    const context = { base, head, diffs };
+    let target = category;
+    if (category === "runtime" && isTechnicalRuntimeChange(file, context)) target = "technical";
+    else if (category === "unknown" && isInfraDocsConfigChange(file, context)) target = "infra";
+    paths[target].push(file);
   }
 
   const deliveryClass = paths.blocked.length
@@ -1769,10 +1773,15 @@ function deliveryClassForFile(file) {
   if (/^deploy\/scripts\/[^/]+\.test\.mjs$/.test(file)) return "technical";
   if (
     file === ".gitignore" ||
+    file === ".log4brains.yml" ||
+    file === ".socraticodecontextartifacts.json" ||
     file === ".github/workflows/brai-delivery.yml" ||
     file === ".codex/hooks.json" ||
     file === "deploy/environments.json" ||
     file === "apps/brai_app/tests/unit/publishScripts.test.ts" ||
+    file === "scripts/run-log4brains.sh" ||
+    file === "tools/log4brains/package.json" ||
+    file === "tools/log4brains/package-lock.json" ||
     file.startsWith("admin/deploy/") ||
     file.startsWith("deploy/ansible/") ||
     file.startsWith("deploy/systemd/") ||
@@ -1807,6 +1816,7 @@ function deliveryClassForFile(file) {
       "deploy/scripts/permissions.sh",
       "deploy/scripts/postgres-smoke.mjs",
       "deploy/scripts/prune-caddy-site-blocks.mjs",
+      "deploy/scripts/publish-adr-site.sh",
       "deploy/scripts/publish-capacitor-apk.sh",
       "deploy/scripts/publish-client-web-layer.sh",
       "deploy/scripts/publish-mobile-bundle.sh",
@@ -1869,6 +1879,11 @@ function isTechnicalRuntimeChange(file, context) {
   return false;
 }
 
+function isInfraDocsConfigChange(file, context) {
+  if (file === "package.json") return isRootAdrPackageJsonDiff(diffForFile(file, context));
+  return false;
+}
+
 function diffForFile(file, { base = acceptedBaseRef(), head = "HEAD", diffs = null } = {}) {
   if (diffs && Object.hasOwn(diffs, file)) return String(diffs[file] ?? "");
   return gitMaybe("diff", "--unified=5", `${base}...${head}`, "--", file) ?? "";
@@ -1899,6 +1914,19 @@ function isClientPackageTestScriptDiff(diff) {
     .map((line) => line.match(/^[+-]\s*"([^"]+)":/)?.[1])
     .filter(Boolean);
   return keys.length > 0 && keys.every((key) => key === "test" || key === "test:watch");
+}
+
+function isRootAdrPackageJsonDiff(diff) {
+  const lines = changedDiffLines(diff).map((line) => line.trim()).filter(Boolean);
+  const allowed = [
+    /^[+]\s*"adr:list":\s*"scripts\/run-log4brains\.sh adr list",?$/,
+    /^[+]\s*"adr:preview":\s*"scripts\/run-log4brains\.sh preview",?$/,
+    /^[+]\s*"adr:build":\s*"scripts\/run-log4brains\.sh build",?$/,
+    /^[+]\s*"publish:adr":\s*"deploy\/scripts\/publish-adr-site\.sh",?$/,
+    /^[+-]\s*"publish:apk":\s*"deploy\/scripts\/publish-capacitor-apk\.sh",?$/,
+    /^[+-]\s*"@fission-ai\/openspec":\s*"1\.4\.1",?$/,
+  ];
+  return lines.length > 0 && lines.every((line) => allowed.some((pattern) => pattern.test(line)));
 }
 
 function writeGithubOutput(classification) {
