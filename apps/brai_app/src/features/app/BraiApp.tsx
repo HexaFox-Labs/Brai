@@ -221,7 +221,11 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
             onRefreshEngine={app.refreshEngineOnce}
           />
         ) : screenSection === "settings" ? (
-          <SettingsSection />
+          <SettingsSection
+            settings={app.appSettings}
+            busy={app.busy}
+            onUpdate={app.onUpdateAppSettings}
+          />
         ) : screenSection === "brai-cmd" ? (
           <BraiCmdSection />
         ) : null}
