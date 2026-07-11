@@ -25,6 +25,24 @@ internal enum class ContextButtonAction {
 internal fun shouldShowStandaloneCancel(state: RecorderState, activeButton: RecordingButton?): Boolean =
     state is RecorderState.Recording && activeButton == RecordingButton.Main
 
+internal fun contextRecordingStartingState(action: ContextButtonAction): RecorderState? =
+    if (action == ContextButtonAction.ScreenshotInbox) null else RecorderState.Recording(0)
+
+internal fun visibleContextButtonState(
+    activeButton: RecordingButton?,
+    activeAction: ContextButtonAction?,
+    startingRecording: Boolean,
+    action: ContextButtonAction,
+    state: RecorderState
+): RecorderState {
+    if (activeButton != RecordingButton.Context || activeAction != action) return RecorderState.Idle
+    return if (startingRecording && state is RecorderState.Uploading) {
+        contextRecordingStartingState(action) ?: state
+    } else {
+        state
+    }
+}
+
 internal class OverlayRecordingCoordinator(
     private val service: BraiAccessibilityService,
     private val config: ConfigStore,
@@ -135,7 +153,7 @@ internal class OverlayRecordingCoordinator(
         if (activeButton == RecordingButton.Context) RecorderState.Idle else state
 
     fun contextButtonState(action: ContextButtonAction, state: RecorderState): RecorderState =
-        if (activeButton == RecordingButton.Context && activeContextAction == action) state else RecorderState.Idle
+        visibleContextButtonState(activeButton, activeContextAction, startingRecording, action, state)
 
     private fun insertNextSavedTranscript() {
         when (BraiCmdBus.latest) {

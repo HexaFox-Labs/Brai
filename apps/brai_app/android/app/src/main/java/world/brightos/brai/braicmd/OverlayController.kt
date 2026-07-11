@@ -484,7 +484,7 @@ class OverlayController(private val service: BraiAccessibilityService) {
         }
         val actionSize = contextActionButtonSizePx()
         val originalHub = screenshotButtonAnchor()
-        val layout = geometry().radialMenuLayout(originalHub, actionSize, actions.size, mainButtonAnchor())
+        val layout = geometry().radialMenuLayout(originalHub, actionSize, actions.size, visibleMainButtonAnchor())
         if (layout == null || layout.actions.size != actions.size) {
             Toast.makeText(service, "Недостаточно места для кнопок Brai Cmd", Toast.LENGTH_SHORT).show()
             return
@@ -638,12 +638,8 @@ class OverlayController(private val service: BraiAccessibilityService) {
                     if (generation != contextMenuGeneration) return
                     contextMenuAnimator = null
                     if (opening && contextMenuState == ContextMenuState.Opening(generation)) {
-                        contextMenuProgress = 1f
                         contextMenuState = ContextMenuState.OpenIdle
                         contextActionButtons.values.forEach { view ->
-                            view.translationX = 0f
-                            view.translationY = 0f
-                            view.alpha = 1f
                             view.isEnabled = true
                             layer.setTouchable(view, true)
                         }
@@ -715,6 +711,11 @@ class OverlayController(private val service: BraiAccessibilityService) {
             else -> return
         }
         recording.toggleContextAction(action.action)
+        if (recording.isStartingContextAction) {
+            contextRecordingStartingState(action.action)?.let { startingState ->
+                contextActionButtons[action]?.setRecorderState(startingState)
+            }
+        }
     }
 
     private fun collapseContextMenuTo(selected: ContextMenuAction) {
@@ -976,6 +977,9 @@ class OverlayController(private val service: BraiAccessibilityService) {
             y = params?.y ?: currentButtonY(),
             size = mainButtonSizePx()
         )
+
+    private fun visibleMainButtonAnchor(): OverlayAnchor? =
+        mainButtonAnchor().takeIf { isShown && button?.visibility == View.VISIBLE }
 
     private fun screenshotButtonAnchor(): OverlayAnchor =
         contextMenuLayout?.hub ?: OverlayAnchor(

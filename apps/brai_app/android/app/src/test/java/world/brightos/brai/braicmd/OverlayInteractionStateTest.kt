@@ -22,4 +22,54 @@ class OverlayInteractionStateTest {
         assertEquals(0.48f, secondaryCloseAlpha(0.52f), 0.001f)
         assertEquals(0f, secondaryCloseAlpha(1f), 0.001f)
     }
+
+    @Test
+    fun tapContextFirstVisibleStateIsRecordingNeverUploading() {
+        val action = ContextButtonAction.ScreenshotVoiceInbox
+        val states = listOf(
+            contextRecordingStartingState(action),
+            visibleContextButtonState(
+                activeButton = RecordingButton.Context,
+                activeAction = action,
+                startingRecording = true,
+                action = action,
+                state = RecorderState.Uploading
+            )
+        )
+
+        assertTrue(states.all { it is RecorderState.Recording })
+        assertFalse(states.any { it is RecorderState.Uploading })
+    }
+
+    @Test
+    fun screenshotOnlyKeepsItsProcessingSpinnerState() {
+        val action = ContextButtonAction.ScreenshotInbox
+
+        assertEquals(null, contextRecordingStartingState(action))
+        assertTrue(
+            visibleContextButtonState(
+                activeButton = RecordingButton.Context,
+                activeAction = action,
+                startingRecording = true,
+                action = action,
+                state = RecorderState.Uploading
+            ) is RecorderState.Uploading
+        )
+    }
+
+    @Test
+    fun contextRecordingStartDoesNotHideAnError() {
+        val error = RecorderState.Error("Не удалось начать запись")
+
+        assertEquals(
+            error,
+            visibleContextButtonState(
+                activeButton = RecordingButton.Context,
+                activeAction = ContextButtonAction.ScreenshotVoiceInbox,
+                startingRecording = true,
+                action = ContextButtonAction.ScreenshotVoiceInbox,
+                state = error
+            )
+        )
+    }
 }

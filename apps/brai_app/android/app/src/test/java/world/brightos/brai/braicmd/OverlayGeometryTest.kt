@@ -38,6 +38,44 @@ class OverlayGeometryTest {
     }
 
     @Test
+    fun alignsTheRightEdgeArcOnAHorizontalAxis() {
+        val hub = OverlayAnchor(x = 894, y = 980, size = 138)
+        val layout = RadialActionLayout.layout(bounds, hub, 110, 5, 5, 18)!!
+        val hubCenterX = hub.x + hub.size / 2.0
+        val hubCenterY = hub.y + hub.size / 2.0
+        val centers = layout.actions.map { Pair(it.x + 55.0, it.y + 55.0) }
+
+        assertEquals(hubCenterY, centers[2].second, 1.0)
+        assertEquals(hubCenterY * 2.0, centers[0].second + centers[4].second, 1.0)
+        assertEquals(hubCenterY * 2.0, centers[1].second + centers[3].second, 1.0)
+        assertEquals(hubCenterX, centers[0].first, 1.0)
+        assertEquals(centers[0].first, centers[4].first, 1.0)
+        assertEquals(centers[1].first, centers[3].first, 1.0)
+    }
+
+    @Test
+    fun putsOneRightEdgeActionAboveOrBelowInsteadOfToTheLeft() {
+        val hub = OverlayAnchor(x = 894, y = 1670, size = 138)
+        val layout = RadialActionLayout.layout(bounds, hub, 110, 1, 5, 18)!!
+        val action = layout.actions.single()
+
+        assertEquals(hub.x + hub.size / 2.0, action.x + 55.0, 1.0)
+        assertTrue(action.y + 55.0 < hub.y + hub.size / 2.0)
+    }
+
+    @Test
+    fun keepsOneCornerActionAtTheBaseRadiusWhenTheVerticalPositionIsBlocked() {
+        val hub = OverlayAnchor(x = 894, y = 98, size = 138)
+        val main = OverlayAnchor(x = 880, y = 276, size = 150)
+        val layout = RadialActionLayout.layout(bounds, hub, 110, 1, 5, 18, main)!!
+        val action = layout.actions.single()
+
+        assertEquals(RadialActionLayout.fixedRadius(138, 110, 5, 18), layout.radius)
+        assertEquals(hub.y + hub.size / 2.0, action.y + 55.0, 1.0)
+        assertTrue(action.x + 55.0 < hub.x + hub.size / 2.0)
+    }
+
+    @Test
     fun supportsConfiguredSizeRangeWithoutOverlap() {
         listOf(0.7, 1.0, 1.3).forEach { scale ->
             val hubSize = (138 * scale).toInt()

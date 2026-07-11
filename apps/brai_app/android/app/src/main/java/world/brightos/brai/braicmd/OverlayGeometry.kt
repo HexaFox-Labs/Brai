@@ -150,20 +150,36 @@ internal object RadialActionLayout {
         val baseRadius = fixedRadius(hub.size, actionSize, maxActionCount, collisionGap)
         val maxRadius = hypot((bounds.right - bounds.left).toDouble(), (bounds.bottom - bounds.top).toDouble()).toInt()
         val hubCenter = center(hub)
-        val inward = Math.toDegrees(
+        val fallbackInward = Math.toDegrees(
             atan2(
                 (bounds.top + bounds.bottom) / 2.0 - hubCenter.second,
                 (bounds.left + bounds.right) / 2.0 - hubCenter.first
             )
         )
+        val edgeExtent = baseRadius + actionSize / 2.0
+        val edgeDirection = edgeDirection(bounds, hubCenter, edgeExtent, fallbackInward)
         var radius = baseRadius
         while (radius <= maxRadius) {
+            if (count == 1) {
+                for (angle in singleActionAngles(bounds, hubCenter, edgeExtent, edgeDirection)) {
+                    val points = positionsFor(hub, actionSize, radius, listOf(angle))
+                    if (positionsFit(points, bounds, hub, actionSize, collisionGap, avoid)) {
+                        return RadialMenuLayout(hub, points, radius)
+                    }
+                }
+                radius += 2
+                continue
+            }
             val angleSets = buildList {
-                add(circleAngles(count, inward))
-                listOf(180.0, 160.0, 140.0, 120.0, 100.0, 90.0).forEach { span ->
+                add(circleAngles(count, edgeDirection))
+                val spans = listOf(180.0, 160.0, 140.0, 120.0, 100.0, 90.0)
+                spans.forEach { span -> add(arcAngles(count, edgeDirection, span)) }
+                spans.forEach { span ->
                     for (offset in 0..180 step 5) {
-                        add(arcAngles(count, inward + offset, span))
-                        if (offset > 0) add(arcAngles(count, inward - offset, span))
+                        if (offset > 0) {
+                            add(arcAngles(count, edgeDirection + offset, span))
+                            add(arcAngles(count, edgeDirection - offset, span))
+                        }
                     }
                 }
             }
@@ -176,6 +192,58 @@ internal object RadialActionLayout {
             radius += 2
         }
         return null
+    }
+
+    private fun edgeDirection(
+        bounds: OverlayBounds,
+        hubCenter: Pair<Double, Double>,
+        extent: Double,
+        fallback: Double
+    ): Double {
+        val nearLeft = hubCenter.first - extent < bounds.left
+        val nearRight = hubCenter.first + extent > bounds.right
+        val nearTop = hubCenter.second - extent < bounds.top
+        val nearBottom = hubCenter.second + extent > bounds.bottom
+        return when {
+            nearRight && nearTop -> 135.0
+            nearRight && nearBottom -> 225.0
+            nearLeft && nearTop -> 45.0
+            nearLeft && nearBottom -> 315.0
+            nearRight -> 180.0
+            nearLeft -> 0.0
+            nearTop -> 90.0
+            nearBottom -> 270.0
+            else -> fallback
+        }
+    }
+
+    private fun singleActionAngles(
+        bounds: OverlayBounds,
+        hubCenter: Pair<Double, Double>,
+        extent: Double,
+        edgeDirection: Double
+    ): List<Double> {
+        val nearSide = hubCenter.first - extent < bounds.left || hubCenter.first + extent > bounds.right
+        val nearVerticalEdge = hubCenter.second - extent < bounds.top || hubCenter.second + extent > bounds.bottom
+        val verticalTowardCenter = if (hubCenter.second >= (bounds.top + bounds.bottom) / 2.0) 270.0 else 90.0
+        val horizontalTowardCenter = if (hubCenter.first >= (bounds.left + bounds.right) / 2.0) 180.0 else 0.0
+        return when {
+            nearSide -> listOf(
+                verticalTowardCenter,
+                horizontalTowardCenter,
+                (verticalTowardCenter + 180.0) % 360.0,
+                (horizontalTowardCenter + 180.0) % 360.0,
+                edgeDirection
+            )
+            nearVerticalEdge -> listOf(
+                horizontalTowardCenter,
+                verticalTowardCenter,
+                (horizontalTowardCenter + 180.0) % 360.0,
+                (verticalTowardCenter + 180.0) % 360.0,
+                edgeDirection
+            )
+            else -> listOf(270.0, 90.0, edgeDirection)
+        }.distinct()
     }
 
     fun fixedRadius(hubSize: Int, actionSize: Int, maxActionCount: Int, gap: Int): Int {
