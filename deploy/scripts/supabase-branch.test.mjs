@@ -29,6 +29,16 @@ test("Supabase migration versions are unique and duplicate prefixes fail closed"
   }
 });
 
+test("Supabase migration filenames use four-digit versions", () => {
+  const migrationsDir = fs.mkdtempSync(path.join(os.tmpdir(), "brai-migrations-"));
+  try {
+    fs.writeFileSync(path.join(migrationsDir, "15_short.sql"), "SELECT 1;\n");
+    assert.throws(() => migrationFileEntries(migrationsDir), /Invalid Supabase migration filename: 15_short\.sql/);
+  } finally {
+    fs.rmSync(migrationsDir, { recursive: true, force: true });
+  }
+});
+
 test("production seed loads only explicitly marked idempotent migrations into the copy transaction", () => {
   const script = fs.readFileSync(path.join(repoRoot, "deploy/scripts/supabase-branch.mjs"), "utf8");
   const migration = fs.readFileSync(

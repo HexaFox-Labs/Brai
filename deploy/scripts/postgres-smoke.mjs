@@ -26,6 +26,8 @@ try {
     scalar("SELECT COUNT(*)::int FROM role_statuses WHERE id IN ('active', 'ended', 'deleted')"),
     scalar("SELECT COUNT(*)::int FROM role_contracts"),
     scalar("SELECT COUNT(*)::int FROM workflow_definitions WHERE id = 'inbox.raw-normalization' AND version = 1"),
+    scalar("SELECT COUNT(*)::int FROM schema_migrations WHERE version = 57"),
+    scalar("SELECT COUNT(*)::int FROM supabase_migration_files WHERE version = '0016' AND name = '0016_admin_role_workflow_observability.sql'"),
     scalar(`
       SELECT COUNT(*)::int
       FROM information_schema.columns
@@ -95,6 +97,8 @@ try {
     roleStatuses,
     roleContracts,
     inboxWorkflowDefinitions,
+    observabilityMigration,
+    observabilityMigrationFile,
     workflowObservabilityColumns,
     workflowColumns,
     counters,
@@ -112,6 +116,7 @@ try {
   if (roleStatuses !== 3) throw new Error("role_statuses seed is incomplete");
   if (roleContracts < 3) throw new Error("role_contracts seed is incomplete");
   if (inboxWorkflowDefinitions !== 1) throw new Error("Inbox workflow definition is missing");
+  if (observabilityMigration !== 1 || observabilityMigrationFile !== 1) throw new Error("Workflow observability migration history is incomplete");
   if (workflowObservabilityColumns !== 4) throw new Error("Workflow observability schema is incomplete");
   if (workflowColumns !== 6) throw new Error("Agent role workflow columns are incomplete");
   if (counters !== 2) throw new Error("build_version_counters seed is incomplete");
@@ -155,6 +160,8 @@ try {
     roleStatuses,
     roleContracts,
     inboxWorkflowDefinitions,
+    observabilityMigration,
+    observabilityMigrationFile,
     workflowObservabilityColumns,
     workflowColumns,
     counters,
