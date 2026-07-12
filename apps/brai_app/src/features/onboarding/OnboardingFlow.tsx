@@ -153,6 +153,7 @@ export function OnboardingFlow({
   const [providerModels, setProviderModels] = useState<string[]>([]);
   const [providerModel, setProviderModel] = useState("");
   const [providerVerified, setProviderVerified] = useState(false);
+  const [providerManualModel, setProviderManualModel] = useState(false);
   const [localUrl, setLocalUrl] = useState("");
   const [trainingText, setTrainingText] = useState("");
   const [offlineText, setOfflineText] = useState("");
@@ -490,6 +491,7 @@ export function OnboardingFlow({
       }
       setProviderModels(result.models ?? []);
       setProviderModel("");
+      setProviderManualModel(Boolean(result.manualModel));
       setProviderVerified(true);
       setMessage("Подключение проверено. Выберите модель распознавания.");
       return;
@@ -798,6 +800,7 @@ export function OnboardingFlow({
           <Select value={provider} onValueChange={(value) => {
             setProvider(value as BraiCmdProviderId);
             setProviderVerified(false);
+            setProviderManualModel(false);
             setProviderModels([]);
             setProviderModel("");
             resetCheck("provider-key");
@@ -814,11 +817,14 @@ export function OnboardingFlow({
           <Input value={providerKey} type="password" aria-label="Ключ поставщика" placeholder="API-ключ" onChange={(event) => {
             setProviderKey(event.target.value);
             setProviderVerified(false);
+            setProviderManualModel(false);
             setProviderModels([]);
             setProviderModel("");
             resetCheck("provider-key");
           }} />
-          {providerVerified ? (
+          {providerVerified && providerManualModel ? (
+            <Input value={providerModel} aria-label="Модель распознавания" placeholder="Введите идентификатор модели" onChange={(event) => setProviderModel(event.target.value)} />
+          ) : providerVerified ? (
             <Select value={providerModel} onValueChange={setProviderModel}>
               <SelectTrigger className="w-full" aria-label="Модель распознавания">
                 <SelectValue placeholder="Выберите модель распознавания" />
