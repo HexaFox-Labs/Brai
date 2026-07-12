@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { BookOpen, Crown, Info, Settings } from "lucide-react";
-import { ensureBraiCmdAccess, openBraiCmdSettings, setBraiCmdOverlayEnabled, setBraiCmdQueuePausedMode, setBraiCmdVoiceOnlyMode } from "@/shared/platform/braiCmd";
+import type { AuthOnboardingContext } from "@/shared/api/braiApi";
+import { getBraiCmdState, listenBraiCmdCredentialRefreshRequired, openBraiCmdSettings, retryBraiCmdQueue, setBraiCmdAccessKey, setBraiCmdOverlayEnabled, setBraiCmdQueuePausedMode, setBraiCmdVoiceOnlyMode } from "@/shared/platform/braiCmd";
 import { installAndroidBackHandler, isNativeShell, platformName } from "@/shared/platform/platform";
 import { getBraiLocalStorageItem, removeBraiLocalStorageItem, setBraiLocalStorageItem } from "@/shared/storage/localStorageKeys";
 import { ScrollArea } from "@/shared/ui/scroll-area";
@@ -38,6 +39,7 @@ const INBOX_MOBILE_CREATE_DRAFT_STORAGE_KEY = "brai_inbox_mobile_create_draft";
 
 export function BraiApp({ initialSection = "actions" }: { initialSection?: SectionId }) {
   const app = useBraiAppState(initialSection);
+  const { authDisplayName, authUser, provisionBraiCmdDeviceToken } = app;
   const nativeAndroid = useMountedNativeAndroid();
   const [mobileDockMenu, setMobileDockMenu] = useState<"left" | "right" | null>(null);
   const [startupIntroComplete, setStartupIntroComplete] = useState(false);
@@ -79,6 +81,16 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
     return await openBraiCmdSettings();
   }
 
+  async function onOnboardingEmailLogin(email: string, context?: AuthOnboardingContext) {
+    await app.onEmailLogin(email, context);
+    if (nativeAndroid) await enableAuthenticatedBraiCmdMode().catch(() => undefined);
+  }
+
+  async function onOnboardingVerifyOtp(email: string, otp: string, context?: AuthOnboardingContext) {
+    await app.onVerifyOtp(email, otp, context);
+    if (nativeAndroid) await enableAuthenticatedBraiCmdMode().catch(() => undefined);
+  }
+
   useEffect(() => {
     sectionRef.current = app.section;
     selectSectionRef.current = app.selectSection;
@@ -98,22 +110,87 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
 
   useEffect(() => {
     if (!nativeAndroid) return;
-    if (app.displaySyncStatus === "auth_required") {
-      void setBraiCmdVoiceOnlyMode(true);
+    if (app.authUser) {
+      void enableAuthenticatedBraiCmdMode().catch(() => undefined);
       return;
     }
-    if (
-      onboardingVisible ||
-      !app.localSnapshotReady ||
-      app.displaySyncStatus === "connecting"
-    ) return;
-    void Promise.all([
-      ensureBraiCmdAccess(app.authDisplayName),
-      setBraiCmdOverlayEnabled(true),
-      setBraiCmdVoiceOnlyMode(false),
-      setBraiCmdQueuePausedMode(false),
-    ]);
-  }, [app.authDisplayName, app.displaySyncStatus, app.localSnapshotReady, nativeAndroid, onboardingVisible]);
+    if (app.displaySyncStatus === "auth_required") {
+      void Promise.all([
+        setBraiCmdAccessKey("", ""),
+        setBraiCmdOverlayEnabled(false),
+      ]);
+    }
+  }, [app.authUser, app.displaySyncStatus, nativeAndroid]);
+
+  useEffect(() => {
+    if (!nativeAndroid || !authUser) return;
+    const retryDelays = [1_000, 2_000, 5_000, 15_000, 30_000];
+    let cancelled = false;
+    let attempt = 0;
+    let retryTimer: number | null = null;
+    let inFlight = false;
+    let credentialListener: { remove: () => Promise<void> } | null = null;
+
+    function scheduleRetry() {
+      if (cancelled || retryTimer != null) return;
+      const delay = retryDelays[Math.min(attempt, retryDelays.length - 1)];
+      attempt += 1;
+      retryTimer = window.setTimeout(() => {
+        retryTimer = null;
+        void provision();
+      }, delay);
+    }
+
+    async function provision() {
+      if (cancelled || inFlight) return;
+      inFlight = true;
+      try {
+        await enableAuthenticatedBraiCmdMode();
+        const native = await getBraiCmdState();
+        if (!native?.deviceId) throw new Error("brai_cmd_device_id_missing");
+        const issued = await provisionBraiCmdDeviceToken({
+          deviceId: native.deviceId,
+          clientVersion: native.clientVersion,
+          appPackage: native.appPackage,
+        });
+        if (cancelled) return;
+        const credentialState = await setBraiCmdAccessKey(issued.token, authDisplayName);
+        if (!credentialState?.accessGranted) throw new Error("brai_cmd_credential_not_saved");
+        await retryBraiCmdQueue();
+        attempt = 0;
+      } catch {
+        scheduleRetry();
+      } finally {
+        inFlight = false;
+      }
+    }
+
+    function provisionNow() {
+      if (retryTimer != null) window.clearTimeout(retryTimer);
+      retryTimer = null;
+      attempt = 0;
+      void provision();
+    }
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") provisionNow();
+    };
+    window.addEventListener("online", provisionNow);
+    document.addEventListener("visibilitychange", onVisible);
+    void listenBraiCmdCredentialRefreshRequired(provisionNow).then((listener) => {
+      if (cancelled) void listener?.remove();
+      else credentialListener = listener;
+    });
+    provisionNow();
+
+    return () => {
+      cancelled = true;
+      if (retryTimer != null) window.clearTimeout(retryTimer);
+      window.removeEventListener("online", provisionNow);
+      document.removeEventListener("visibilitychange", onVisible);
+      void credentialListener?.remove();
+    };
+  }, [authDisplayName, authUser, nativeAndroid, provisionBraiCmdDeviceToken]);
 
   useEffect(() => installAndroidBackHandler(() => {
     if (window.history.state?.braiMobileMenu || window.history.state?.braiMobileDockMenu || window.history.state?.braiMobileSheet || window.history.state?.braiActivityEditor || window.history.state?.braiMobileActionCreate || window.history.state?.braiInboxEditor || window.history.state?.braiMobileInboxCreate || window.history.state?.braiFactoryLog) return false;
@@ -258,11 +335,11 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
           authMode={app.authMode}
           busy={app.busy}
           onDone={() => setOnboardingVisible(false)}
-          onEmailLogin={app.onEmailLogin}
+          onEmailLogin={onOnboardingEmailLogin}
           onOpenNativeCmdSettings={openNativeBraiCmdSettings}
           onRequestOtp={app.onRequestOtp}
           onStartupScreenChange={setOnboardingStartupActive}
-          onVerifyOtp={app.onVerifyOtp}
+          onVerifyOtp={onOnboardingVerifyOtp}
           startupIntroComplete={startupIntroComplete}
         />
       ) : (
@@ -389,6 +466,17 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
       />
     </>
   );
+}
+
+async function enableAuthenticatedBraiCmdMode(): Promise<void> {
+  const [overlayState, voiceState, queueState] = await Promise.all([
+    setBraiCmdOverlayEnabled(true),
+    setBraiCmdVoiceOnlyMode(false),
+    setBraiCmdQueuePausedMode(false),
+  ]);
+  if (!overlayState?.overlayEnabled || voiceState?.voiceOnlyMode !== false || queueState?.queuePausedMode !== false) {
+    throw new Error("brai_cmd_mode_not_applied");
+  }
 }
 
 function useMountedMobileNavigationViewport(): boolean {

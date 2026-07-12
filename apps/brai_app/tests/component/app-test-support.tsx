@@ -85,7 +85,12 @@ export function setupBraiAppTest() {
     cmdPlugin.openSettings.mockResolvedValue({});
     cmdPlugin.addListener.mockResolvedValue({ remove: vi.fn(async () => undefined) });
     cmdPlugin.ensureAccess.mockResolvedValue({ accessGranted: true });
-    cmdPlugin.getState.mockResolvedValue({ accessGranted: true });
+    cmdPlugin.getState.mockResolvedValue({
+      accessGranted: true,
+      deviceId: "test-install",
+      clientVersion: "60006",
+      appPackage: "world.brightos.brai.preview.b.work",
+    });
     cmdPlugin.preparePreliminaryProfile.mockResolvedValue({
       preliminaryStatus: "ready",
       preliminaryUserId: "prelim-test",
@@ -94,9 +99,9 @@ export function setupBraiAppTest() {
     });
     cmdPlugin.retryQueue.mockResolvedValue({ queuePausedMode: false });
     cmdPlugin.setAccessKey.mockResolvedValue({ accessGranted: true });
-    cmdPlugin.setOverlayEnabled.mockResolvedValue({ overlayEnabled: true });
-    cmdPlugin.setQueuePausedMode.mockResolvedValue({ queuePausedMode: true });
-    cmdPlugin.setVoiceOnlyMode.mockResolvedValue({ voiceOnlyMode: true });
+    cmdPlugin.setOverlayEnabled.mockImplementation(async ({ enabled }: { enabled: boolean }) => ({ overlayEnabled: enabled }));
+    cmdPlugin.setQueuePausedMode.mockImplementation(async ({ enabled }: { enabled: boolean }) => ({ queuePausedMode: enabled }));
+    cmdPlugin.setVoiceOnlyMode.mockImplementation(async ({ enabled }: { enabled: boolean }) => ({ voiceOnlyMode: enabled }));
     androidCapabilitiesPlugin.getState.mockResolvedValue({});
     androidCapabilitiesPlugin.openAccessibilitySettings.mockResolvedValue({});
     androidCapabilitiesPlugin.openAppSettings.mockResolvedValue({});
@@ -143,6 +148,12 @@ export function setupBraiAppTest() {
       if (url.endsWith("/v1/version")) {
         return new Response(JSON.stringify(testVersionState("0.0.10")), {
           status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.endsWith("/v1/brai-cmd/device-token")) {
+        return new Response(JSON.stringify({ token: "authenticated-device-token", status: "active" }), {
+          status: 201,
           headers: { "content-type": "application/json" },
         });
       }

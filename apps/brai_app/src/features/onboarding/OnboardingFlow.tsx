@@ -229,20 +229,13 @@ export function OnboardingFlow({
   }, [state.step]);
 
   useEffect(() => {
-    if (!isAndroid) return;
-    void setBraiCmdVoiceOnlyMode(true);
-  }, [isAndroid]);
-
-  useEffect(() => {
-    if (!isAndroid) return;
-    const dictationAvailable = state.complete || state.step.startsWith("training-") || state.step === "voice-ready";
-    void setBraiCmdOverlayEnabled(dictationAvailable);
-  }, [isAndroid, state.complete, state.step]);
-
-  useEffect(() => {
-    if (!isAndroid || !state.complete || !authRequired) return;
-    void ensureBraiCmdAccess(state.name.trim() || "Brai");
-  }, [authRequired, isAndroid, state.complete, state.name]);
+    if (!isAndroid || !authRequired) return;
+    const trainingActive = ["training-dictate", "training-offline", "training-queue", "training-storage", "voice-ready"].includes(state.step);
+    void Promise.all([
+      setBraiCmdOverlayEnabled(trainingActive),
+      setBraiCmdVoiceOnlyMode(trainingActive),
+    ]);
+  }, [authRequired, isAndroid, state.step]);
 
   useEffect(() => {
     if (!isAndroid) return;
@@ -363,8 +356,14 @@ export function OnboardingFlow({
   }
 
   async function completeSetup() {
-    await setBraiCmdOverlayEnabled(true);
     await setBraiCmdQueuePausedMode(false);
+    if (authRequired) {
+      await Promise.all([
+        setBraiCmdAccessKey("", ""),
+        setBraiCmdOverlayEnabled(false),
+        setBraiCmdVoiceOnlyMode(false),
+      ]);
+    }
     const current = stateRef.current;
     transitionTo({ ...current, complete: true, step: "login-check", history: [...current.history, current.step] });
   }
@@ -632,7 +631,7 @@ export function OnboardingFlow({
     if (isAndroid) {
       const access = await ensureBraiCmdAccess(state.name.trim() || "Brai");
       if (!access?.accessGranted) {
-        setError("Не удалось подготовить доступ Brai CMD. Проверьте подключение и нажмите «Обучение» еще раз.");
+        setError("Не удалось подготовить облачную диктовку. Проверьте подключение и нажмите «Обучение» ещё раз.");
         return;
       }
       await setBraiCmdOverlayEnabled(true);

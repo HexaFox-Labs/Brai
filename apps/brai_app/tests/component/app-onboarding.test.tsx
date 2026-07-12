@@ -443,7 +443,7 @@ describe("BraiApp onboarding", () => {
     expect(await screen.findByRole("img", { name: "Разрешение микрофона Brai" })).toHaveAttribute("src", "/onboarding/settings-1-microphone.jpg");
     fireEvent.click(await screen.findByRole("button", { name: "Разрешить микрофон" }));
     expect(await screen.findByRole("button", { name: "Открыть настройки приложения" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ошибка" })).toBeDisabled();
+    expect(screen.getByText("Микрофон не разрешен.")).toBeInTheDocument();
   });
 
   it("offers app settings after notification permission is denied", async () => {
@@ -465,7 +465,7 @@ describe("BraiApp onboarding", () => {
     expect(screen.getByText("Уведомления нужны для фоновой записи, работы очереди, когда нет сети, для получения обратной связи от Брай. Разработчики не шлют вам никаких уведомлений. Это только для вас.")).toBeInTheDocument();
     fireEvent.click(await screen.findByRole("button", { name: "Разрешить уведомления" }));
     expect(await screen.findByRole("button", { name: "Открыть настройки приложения" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ошибка" })).toBeDisabled();
+    expect(screen.getByText("Уведомления не разрешены.")).toBeInTheDocument();
   });
 
   it("walks through special access explanation and images", async () => {
@@ -524,7 +524,7 @@ describe("BraiApp onboarding", () => {
     expect(screen.getByText(/После вернитесь сюда и нажмите на кнопку Проверки/)).toBeInTheDocument();
   });
 
-  it("keeps the context floating button disabled until the final voice screen", async () => {
+  it("keeps the authenticated cabinet in full mode despite a stale microphone onboarding step", async () => {
     stubAndroidCapacitor();
     window.localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({
       complete: false,
@@ -539,11 +539,11 @@ describe("BraiApp onboarding", () => {
     render(<BraiApp />);
 
     expect(await screen.findByText("Микрофон")).toBeInTheDocument();
-    await waitFor(() => expect(cmdPlugin.setVoiceOnlyMode).toHaveBeenCalledWith({ enabled: true }));
-    expect(cmdPlugin.setOverlayEnabled).toHaveBeenCalledWith({ enabled: false });
+    await waitFor(() => expect(cmdPlugin.setVoiceOnlyMode).toHaveBeenCalledWith({ enabled: false }));
+    expect(cmdPlugin.setOverlayEnabled).toHaveBeenCalledWith({ enabled: true });
   });
 
-  it("keeps the context floating button hidden until the cabinet opens", async () => {
+  it("keeps the authenticated cabinet in full mode despite a stale voice-ready screen", async () => {
     stubAndroidCapacitor();
     window.localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({
       complete: false,
@@ -558,12 +558,13 @@ describe("BraiApp onboarding", () => {
     render(<BraiApp />);
 
     expect(await screen.findByText("Голосовое управление настроено")).toBeInTheDocument();
-    await waitFor(() => expect(cmdPlugin.setVoiceOnlyMode).toHaveBeenCalledWith({ enabled: true }));
+    await waitFor(() => expect(cmdPlugin.setVoiceOnlyMode).toHaveBeenCalledWith({ enabled: false }));
     await waitFor(() => expect(cmdPlugin.setOverlayEnabled).toHaveBeenCalledWith({ enabled: true }));
-    expect(cmdPlugin.setVoiceOnlyMode).not.toHaveBeenCalledWith({ enabled: false });
+    expect(cmdPlugin.ensureAccess).not.toHaveBeenCalled();
+    await waitFor(() => expect(cmdPlugin.setAccessKey).toHaveBeenCalledWith({ token: "authenticated-device-token", displayName: "Test" }));
   });
 
-  it("keeps dictation enabled and context hidden after skipping voice training", async () => {
+  it("keeps both overlays hidden before login after skipping voice training", async () => {
     stubAndroidCapacitor();
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
@@ -589,10 +590,11 @@ describe("BraiApp onboarding", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Пропустить" }));
     expect(await screen.findByText("Нужен вход")).toBeInTheDocument();
-    await waitFor(() => expect(cmdPlugin.setOverlayEnabled).toHaveBeenCalledWith({ enabled: true }));
-    await waitFor(() => expect(cmdPlugin.ensureAccess).toHaveBeenCalledWith({ displayName: "Test" }));
-    expect(cmdPlugin.setVoiceOnlyMode).toHaveBeenCalledWith({ enabled: true });
-    expect(cmdPlugin.setVoiceOnlyMode).not.toHaveBeenCalledWith({ enabled: false });
+    await waitFor(() => expect(cmdPlugin.setOverlayEnabled).toHaveBeenLastCalledWith({ enabled: false }));
+    expect(cmdPlugin.ensureAccess).not.toHaveBeenCalled();
+    expect(cmdPlugin.setAccessKey).toHaveBeenCalledWith({ token: "", displayName: "" });
+    expect(cmdPlugin.setVoiceOnlyMode).not.toHaveBeenCalledWith({ enabled: true });
+    expect(cmdPlugin.setVoiceOnlyMode).toHaveBeenCalledWith({ enabled: false });
   });
 
   it("opens the cabinet and enables context after skipping when already signed in", async () => {
@@ -617,6 +619,11 @@ describe("BraiApp onboarding", () => {
 
   it("temporarily enables only the training overlay after native access is ready", async () => {
     stubAndroidCapacitor();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url.endsWith("/auth/session")) return jsonResponse({ authenticated: false });
+      return Promise.reject(new Error("offline"));
+    });
     window.localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({
       complete: false,
       history: ["notifications"],
@@ -629,13 +636,16 @@ describe("BraiApp onboarding", () => {
 
     render(<BraiApp />);
 
-    await waitFor(() => expect(cmdPlugin.setOverlayEnabled).toHaveBeenCalledWith({ enabled: true }));
+    await waitFor(() => expect(cmdPlugin.setOverlayEnabled).toHaveBeenLastCalledWith({ enabled: false }));
+    expect(cmdPlugin.ensureAccess).not.toHaveBeenCalled();
+    expect(cmdPlugin.setAccessKey).toHaveBeenCalledWith({ token: "", displayName: "" });
     fireEvent.click(await screen.findByRole("button", { name: "Обучение" }));
 
     await waitFor(() => expect(cmdPlugin.ensureAccess).toHaveBeenCalledWith({ displayName: "Test" }));
     await waitFor(() => expect(cmdPlugin.setOverlayEnabled).toHaveBeenCalledWith({ enabled: true }));
+    expect(cmdPlugin.setVoiceOnlyMode).toHaveBeenCalledWith({ enabled: true });
     expect(await screen.findByRole("textbox", { name: "Результат голосового ввода" })).toBeInTheDocument();
-    expect(cmdPlugin.setVoiceOnlyMode).not.toHaveBeenCalledWith({ enabled: false });
+    expect(cmdPlugin.setVoiceOnlyMode).toHaveBeenCalledWith({ enabled: false });
   });
 
   it("does not leave cloud login after a failed email request", async () => {
@@ -753,14 +763,16 @@ describe("BraiApp onboarding", () => {
     expectNoPasswordPrompt();
     await submitEmailLogin("wrong@example.test");
 
-    await waitFor(() => expect(cmdPlugin.setOverlayEnabled).toHaveBeenCalledWith({ enabled: true }));
-    expect(cmdPlugin.setVoiceOnlyMode).toHaveBeenCalledWith({ enabled: true });
+    await waitFor(() => expect(cmdPlugin.setOverlayEnabled).toHaveBeenLastCalledWith({ enabled: false }));
+    expect(cmdPlugin.ensureAccess).not.toHaveBeenCalled();
+    expect(cmdPlugin.setAccessKey).toHaveBeenCalledWith({ token: "", displayName: "" });
+    expect(cmdPlugin.setVoiceOnlyMode).not.toHaveBeenCalledWith({ enabled: true });
     expect(screen.getByLabelText("Email")).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Добавить" })).not.toBeInTheDocument();
-    expect(cmdPlugin.setVoiceOnlyMode).not.toHaveBeenCalledWith({ enabled: false });
+    expect(cmdPlugin.setVoiceOnlyMode).toHaveBeenCalledWith({ enabled: false });
   }, 10_000);
 
-  it("enables context only after the final login opens the cabinet", async () => {
+  it("opens the cabinet only after the final login", async () => {
     stubAndroidCapacitor();
     window.__BRAI_RUNTIME_CONFIG__ = { environment: "preview-a" };
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
@@ -794,14 +806,13 @@ describe("BraiApp onboarding", () => {
     render(<BraiApp />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Войти" }, { timeout: 5_000 }));
-    expect(cmdPlugin.setVoiceOnlyMode).not.toHaveBeenCalledWith({ enabled: false });
+    await waitFor(() => expect(cmdPlugin.setOverlayEnabled).toHaveBeenLastCalledWith({ enabled: false }));
+    expect(cmdPlugin.setAccessKey).toHaveBeenCalledWith({ token: "", displayName: "" });
     expect(await screen.findByLabelText("Email")).toBeInTheDocument();
     expectNoPasswordPrompt();
     await submitEmailLogin("test@example.test");
 
     expect(await screen.findByRole("heading", { name: "Действия" })).toBeInTheDocument();
-    await waitFor(() => expect(cmdPlugin.setVoiceOnlyMode).toHaveBeenCalledWith({ enabled: false }));
-    expect(cmdPlugin.setOverlayEnabled).toHaveBeenCalledWith({ enabled: true });
   }, 10_000);
 
   it("does not run a fake check on the cloud privacy screen", async () => {

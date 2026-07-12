@@ -341,13 +341,16 @@ export const braiCmdStoreMethods = {
   issueBraiCmdAccess(input) {
     const token = `aw_${randomBytes(32).toString('base64url')}`;
     const now = new Date().toISOString();
+    const userId = cleanMetadata(input.userId) || null;
+    const deviceIdHash = input.deviceId ? hashSecret(input.deviceId.trim()) : null;
     const record = {
       id: randomUUID(),
       displayName: normalizeDisplayName(input.displayName),
       tokenHash: hashSecret(token),
-      deviceIdHash: input.deviceId ? hashSecret(input.deviceId.trim()) : null,
+      deviceIdHash,
+      userId,
       status: 'active',
-      source: input.source === 'admin' ? 'admin' : 'self_service',
+      source: input.source === 'admin' ? 'admin' : input.source === 'authenticated' ? 'authenticated' : 'self_service',
       createdAt: now,
       activatedAt: input.deviceId ? now : null,
       lastUsedAt: null,
@@ -355,26 +358,36 @@ export const braiCmdStoreMethods = {
       appPackage: cleanMetadata(input.appPackage),
       preliminaryUsersId: cleanMetadata(input.preliminaryUsersId)
     };
-    this.db.prepare(`
-      INSERT INTO brai_cmd_access_tokens (
-        id, display_name, token_hash, device_id_hash, status, source,
-        created_at_utc, activated_at_utc, last_used_at_utc, client_version, app_package,
-        preliminary_users_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      record.id,
-      record.displayName,
-      record.tokenHash,
-      record.deviceIdHash,
-      record.status,
-      record.source,
-      record.createdAt,
-      record.activatedAt,
-      record.lastUsedAt,
-      record.clientVersion,
-      record.appPackage,
-      record.preliminaryUsersId || null
-    );
+    this.db.transaction(() => {
+      if (record.userId && record.deviceIdHash) {
+        this.db.prepare(`
+          UPDATE brai_cmd_access_tokens
+          SET status = 'revoked'
+          WHERE user_id = ? AND device_id_hash = ? AND status = 'active'
+        `).run(record.userId, record.deviceIdHash);
+      }
+      this.db.prepare(`
+        INSERT INTO brai_cmd_access_tokens (
+          id, display_name, token_hash, device_id_hash, user_id, status, source,
+          created_at_utc, activated_at_utc, last_used_at_utc, client_version, app_package,
+          preliminary_users_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        record.id,
+        record.displayName,
+        record.tokenHash,
+        record.deviceIdHash,
+        record.userId,
+        record.status,
+        record.source,
+        record.createdAt,
+        record.activatedAt,
+        record.lastUsedAt,
+        record.clientVersion,
+        record.appPackage,
+        record.preliminaryUsersId || null
+      );
+    })();
     safeRecordLog(this, {
       dt: record.createdAt,
       source: 'brai-cmd',
@@ -386,6 +399,7 @@ export const braiCmdStoreMethods = {
         source: record.source,
         device_bound: Boolean(record.deviceIdHash),
         preliminary_users_id: record.preliminaryUsersId || null,
+        user_id: record.userId,
         client_version_present: Boolean(record.clientVersion),
         app_package_present: Boolean(record.appPackage)
       }
@@ -532,7 +546,7 @@ export const braiCmdStoreMethods = {
       FROM brai_cmd_access_tokens t
       LEFT JOIN brai_cmd_usage_events u ON u.access_token_id = t.id
       LEFT JOIN preliminary_users p ON p.id = t.preliminary_users_id
-      LEFT JOIN "user" au ON au.id = p.user_id
+      LEFT JOIN "user" au ON au.id = COALESCE(t.user_id, p.user_id)
       GROUP BY t.id, p.id, au.id
       ORDER BY t.created_at_utc DESC
     `).all().map((row) => formatAdminToken(row));
@@ -567,12 +581,13 @@ export const braiCmdStoreMethods = {
                p.status AS preliminary_status,
                p.user_id AS preliminary_user_id,
                p.display_name AS preliminary_display_name,
+               t.user_id,
                au.email AS auth_user_email,
                au.name AS auth_user_name
         FROM brai_cmd_usage_events u
         LEFT JOIN brai_cmd_access_tokens t ON t.id = u.access_token_id
         LEFT JOIN preliminary_users p ON p.id = t.preliminary_users_id
-        LEFT JOIN "user" au ON au.id = p.user_id
+        LEFT JOIN "user" au ON au.id = COALESCE(t.user_id, p.user_id)
         ORDER BY u.created_at_utc DESC
         LIMIT 50
       `).all().map((row) => ({
@@ -603,6 +618,7 @@ function formatBraiCmdToken(row) {
     tokenHash: row.token_hash,
     deviceIdHash: row.device_id_hash,
     preliminaryUsersId: row.preliminary_users_id,
+    userId: row.user_id,
     status: row.status,
     source: row.source,
     createdAt: row.created_at_utc,
@@ -641,6 +657,15 @@ function formatAdminToken(row) {
 }
 
 function adminOwner(row) {
+  if (row.user_id) {
+    return {
+      type: 'registered',
+      userId: row.user_id,
+      label: row.auth_user_email || row.auth_user_name || row.display_name || 'Registered user',
+      email: row.auth_user_email || null,
+      name: row.auth_user_name || null
+    };
+  }
   if (!row.preliminary_users_id) return { type: 'legacy', label: 'Legacy access token' };
   if (row.preliminary_status === 'converted' && row.preliminary_user_id) {
     return {

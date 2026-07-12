@@ -315,9 +315,9 @@ class RecordingService : Service() {
     private fun pendingStatusFor(error: Throwable): Pair<String, PendingReason> =
         when (error) {
             is QueueAuthBlockedException ->
-                Pair("Обновите доступ", PendingReason.Server)
+                Pair("Сохранено, отправлю автоматически", PendingReason.Server)
             is QueueEmptyModelException ->
-                Pair("Ждёт модель", PendingReason.Transcription)
+                Pair("Модель временно недоступна", PendingReason.Transcription)
             is UnknownHostException ->
                 Pair("Ждёт интернет", PendingReason.Network)
             is SocketTimeoutException ->
@@ -326,9 +326,9 @@ class RecordingService : Service() {
                 if (error.code == "function_disabled") {
                     Pair("Функция временно недоступна", PendingReason.Server)
                 } else if (error.statusCode == 401 || error.statusCode == 403) {
-                    Pair("Обновите доступ", PendingReason.Server)
+                    Pair("Ждёт сервер", PendingReason.Server)
                 } else if (error.code == "upstream_error") {
-                    Pair("Ждёт модель", PendingReason.Transcription)
+                    Pair("Модель временно недоступна", PendingReason.Transcription)
                 } else if (error.statusCode == 413) {
                     Pair("Файл слишком большой", PendingReason.Server)
                 } else if (error.statusCode == 415) {

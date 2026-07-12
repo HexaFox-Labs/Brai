@@ -43,7 +43,7 @@ export async function readBraiCmdAdminSummary({
       FROM brai_cmd_access_tokens t
       LEFT JOIN brai_cmd_usage_events u ON u.access_token_id = t.id
       LEFT JOIN preliminary_users p ON p.id = t.preliminary_users_id
-      LEFT JOIN "user" au ON au.id = p.user_id
+      LEFT JOIN "user" au ON au.id = COALESCE(t.user_id, p.user_id)
       GROUP BY t.id, p.id, au.id
       ORDER BY t.created_at_utc DESC
     `);
@@ -51,6 +51,7 @@ export async function readBraiCmdAdminSummary({
       SELECT u.*,
              t.display_name,
              t.preliminary_users_id,
+             t.user_id,
              p.status AS preliminary_status,
              p.user_id AS preliminary_user_id,
              p.display_name AS preliminary_display_name,
@@ -59,7 +60,7 @@ export async function readBraiCmdAdminSummary({
       FROM brai_cmd_usage_events u
       LEFT JOIN brai_cmd_access_tokens t ON t.id = u.access_token_id
       LEFT JOIN preliminary_users p ON p.id = t.preliminary_users_id
-      LEFT JOIN "user" au ON au.id = p.user_id
+      LEFT JOIN "user" au ON au.id = COALESCE(t.user_id, p.user_id)
       ORDER BY u.created_at_utc DESC
       LIMIT 50
     `);
@@ -217,6 +218,15 @@ function formatTokenSummary(row) {
 }
 
 function ownerSummary(row) {
+  if (row.user_id) {
+    return {
+      type: "registered",
+      userId: row.user_id,
+      label: row.auth_user_email || row.auth_user_name || row.display_name || "Registered user",
+      email: row.auth_user_email || null,
+      name: row.auth_user_name || null,
+    };
+  }
   if (!row.preliminary_users_id) return { type: "legacy", label: "Legacy access token" };
   if (row.preliminary_status === "converted" && row.preliminary_user_id) {
     return {

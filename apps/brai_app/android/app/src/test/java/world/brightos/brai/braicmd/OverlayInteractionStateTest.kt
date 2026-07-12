@@ -93,4 +93,12 @@ class OverlayInteractionStateTest {
         assertTrue(shouldShowUpdateDot(updateAvailable = true, apkUpdateRequired = false))
         assertTrue(shouldShowUpdateDot(updateAvailable = false, apkUpdateRequired = true))
     }
+
+    @Test
+    fun contextButtonDependsOnModeAndActionsNotTransportCredential() {
+        assertTrue(contextButtonAvailable(overlayEnabled = true, voiceOnly = false, enabledActions = 1))
+        assertFalse(contextButtonAvailable(overlayEnabled = true, voiceOnly = true, enabledActions = 1))
+        assertFalse(contextButtonAvailable(overlayEnabled = false, voiceOnly = false, enabledActions = 1))
+        assertFalse(contextButtonAvailable(overlayEnabled = true, voiceOnly = false, enabledActions = 0))
+    }
 }

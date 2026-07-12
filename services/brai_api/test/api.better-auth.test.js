@@ -68,6 +68,13 @@ test('test email login creates or reuses a Better Auth user without sending OTP 
     assert.equal(session.body.authenticated, false);
     assert.equal(session.headers.get('set-cookie'), null);
 
+    const unauthenticatedDeviceToken = await jsonRequest(fixture.url, '/v1/brai-cmd/device-token', {
+      method: 'POST',
+      headers: { origin: 'capacitor://localhost' },
+      body: JSON.stringify({ deviceId: 'unauthenticated-install' })
+    });
+    assert.equal(unauthenticatedDeviceToken.status, 401);
+
     const empty = await jsonRequest(fixture.url, '/auth/test-email-login', {
       method: 'POST',
       headers: { origin: 'https://a.test.brightos.world' },
@@ -103,6 +110,66 @@ test('test email login creates or reuses a Better Auth user without sending OTP 
       headers: { cookie: firstCookie, origin: 'capacitor://localhost' }
     });
     assert.equal(activities.status, 200);
+
+    const forbiddenDeviceToken = await jsonRequest(fixture.url, '/v1/brai-cmd/device-token', {
+      method: 'POST',
+      headers: { cookie: firstCookie, origin: 'https://untrusted.example' },
+      body: JSON.stringify({ deviceId: 'authenticated-install-1' })
+    });
+    assert.equal(forbiddenDeviceToken.status, 403);
+
+    const invalidDeviceToken = await jsonRequest(fixture.url, '/v1/brai-cmd/device-token', {
+      method: 'POST',
+      headers: { cookie: firstCookie, origin: 'capacitor://localhost' },
+      body: JSON.stringify({ deviceId: 'x'.repeat(201) })
+    });
+    assert.equal(invalidDeviceToken.status, 400);
+    assert.equal(invalidDeviceToken.body.error, 'invalid_device_id');
+
+    fixture.store.setBraiCmdSettings({ registrationEnabled: false });
+    const deviceToken = await jsonRequest(fixture.url, '/v1/brai-cmd/device-token', {
+      method: 'POST',
+      headers: { cookie: firstCookie, origin: 'capacitor://localhost' },
+      body: JSON.stringify({
+        deviceId: 'authenticated-install-1',
+        clientVersion: '60006',
+        appPackage: 'world.brightos.brai.preview.b.work'
+      })
+    });
+    assert.equal(deviceToken.status, 201);
+    assert.match(deviceToken.body.token, /^aw_/);
+    const firstDeviceToken = fixture.store.db.prepare(`
+      SELECT user_id, source, status, device_id_hash, token_hash
+      FROM brai_cmd_access_tokens
+      WHERE user_id = ?
+    `).get(first.body.user.id);
+    assert.equal(firstDeviceToken.user_id, first.body.user.id);
+    assert.equal(firstDeviceToken.source, 'authenticated');
+    assert.equal(firstDeviceToken.status, 'active');
+    assert.notEqual(firstDeviceToken.device_id_hash, 'authenticated-install-1');
+    assert.notEqual(firstDeviceToken.token_hash, deviceToken.body.token);
+
+    const health = await jsonRequest(fixture.url, '/v1/health', {
+      headers: {
+        authorization: `Bearer ${deviceToken.body.token}`,
+        'x-brai-cmd-device-id': 'authenticated-install-1'
+      }
+    });
+    assert.equal(health.status, 200);
+
+    const replacement = await jsonRequest(fixture.url, '/v1/brai-cmd/device-token', {
+      method: 'POST',
+      headers: { cookie: firstCookie, origin: 'capacitor://localhost' },
+      body: JSON.stringify({ deviceId: 'authenticated-install-1' })
+    });
+    assert.equal(replacement.status, 201);
+    assert.notEqual(replacement.body.token, deviceToken.body.token);
+    const deviceTokenStatuses = fixture.store.db.prepare(`
+      SELECT status FROM brai_cmd_access_tokens
+      WHERE user_id = ?
+      ORDER BY created_at_utc, id
+    `).all(first.body.user.id).map((row) => row.status).sort();
+    assert.deepEqual(deviceTokenStatuses, ['active', 'revoked']);
 
     const repeat = await jsonRequest(fixture.url, '/auth/test-email-login', {
       method: 'POST',

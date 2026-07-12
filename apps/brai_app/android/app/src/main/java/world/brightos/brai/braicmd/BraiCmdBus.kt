@@ -36,6 +36,9 @@ internal fun shouldShowUpdateNoticeAfter(notice: BraiCmdNotice?): Boolean =
 internal fun shouldShowUpdateDot(updateAvailable: Boolean, apkUpdateRequired: Boolean): Boolean =
     updateAvailable || apkUpdateRequired
 
+internal fun contextButtonAvailable(overlayEnabled: Boolean, voiceOnly: Boolean, enabledActions: Int): Boolean =
+    overlayEnabled && !voiceOnly && enabledActions > 0
+
 sealed class RecorderState {
     data object Idle : RecorderState()
     data class Recording(val amplitude: Int) : RecorderState()

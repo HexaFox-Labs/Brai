@@ -298,7 +298,7 @@ internal enum class QueueFailureDisposition {
 
 internal class QueueCorruptItemException(message: String) : IOException(message)
 internal class QueueEmptyModelException : IOException("Модель вернула пустой текст")
-internal class QueueAuthBlockedException : IOException("Не указан токен доступа")
+internal class QueueAuthBlockedException : IOException("Транспортный credential ещё не готов")
 
 internal fun classifyQueueFailure(error: Throwable): QueueFailureDisposition =
     when (error) {

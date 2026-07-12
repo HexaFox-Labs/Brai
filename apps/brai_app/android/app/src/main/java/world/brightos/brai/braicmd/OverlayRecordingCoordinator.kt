@@ -181,10 +181,6 @@ internal class OverlayRecordingCoordinator(
             BraiCmdBus.post(RecorderState.Error("Разрешите уведомления"))
             return
         }
-        if (config.authToken.isBlank()) {
-            BraiCmdBus.post(RecorderState.Error("Получите доступ Brai CMD"))
-            return
-        }
         activeButton = if (useScreenshot) RecordingButton.Context else RecordingButton.Main
         activeContextAction = if (useScreenshot) ContextButtonAction.ScreenshotVoiceInbox else null
         if (!useScreenshot) {
@@ -240,10 +236,6 @@ internal class OverlayRecordingCoordinator(
             BraiCmdBus.post(RecorderState.Error("Разрешите уведомления"))
             return false
         }
-        if (config.authToken.isBlank()) {
-            BraiCmdBus.post(RecorderState.Error("Получите доступ Brai CMD"))
-            return false
-        }
         return true
     }
 
@@ -261,10 +253,6 @@ internal class OverlayRecordingCoordinator(
     private fun startScreenshotOnlyInbox() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
             BraiCmdBus.post(RecorderState.Error("Скриншот недоступен"))
-            return
-        }
-        if (config.authToken.isBlank()) {
-            BraiCmdBus.post(RecorderState.Error("Получите доступ Brai CMD"))
             return
         }
         activeButton = RecordingButton.Context

@@ -46,7 +46,8 @@ describe("BraiApp shell", () => {
     await waitFor(() => expect(cmdPlugin.setOverlayEnabled).toHaveBeenCalledWith({ enabled: true }));
     await waitFor(() => expect(cmdPlugin.setVoiceOnlyMode).toHaveBeenCalledWith({ enabled: false }));
     expect(cmdPlugin.setQueuePausedMode).toHaveBeenCalledWith({ enabled: false });
-    expect(cmdPlugin.ensureAccess).toHaveBeenCalledWith({ displayName: "Test" });
+    await waitFor(() => expect(cmdPlugin.setAccessKey).toHaveBeenCalledWith({ token: "authenticated-device-token", displayName: "Test" }));
+    expect(cmdPlugin.ensureAccess).not.toHaveBeenCalled();
   });
 
   it("does not tie cabinet overlays to the legacy native access-name request", async () => {
@@ -57,7 +58,8 @@ describe("BraiApp shell", () => {
 
     await waitFor(() => expect(cmdPlugin.setOverlayEnabled).toHaveBeenCalledWith({ enabled: true }));
     expect(cmdPlugin.setVoiceOnlyMode).toHaveBeenCalledWith({ enabled: false });
-    expect(cmdPlugin.ensureAccess).toHaveBeenCalledWith({ displayName: "Test" });
+    await waitFor(() => expect(cmdPlugin.setAccessKey).toHaveBeenCalledWith({ token: "authenticated-device-token", displayName: "Test" }));
+    expect(cmdPlugin.ensureAccess).not.toHaveBeenCalled();
   });
 
   it("uses explicit email-only login on Preview web", async () => {

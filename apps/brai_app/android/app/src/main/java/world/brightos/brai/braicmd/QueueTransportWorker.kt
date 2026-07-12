@@ -40,6 +40,7 @@ internal class QueueTransportWorker(context: Context) {
                 ScreenshotInboxStore.list(appContext).map { PendingItem.Screenshot(it) }
             ).sortedBy { it.file.lastModified() }
         if (ConfigStore(appContext).authToken.isBlank()) {
+            BraiCmdPlugin.notifyCredentialRefreshRequired()
             return result(
                 QueueTransportStatus.Blocked,
                 QueueAuthBlockedException(),
@@ -55,6 +56,10 @@ internal class QueueTransportWorker(context: Context) {
                     is PendingItem.Screenshot -> processScreenshot(item.file)
                 }
             } catch (error: Throwable) {
+                if (error is ServerResponseException && error.statusCode == 401) {
+                    ConfigStore(appContext).authToken = ""
+                    BraiCmdPlugin.notifyCredentialRefreshRequired()
+                }
                 when (classifyQueueFailure(error)) {
                     QueueFailureDisposition.Transient ->
                         return result(QueueTransportStatus.TransientFailure, error, setOf(item.transportId))

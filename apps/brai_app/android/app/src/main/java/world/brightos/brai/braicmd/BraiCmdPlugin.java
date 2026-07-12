@@ -24,6 +24,7 @@ import com.getcapacitor.annotation.PermissionCallback;
 
 import java.util.List;
 
+import world.brightos.brai.BuildConfig;
 import world.brightos.brai.capabilities.BraiAccessibilityService;
 
 @CapacitorPlugin(
@@ -35,6 +36,7 @@ import world.brightos.brai.capabilities.BraiAccessibilityService;
 )
 public final class BraiCmdPlugin extends Plugin {
     private static final String EVENT_ONBOARDING = "onboardingEvent";
+    private static final String EVENT_CREDENTIAL_REFRESH = "credentialRefreshRequired";
     private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
     private static volatile BraiCmdPlugin activePlugin;
 
@@ -213,6 +215,9 @@ public final class BraiCmdPlugin extends Plugin {
         JSObject state = new JSObject();
         state.put("native", true);
         state.put("accessGranted", !config.getAuthToken().isBlank());
+        state.put("deviceId", config.getInstallId());
+        state.put("clientVersion", BuildConfig.VERSION_NAME);
+        state.put("appPackage", getContext().getPackageName());
         state.put("voiceOnlyMode", config.getOnboardingVoiceOnly());
         state.put("queuePausedMode", config.getOnboardingQueuePaused());
         state.put("overlayEnabled", config.getOverlayEnabled());
@@ -321,6 +326,12 @@ public final class BraiCmdPlugin extends Plugin {
         BraiCmdPlugin plugin = activePlugin;
         if (plugin == null) return;
         MAIN_HANDLER.post(() -> plugin.notifyOnboardingEventNow(type, text));
+    }
+
+    public static void notifyCredentialRefreshRequired() {
+        BraiCmdPlugin plugin = activePlugin;
+        if (plugin == null) return;
+        MAIN_HANDLER.post(() -> plugin.notifyListeners(EVENT_CREDENTIAL_REFRESH, new JSObject()));
     }
 
     private void notifyOnboardingEventNow(String type, String text) {

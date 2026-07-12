@@ -770,6 +770,29 @@ export function createBraiServer({
       }
 
       await withUserScope(authContext.userId, async () => {
+      if (req.method === 'POST' && url.pathname === '/v1/brai-cmd/device-token') {
+        const body = await readJson(req, { limit: 16 * 1024 });
+        const deviceId = firstTextField(body, ['deviceId', 'device_id']);
+        if (!deviceId) {
+          sendJson(req, res, 400, { error: 'device_id_required' });
+          return;
+        }
+        if (deviceId.length > 200) {
+          sendJson(req, res, 400, { error: 'invalid_device_id' });
+          return;
+        }
+        const issued = store.issueBraiCmdAccess({
+          displayName: authContext.user?.name || authContext.user?.email || 'Brai',
+          deviceId,
+          userId: authContext.userId,
+          clientVersion: firstTextField(body, ['clientVersion', 'client_version']),
+          appPackage: firstTextField(body, ['appPackage', 'app_package']),
+          source: 'authenticated'
+        });
+        sendJson(req, res, 201, { token: issued.token, status: issued.record.status });
+        return;
+      }
+
       if (req.method === 'GET' && url.pathname === '/v1/settings') {
         sendJson(req, res, 200, settingsState(store, inboxExternalAi));
         return;

@@ -64,10 +64,6 @@ class OverlayController(private val service: BraiAccessibilityService) {
                 hideScreenshotButton()
                 return@OnSharedPreferenceChangeListener
             }
-            if (key == AppConstants.KEY_AUTH_TOKEN && config.authToken.isBlank()) {
-                hideScreenshotButton()
-                return@OnSharedPreferenceChangeListener
-            }
             applyIconSettings()
             if (key == AppConstants.KEY_OVERLAY_ENABLED && inputButtonRequested) showIfAllowed()
             updateScreenshotButtonVisibility()
@@ -106,6 +102,7 @@ class OverlayController(private val service: BraiAccessibilityService) {
     private var contextActionFinishRunnable: Runnable? = null
     private var updateNoticeRunnable: Runnable? = null
     private var updateRefreshRunnable: Runnable? = null
+    private var updateCheckRunnable: Runnable? = null
     private var hiddenForScreenshot = false
     private var inputButtonRequested = false
     private var updateAvailable = false
@@ -980,6 +977,8 @@ class OverlayController(private val service: BraiAccessibilityService) {
     private fun stopUpdateIndicatorRefresh() {
         updateRefreshRunnable?.let(retryHandler::removeCallbacks)
         updateRefreshRunnable = null
+        updateCheckRunnable?.let(retryHandler::removeCallbacks)
+        updateCheckRunnable = null
     }
 
     private fun scheduleNextUpdateIndicatorRefresh() {
@@ -993,14 +992,23 @@ class OverlayController(private val service: BraiAccessibilityService) {
     private fun refreshUpdateIndicator(startCheck: Boolean) {
         val manager = BraiOtaRegistry.getManager() ?: BraiOtaManager(service)
         if (startCheck) manager.checkForUpdatesAsync()
-        applyUpdateIndicatorState(manager)
-        if (startCheck) {
-            retryHandler.postDelayed({ applyUpdateIndicatorState(manager) }, OTA_CHECK_SETTLE_MS)
-        }
+        settleUpdateIndicator(manager)
     }
 
-    private fun applyUpdateIndicatorState(manager: BraiOtaManager) {
-        val state = manager.stateJson()
+    private fun settleUpdateIndicator(manager: BraiOtaManager) {
+        updateCheckRunnable?.let(retryHandler::removeCallbacks)
+        updateCheckRunnable = Runnable {
+            val state = manager.stateJson()
+            applyUpdateIndicatorState(state)
+            if (state.optBoolean("checkInProgress", false)) {
+                updateCheckRunnable?.let { retryHandler.postDelayed(it, OTA_CHECK_POLL_MS) }
+            } else {
+                updateCheckRunnable = null
+            }
+        }.also(retryHandler::post)
+    }
+
+    private fun applyUpdateIndicatorState(state: org.json.JSONObject) {
         updateAvailable = state.optBoolean("updateAvailable", false)
         apkUpdateRequired = state.optBoolean("apkUpdateRequired", false)
         button?.setUpdateAvailable(shouldShowUpdateDot(updateAvailable, apkUpdateRequired))
@@ -1097,7 +1105,7 @@ class OverlayController(private val service: BraiAccessibilityService) {
         (screenshotButtonSizePx() * CONTEXT_ACTION_BUTTON_SCALE).roundToInt().coerceAtLeast(service.dp(28))
 
     private fun contextButtonAllowed(): Boolean =
-        config.overlayEnabled && config.authToken.isNotBlank() && !config.onboardingVoiceOnly && enabledContextMenuActions().isNotEmpty()
+        contextButtonAvailable(config.overlayEnabled, config.onboardingVoiceOnly, enabledContextMenuActions().size)
 
     private fun enabledContextMenuActions(): List<ContextMenuAction> =
         contextMenuActions.filter { action ->
@@ -1125,7 +1133,7 @@ class OverlayController(private val service: BraiAccessibilityService) {
         const val CONTEXT_ACTION_SUCCESS_MS = 1000L
         const val CONTEXT_ACTION_TERMINAL_MS = 800L
         const val OTA_INDICATOR_REFRESH_MS = 5 * 60 * 1000L
-        const val OTA_CHECK_SETTLE_MS = 8_000L
+        const val OTA_CHECK_POLL_MS = 250L
         val contextActionSettingKeys = setOf(
             AppConstants.KEY_CONTEXT_ACTION_IDEA_ENABLED,
             AppConstants.KEY_CONTEXT_ACTION_SCREENSHOT_ENABLED,

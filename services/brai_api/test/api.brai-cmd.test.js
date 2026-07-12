@@ -29,6 +29,10 @@ test('Brai Cmd access tokens, health, admin summary, and migrations work in Brai
       fixture.store.db.prepare('SELECT description FROM schema_migrations WHERE version = 59').get().description,
       'add preliminary Brai Cmd users'
     );
+    assert.equal(
+      fixture.store.db.prepare('SELECT description FROM schema_migrations WHERE version = 60').get().description,
+      'add authenticated Brai Cmd device tokens'
+    );
     assert.ok(fixture.store.db.prepare("SELECT 1 FROM agents WHERE id = 'brai-cmd.dictate.transcription'").get());
 
     const denied = await fetch(`${fixture.url}/v1/health`);

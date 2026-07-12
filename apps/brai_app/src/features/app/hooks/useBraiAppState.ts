@@ -88,6 +88,7 @@ export function useBraiAppState(initialSection: SectionId) {
   const [inboxPendingCount, setInboxPendingCount] = useState(0);
   const [busy, setBusy] = useState(false);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const authTransitionRef = useRef(0);
   const [timerBusy, setTimerBusy] = useState(false);
   const [actionOverlayOpen, setActionOverlayOpen] = useState(false);
   const [focusContextPanel, setFocusContextPanel] = useState<FocusContextPanel>(loadFocusContextPanelPreference);
@@ -249,6 +250,11 @@ export function useBraiAppState(initialSection: SectionId) {
       setBusy(false);
     }
   }
+
+  const provisionBraiCmdDeviceToken = useCallback(
+    (device: { deviceId: string; clientVersion?: string; appPackage?: string }) => apiRef.current.braiCmdDeviceToken(device),
+    [],
+  );
 
   async function flushPending(sourceApi = apiRef.current) {
     const queued = await pendingEvents();
@@ -647,44 +653,47 @@ export function useBraiAppState(initialSection: SectionId) {
   }
 
   async function onVerifyOtp(email: string, otp: string, context?: AuthOnboardingContext) {
+    const authTransition = ++authTransitionRef.current;
     setBusy(true);
     try {
       const result = await api.verifyOtp(email, otp, context);
-      if (result.authenticated) {
-        setAuthUser(result.user ?? null);
-        await ensureClientUser(result.user?.id ?? null);
-        resetUserSnapshots();
-        setSyncStatus("connecting");
-        await refreshAll();
-      }
+      if (!result.authenticated || !result.user) throw new Error("authentication_failed");
+      if (authTransitionRef.current !== authTransition) throw new Error("authentication_superseded");
+      setAuthUser(result.user);
+      await ensureClientUser(result.user.id);
+      resetUserSnapshots();
+      setSyncStatus("connecting");
+      await refreshAll();
     } catch (error) {
-      setSyncStatus("auth_required");
+      if (authTransitionRef.current === authTransition) setSyncStatus("auth_required");
       throw error;
     } finally {
-      setBusy(false);
+      if (authTransitionRef.current === authTransition) setBusy(false);
     }
   }
 
   async function onEmailLogin(email: string, context?: AuthOnboardingContext) {
+    const authTransition = ++authTransitionRef.current;
     setBusy(true);
     try {
       const result = await api.testEmailLogin(email, context);
-      if (result.authenticated) {
-        setAuthUser(result.user ?? null);
-        await ensureClientUser(result.user?.id ?? null);
-        resetUserSnapshots();
-        setSyncStatus("connecting");
-        await refreshAll();
-      }
+      if (!result.authenticated || !result.user) throw new Error("authentication_failed");
+      if (authTransitionRef.current !== authTransition) throw new Error("authentication_superseded");
+      setAuthUser(result.user);
+      await ensureClientUser(result.user.id);
+      resetUserSnapshots();
+      setSyncStatus("connecting");
+      await refreshAll();
     } catch (error) {
-      setSyncStatus("auth_required");
+      if (authTransitionRef.current === authTransition) setSyncStatus("auth_required");
       throw error;
     } finally {
-      setBusy(false);
+      if (authTransitionRef.current === authTransition) setBusy(false);
     }
   }
 
   async function onLogout() {
+    authTransitionRef.current += 1;
     await api.logout();
     setAuthUser(null);
     await ensureClientUser(null);
@@ -753,6 +762,7 @@ export function useBraiAppState(initialSection: SectionId) {
 
   useEffect(() => {
     let cancelled = false;
+    const bootAuthTransition = authTransitionRef.current;
 
     async function boot() {
       await ensureClientMeta();
@@ -762,7 +772,7 @@ export function useBraiAppState(initialSection: SectionId) {
       setApiBase(resolvedApiBase);
 
       const session = await bootApi.session();
-      if (cancelled) return;
+      if (cancelled || authTransitionRef.current !== bootAuthTransition) return;
       if (!session.authenticated) {
         setAuthUser(null);
         resetUserSnapshots();
@@ -784,7 +794,7 @@ export function useBraiAppState(initialSection: SectionId) {
         pendingInboxEvents(),
       ]);
 
-      if (cancelled) return;
+      if (cancelled || authTransitionRef.current !== bootAuthTransition) return;
       setPendingCount(queued.length);
       setActionPendingCount(queuedActions.length);
       setInboxPendingCount(queuedInbox.length);
@@ -1035,7 +1045,7 @@ export function useBraiAppState(initialSection: SectionId) {
     setSyncStatus,
   });
 
-  return { actionOverlayOpen, actions, actionsInfoActive, active, appSettings, authDisplayName: authUser?.name ?? "", authMode, authUser, bundlePublishedAt, busy, displaySyncStatus, focusBackground, focusContextPanel, focusGoalActive, focusHistoryActive, goal, history, inbox, inboxInfoActive, localSnapshotReady, markMobileContextPanelClosing, mobileContextPanel, mobileMenuOpen, ...actionCommands, ...inboxCommands, onDeleteFocusSession, onEditFocusInterval, onEditFocusSession, onEmailLogin, onLogout, onRequestOtp, onStart, onStartActionFocus, onStop, onStopActionFocus, onSwitchActionFocus, onUpdateAppSettings: updateAppSettings, onVerifyOtp, openSettingsPage, otaCheckedAt, otaRefreshing, otaState, refreshEngineOnce, refreshOtaStateOnce, section, selectSection, setActionOverlayOpen, setFocusBackground, setMobileContextPanel: setMobileContextPanelState, setMobileMenuOpen, setTheme, swipeNavigation, theme, timer, timerBusy, todayKey, toggleActionsInfoPanel, toggleFocusContextPanel, toggleInboxInfoPanel, totalPendingCount, versionCheckedAt, versionError, versionRefreshing, versionState };
+  return { actionOverlayOpen, actions, actionsInfoActive, active, appSettings, authDisplayName: authUser?.name ?? "", authMode, authUser, bundlePublishedAt, busy, displaySyncStatus, focusBackground, focusContextPanel, focusGoalActive, focusHistoryActive, goal, history, inbox, inboxInfoActive, localSnapshotReady, markMobileContextPanelClosing, mobileContextPanel, mobileMenuOpen, ...actionCommands, ...inboxCommands, onDeleteFocusSession, onEditFocusInterval, onEditFocusSession, onEmailLogin, onLogout, onRequestOtp, onStart, onStartActionFocus, onStop, onStopActionFocus, onSwitchActionFocus, onUpdateAppSettings: updateAppSettings, onVerifyOtp, openSettingsPage, otaCheckedAt, otaRefreshing, otaState, provisionBraiCmdDeviceToken, refreshEngineOnce, refreshOtaStateOnce, section, selectSection, setActionOverlayOpen, setFocusBackground, setMobileContextPanel: setMobileContextPanelState, setMobileMenuOpen, setTheme, swipeNavigation, theme, timer, timerBusy, todayKey, toggleActionsInfoPanel, toggleFocusContextPanel, toggleInboxInfoPanel, totalPendingCount, versionCheckedAt, versionError, versionRefreshing, versionState };
 }
 
 function loadAppSettingsPreference(): AppSettings {
