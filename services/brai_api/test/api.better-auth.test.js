@@ -11,7 +11,7 @@ import {
   jsonRequest,
   request
 } from '../test-support/api.js';
-import { OTP_EMAIL_SUBJECT, OTP_EXPIRES_IN_SECONDS, OTP_RESEND_AFTER_SECONDS, OTP_RESEND_STRATEGY, renderOtpEmail } from '../src/auth.js';
+import { OTP_ALLOWED_ATTEMPTS, OTP_EMAIL_SUBJECT, OTP_EXPIRES_IN_SECONDS, OTP_RESEND_AFTER_SECONDS, OTP_RESEND_STRATEGY, renderOtpEmail } from '../src/auth.js';
 import { createUserVaultPreparer } from '../src/server.js';
 
 function seedPrimaryUser(fixture, id = 'test-user') {
@@ -273,6 +273,41 @@ test('email OTP signs in, claims legacy data, and isolates the next user', async
     });
     assert.deepEqual(firstAfterSecondWrite.body.activities.map((item) => item.id), ['legacy-action']);
     assert.deepEqual(secondAfterWrite.body.activities.map((item) => item.id), ['second-action']);
+  } finally {
+    await fixture.close();
+  }
+});
+
+test('email OTP resend reuses the active code instead of rotating it', async () => {
+  const sentOtps = [];
+  const fixture = await createFixture([
+    '2026-07-01T10:00:00.000Z',
+    '2026-07-01T10:00:20.000Z',
+    '2026-07-01T10:00:21.000Z'
+  ], {
+    sessionSecret: SESSION_SECRET,
+    sendOtp: ({ email, otp }) => sentOtps.push({ email, otp })
+  });
+
+  try {
+    for (let index = 0; index < 2; index += 1) {
+      const send = await jsonRequest(fixture.url, '/auth/otp/send', {
+        method: 'POST',
+        body: JSON.stringify({ email: 'reuse@example.com' })
+      });
+      assert.equal(send.status, 200);
+      assert.equal(send.body.resend_strategy, OTP_RESEND_STRATEGY);
+    }
+    assert.equal(sentOtps.length, 2);
+    assert.equal(sentOtps[1].otp, sentOtps[0].otp);
+
+    const verify = await jsonRequest(fixture.url, '/auth/otp/verify', {
+      method: 'POST',
+      body: JSON.stringify({ email: 'reuse@example.com', otp: sentOtps[0].otp })
+    });
+    assert.equal(verify.status, 200);
+    assert.equal(verify.body.authenticated, true);
+    assert.equal(OTP_ALLOWED_ATTEMPTS, 5);
   } finally {
     await fixture.close();
   }

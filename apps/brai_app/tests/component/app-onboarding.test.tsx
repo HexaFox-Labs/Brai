@@ -606,7 +606,7 @@ describe("BraiApp onboarding", () => {
           success: true,
           expires_in_seconds: 300,
           resend_after_seconds: 60,
-          resend_strategy: "rotate",
+          resend_strategy: "reuse",
         }), {
           status: 200,
           headers: { "content-type": "application/json" },

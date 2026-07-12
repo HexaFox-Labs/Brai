@@ -1342,8 +1342,12 @@ function OnboardingAuthForm({
   );
 
   function applyOtpResult(result: OtpSendResult) {
+    const nowMs = Date.now();
+    const previousSentAtMs = otpTimer.sentAtMs;
+    const previousStillValid =
+      previousSentAtMs !== null && nowMs < previousSentAtMs + otpTimer.expiresInSeconds * 1000;
     setOtpTimer({
-      sentAtMs: Date.now(),
+      sentAtMs: result.resend_strategy === "reuse" && previousStillValid ? previousSentAtMs : nowMs,
       expiresInSeconds: positiveSeconds(result.expires_in_seconds, defaultOtpTimer.expiresInSeconds),
       resendAfterSeconds: positiveSeconds(result.resend_after_seconds, defaultOtpTimer.resendAfterSeconds),
     });

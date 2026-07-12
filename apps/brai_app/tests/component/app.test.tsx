@@ -163,7 +163,7 @@ describe("BraiApp shell", () => {
 
       expect(auth.onRequestOtp).toHaveBeenCalledTimes(2);
       expect(screen.getByTestId("auth-otp-input")).toHaveValue("");
-      expect(screen.getByText("Код действителен 5:00")).toBeInTheDocument();
+      expect(screen.getByText("Код действителен 4:00")).toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }
@@ -1142,7 +1142,7 @@ function authPanelProps() {
       success: true,
       expires_in_seconds: 300,
       resend_after_seconds: 60,
-      resend_strategy: "rotate" as const,
+      resend_strategy: "reuse" as const,
     })),
     onVerifyOtp: vi.fn(async () => undefined),
   };
