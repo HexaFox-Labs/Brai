@@ -123,6 +123,21 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   },
 };
 
+export type DrawSceneSummary = {
+  name: string;
+  title: string;
+  updated_at_utc: string;
+  size_bytes: number;
+};
+
+export type DrawScene = DrawSceneSummary & {
+  scene: Record<string, unknown>;
+};
+
+export type BraiApiError = Error & {
+  status?: number;
+};
+
 /**
  * Wraps the Brai HTTP API with typed client methods.
  */
@@ -210,6 +225,28 @@ export class BraiApi {
     return this.request("/v1/settings", {
       method: "PATCH",
       json: patch,
+    });
+  }
+
+  async draws(): Promise<{ draws: DrawSceneSummary[] }> {
+    return this.request("/v1/draws");
+  }
+
+  async draw(name: string): Promise<DrawScene> {
+    return this.request(`/v1/draws/${encodeURIComponent(name)}`);
+  }
+
+  async saveDraw(name: string, scene: Record<string, unknown>): Promise<DrawScene> {
+    return this.request(`/v1/draws/${encodeURIComponent(name)}`, {
+      method: "POST",
+      json: { scene },
+    });
+  }
+
+  async renameDraw(name: string, nextName: string): Promise<DrawScene> {
+    return this.request(`/v1/draws/${encodeURIComponent(name)}/rename`, {
+      method: "POST",
+      json: { name: nextName },
     });
   }
 
@@ -340,8 +377,9 @@ export class BraiApi {
     }
 
     if (!response.ok) {
-      const error = new Error(`brai_api_${response.status}`);
+      const error = new Error(`brai_api_${response.status}`) as BraiApiError;
       error.name = response.status === 401 ? "UnauthorizedError" : "BraiApiError";
+      error.status = response.status;
       throw error;
     }
 
