@@ -4,23 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BraiApi, type OtpSendResult } from "@/shared/api/braiApi";
 import { defaultApiBase } from "@/shared/config/runtime";
-import Galaxy from "@/shared/ui/galaxy";
-import { AuthPanel, authDarkThemeStyle } from "./chrome/AppChrome";
-
-const AUTH_GALAXY_ACTIVE = {
-  density: 2,
-  glowIntensity: 0.2,
-  hueShift: 140,
-  mouseInteraction: false,
-  mouseRepulsion: false,
-  rotationSpeed: 0.1,
-  saturation: 0,
-  speed: 1,
-  starSpeed: 1,
-  twinkleIntensity: 0.3,
-  repulsionStrength: 2.5,
-  autoCenterRepulsion: 0,
-} as const;
+import { AuthScreen } from "./AuthScreen";
 
 export function AuthPage() {
   const router = useRouter();
@@ -76,27 +60,13 @@ export function AuthPage() {
   }
 
   return (
-    <main
-      className="relative isolate grid min-h-dvh place-items-center overflow-hidden bg-background px-4 py-10 text-foreground"
-      style={authDarkThemeStyle}
-      data-auth-page
-    >
-      <div className="auth-galaxy-background pointer-events-none absolute inset-0 z-0" aria-hidden="true">
-        <Galaxy {...AUTH_GALAXY_ACTIVE} />
-      </div>
-      {ready ? (
-        <div className="relative z-10 grid w-full max-w-md justify-items-center gap-4">
-          <AuthPanel
-            busy={busy}
-            className="m-0"
-            onRequestOtp={onRequestOtp}
-            onVerifyOtp={onVerifyOtp}
-          />
-          <a className="text-sm font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:text-foreground focus-visible:underline" href="https://brai.one/">
-            На главную
-          </a>
-        </div>
-      ) : null}
-    </main>
+    <AuthScreen
+      busy={busy}
+      dataAuthPage
+      formVisible={ready}
+      showHomeLink
+      onRequestOtp={onRequestOtp}
+      onVerifyOtp={onVerifyOtp}
+    />
   );
 }

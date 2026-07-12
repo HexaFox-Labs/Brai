@@ -9,11 +9,12 @@ import { getBraiLocalStorageItem, removeBraiLocalStorageItem, setBraiLocalStorag
 import { ScrollArea } from "@/shared/ui/scroll-area";
 import { SidebarInset, SidebarProvider } from "@/shared/ui/sidebar";
 import { OnboardingFlow, shouldShowOnboarding } from "@/features/onboarding/OnboardingFlow";
+import { AuthScreen } from "./AuthScreen";
 import { AppStartupSplash } from "./AppStartupSplash";
 import type { SectionId } from "./appModel";
 import { isPrimarySection, sectionIcon, sectionTitle } from "./appModel";
 import { cx } from "./appUtils";
-import { AuthPanel, IconButton, MobileContextSheet, ScreenHeader, ThemeButton } from "./chrome/AppChrome";
+import { IconButton, MobileContextSheet, ScreenHeader, ThemeButton } from "./chrome/AppChrome";
 import { useBraiAppState } from "./hooks/useBraiAppState";
 import { DesktopRail, MainDock, MobileDockOverflowButton, MobileDockOverflowSheet, MobileMenuButton, MobileProfileDrawer } from "./navigation/AppNavigation";
 import { isMobileNavigationViewport, sectionSwipePageStyle, useLeftEdgeMenuSwipe } from "./navigation/useSectionSwipeNavigation";
@@ -164,8 +165,9 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
           />
         ) : null}
         {app.displaySyncStatus === "auth_required" ? (
-          <AuthPanel
+          <AuthScreen
             busy={app.busy}
+            layout="embedded"
             onRequestOtp={app.onRequestOtp}
             onVerifyOtp={app.onVerifyOtp}
           />

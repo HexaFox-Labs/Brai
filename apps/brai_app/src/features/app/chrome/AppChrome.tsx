@@ -33,7 +33,7 @@ export { syncStatusIconToneClasses };
 export const authDarkThemeStyle = {
   "--background": "#050607",
   "--foreground": "#f4f4f5",
-  "--card": "#0f1115",
+  "--card": "rgb(15 17 21 / 0.7)",
   "--card-foreground": "#f4f4f5",
   "--popover": "#0f1115",
   "--popover-foreground": "#f4f4f5",
@@ -381,7 +381,7 @@ export function AuthPanel({
 
   return (
     <Card
-      className={cx(className, "w-full sm:max-w-md")}
+      className={cx(className, "w-full backdrop-blur-md sm:max-w-md")}
       style={authDarkThemeStyle}
       render={<form onSubmit={submitOtp} />}
     >

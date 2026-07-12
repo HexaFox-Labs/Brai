@@ -48,7 +48,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/shared/ui/textarea";
 import { Carousel, CarouselContent, CarouselItem, type CarouselApi } from "@/shared/ui/carousel";
 import { cx } from "../app/appUtils";
-import { AuthPanel } from "../app/chrome/AppChrome";
+import { AuthScreen } from "../app/AuthScreen";
 import {
   isValidOnboardingName,
   loadOnboardingState,
@@ -1190,11 +1190,7 @@ function OnboardingAuthForm(props: {
   onRequestOtp: (email: string) => Promise<OtpSendResult>;
   onVerifyOtp: (email: string, otp: string) => Promise<void>;
 }) {
-  return (
-    <div className="grid min-h-0 flex-1 place-items-center overflow-hidden py-4">
-      <AuthPanel className="m-0" {...props} />
-    </div>
-  );
+  return <AuthScreen layout="embedded" {...props} />;
 }
 
 function TrainingDictate({ confirmed, onChange, onNext, value }: { confirmed: boolean; value: string; onChange: (value: string) => void; onNext: () => void }) {

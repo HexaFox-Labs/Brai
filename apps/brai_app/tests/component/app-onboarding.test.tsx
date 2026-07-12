@@ -593,6 +593,7 @@ describe("BraiApp onboarding", () => {
     render(<BraiApp />);
 
     expect(await screen.findByText("Вход в Brai")).toBeInTheDocument();
+    expect(document.querySelector(".auth-galaxy-background")).toBeInTheDocument();
     expect(screen.getByLabelText("Email")).toBeInTheDocument();
     expectNoPasswordPrompt();
     await requestOtpForEmail("wrong@example.test");
