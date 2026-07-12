@@ -648,7 +648,7 @@ describe("BraiApp actions", () => {
           sort_order: null,
           deleted_at_utc: null,
           restored_at_utc: null,
-          item_roles_id: 31,
+          item_roles_id: null,
           initial_event_id: "activity:create-done",
           workflow_execution_id: 22,
           workflow_status: "completed",
@@ -657,7 +657,7 @@ describe("BraiApp actions", () => {
           workflow_last_error: null,
           temporal_workflow_id: "brai:activity:action-ai-done",
           temporal_run_id: "run-activity-22",
-          ai_processing_status: null,
+          ai_processing_status: "running",
           ai_processing_error: null,
         },
       ],
@@ -674,7 +674,7 @@ describe("BraiApp actions", () => {
             version: 1,
             title: "Activity raw normalization",
             task_queue: "brai-inbox-normalization",
-            steps: ["ingest", "dispatch", "prepare_raw", "raw_normalizer", "apply_normalized_raw"],
+            steps: ["ingest", "dispatch", "prepare_raw", "image_describer", "raw_normalizer", "apply_normalized_raw"],
             input_schema_version: "brai.activity.raw.v1",
             output_schema_version: "brai.activity.normalized.v1",
           },
@@ -690,6 +690,7 @@ describe("BraiApp actions", () => {
             { id: "ingest", state: "completed", reason: null },
             { id: "dispatch", state: "completed", reason: null },
             { id: "prepare_raw", state: "completed", reason: null },
+            { id: "image_describer", state: "skipped", reason: "not_required" },
             { id: "raw_normalizer", state: "running", reason: null },
             { id: "apply_normalized_raw", state: "pending", reason: null },
           ],
@@ -714,9 +715,12 @@ describe("BraiApp actions", () => {
     const normalizedTitle = screen.getByRole("textbox", { name: "Название действия: Нормализованное действие" });
     const normalizedRow = normalizedTitle.closest(".action-row") as HTMLElement;
     expect(within(normalizedRow).getByText("AI")).toBeInTheDocument();
+    expect(within(normalizedRow).queryByText("AI-working")).not.toBeInTheDocument();
 
     fireEvent.click(runningTitle);
     fireEvent.click(screen.getByRole("tab", { name: "AI" }));
+    expect((await screen.findByText(/image_describer/)).closest("[data-workflow-step-state]"))
+      .toHaveAttribute("data-workflow-step-state", "skipped");
     expect((await screen.findByText("raw_normalizer")).closest("[data-workflow-step-state]"))
       .toHaveAttribute("data-workflow-step-state", "running");
     expect(screen.getByText("activity.normalizer")).toBeInTheDocument();

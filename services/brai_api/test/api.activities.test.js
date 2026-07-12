@@ -77,12 +77,15 @@ test('action created through sync is normalized into an Activity role', async ()
     '2026-06-16T10:00:03.000Z'
   ], {
     activityAutoProcess: true,
-    activityNormalizer: async ({ item }) => ({
-      title: `${item.title} нормализовано`,
-      description: 'Нормализованное описание',
-      reason: 'Нормализованная причина',
-      normalization: 'Activity parsed as action'
-    })
+    activityNormalizer: async ({ item, imageDescription }) => {
+      assert.equal(imageDescription, '');
+      return {
+        title: `${item.title} нормализовано`,
+        description: 'Нормализованное описание',
+        reason: 'Нормализованная причина',
+        normalization: 'Activity parsed as action'
+      };
+    }
   });
 
   try {
@@ -124,6 +127,20 @@ test('action created through sync is normalized into an Activity role', async ()
     const details = await request(fixture.url, '/v1/activities/action-ai/workflow');
     assert.equal(details.status, 200);
     assert.equal(details.body.execution.status, 'completed');
+    assert.deepEqual(details.body.definition.steps, [
+      'ingest',
+      'dispatch',
+      'prepare_raw',
+      'image_describer',
+      'raw_normalizer',
+      'apply_normalized_raw',
+      'terminal_reconcile'
+    ]);
+    assert.deepEqual(details.body.step_states.find((step) => step.id === 'image_describer'), {
+      id: 'image_describer',
+      state: 'skipped',
+      reason: 'not_required'
+    });
     assert.equal(details.body.attempts[0].agent_id, 'activity.normalizer');
   } finally {
     await fixture.close();

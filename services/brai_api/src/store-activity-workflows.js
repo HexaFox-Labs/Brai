@@ -665,12 +665,22 @@ export const activityWorkflowStoreMethods = {
 };
 
 function activityStepStates({ execution, steps, attempts, item, telemetrySteps = [] }) {
+  const currentIndex = steps.indexOf(execution.current_step);
+  const terminal = ['completed', 'failed', 'needs_review'].includes(execution.status);
+  const failedIndex = ['failed', 'needs_review'].includes(execution.status) ? currentIndex : -1;
+  const progressedPast = (step) => currentIndex > steps.indexOf(step);
+  const failedAt = (step) => failedIndex === steps.indexOf(step);
+  const skippedAfterFailure = (step) => failedIndex >= 0 && steps.indexOf(step) > failedIndex;
   if (telemetrySteps.length > 0) {
     const byStep = new Map();
     for (const step of telemetrySteps) byStep.set(step.step_key, step);
     return steps.map((step) => {
       const telemetry = byStep.get(step);
-      if (!telemetry) return { id: step, state: 'pending', reason: null };
+      if (!telemetry) {
+        if (step === 'image_describer' && skippedAfterFailure(step)) return { id: step, state: 'skipped', reason: 'upstream_failed' };
+        if (step === 'image_describer' && (progressedPast(step) || terminal)) return { id: step, state: 'skipped', reason: 'not_required' };
+        return { id: step, state: 'pending', reason: null };
+      }
       const state = telemetry.status === 'completed' ? 'completed'
         : telemetry.status === 'failed' || telemetry.status === 'timed_out' ? 'failed'
           : telemetry.status === 'skipped' ? 'skipped'
@@ -679,14 +689,8 @@ function activityStepStates({ execution, steps, attempts, item, telemetrySteps =
       return { id: step, state, reason: telemetry.error_code ?? telemetry.metadata_json?.skip_reason ?? null };
     });
   }
-  const currentIndex = steps.indexOf(execution.current_step);
-  const terminal = ['completed', 'failed', 'needs_review'].includes(execution.status);
-  const failedIndex = ['failed', 'needs_review'].includes(execution.status) ? currentIndex : -1;
   const inline = execution.run_id?.startsWith('inline:') === true;
   const normalizerAttempts = attempts.filter((attempt) => attempt.agent_id === ACTIVITY_NORMALIZER_AGENT_ID);
-  const progressedPast = (step) => currentIndex > steps.indexOf(step);
-  const failedAt = (step) => failedIndex === steps.indexOf(step);
-  const skippedAfterFailure = (step) => failedIndex >= 0 && steps.indexOf(step) > failedIndex;
   const state = (id, value, reason = null) => ({ id, state: value, reason });
 
   return steps.map((step) => {
@@ -701,6 +705,13 @@ function activityStepStates({ execution, steps, attempts, item, telemetrySteps =
       if (failedAt(step)) return state(step, 'failed');
       if (execution.status === 'running' && execution.current_step === step) return state(step, 'running');
       if (progressedPast(step) || terminal) return state(step, 'completed');
+      return state(step, 'pending');
+    }
+    if (step === 'image_describer') {
+      if (failedAt(step)) return state(step, 'failed');
+      if (execution.status === 'running' && execution.current_step === step) return state(step, 'running');
+      if (skippedAfterFailure(step)) return state(step, 'skipped', 'upstream_failed');
+      if (progressedPast(step) || terminal) return state(step, 'skipped', 'not_required');
       return state(step, 'pending');
     }
     if (step === 'raw_normalizer') {

@@ -435,6 +435,8 @@ function actionRowMeta(action: ActivityItem) {
     meta.push(`Ошибка AI: ${action.ai_processing_error || "обработка не выполнена"}`);
   } else if (action.ai_processing_status === "needs_review") {
     meta.push(`needs_review: ${action.ai_processing_error || "требуется проверка"}`);
+  } else if (action.workflow_status === "completed" || Number.isInteger(action.item_roles_id)) {
+    meta.push("AI");
   } else if (
     action.ai_processing_status === "running" ||
     action.item_roles_id === null ||
@@ -442,8 +444,6 @@ function actionRowMeta(action: ActivityItem) {
     action.workflow_status === "running"
   ) {
     meta.push("AI-working");
-  } else if (Number.isInteger(action.item_roles_id)) {
-    meta.push("AI");
   }
   return meta;
 }

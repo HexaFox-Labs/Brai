@@ -52,12 +52,13 @@ describe("BraiApp shell", () => {
 
   it("does not tie cabinet overlays to the legacy native access-name request", async () => {
     stubAndroidCapacitor();
-    cmdPlugin.ensureAccess.mockResolvedValueOnce({ accessGranted: false });
+    cmdPlugin.ensureAccess.mockResolvedValue({ accessGranted: false });
 
     render(<BraiApp />);
 
     await waitFor(() => expect(cmdPlugin.setOverlayEnabled).toHaveBeenCalledWith({ enabled: true }));
     expect(cmdPlugin.setVoiceOnlyMode).toHaveBeenCalledWith({ enabled: false });
+    expect(cmdPlugin.setQueuePausedMode).toHaveBeenCalledWith({ enabled: false });
     expect(cmdPlugin.ensureAccess).toHaveBeenCalledWith({ displayName: "Test" });
   });
 
@@ -137,7 +138,7 @@ describe("BraiApp shell", () => {
 
   it("redirects anonymous web users to the standalone auth page without rendering the cabinet shell", async () => {
     await setMeta("currentUserId", null);
-    vi.spyOn(BraiApi.prototype, "session").mockResolvedValue({ authenticated: false, user: null });
+    const sessionSpy = vi.spyOn(BraiApi.prototype, "session").mockResolvedValue({ authenticated: false, user: null });
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = requestUrl(input);
       if (url.includes("/auth/session")) {
@@ -149,8 +150,12 @@ describe("BraiApp shell", () => {
       return Promise.reject(new Error("offline"));
     }));
 
-    render(<BraiApp />);
+    await act(async () => {
+      render(<BraiApp />);
+      await Promise.resolve();
+    });
 
+    await waitFor(() => expect(sessionSpy).toHaveBeenCalled());
     await waitFor(() => expect(window.location.pathname).toBe("/auth"), { timeout: 9_000 });
     expect(document.querySelector("[data-auth-redirect]")).toBeInTheDocument();
     expect(document.querySelector("[data-app-shell]")).not.toBeInTheDocument();

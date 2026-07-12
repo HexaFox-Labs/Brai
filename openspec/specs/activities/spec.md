@@ -49,6 +49,17 @@ they are linked into `items` and `item_roles`.
 - **AND** it creates or updates the related `items` and `item_roles` records
 - **AND** it writes an `activity.normalized` event
 
+#### Scenario: Activity has no image attachments
+- **WHEN** a raw Activity has no image attachments
+- **THEN** the Activity workflow still includes the `image_describer` step
+- **AND** that step is marked `skipped` with reason `not_required`
+- **AND** the raw normalizer receives an empty image description
+
+#### Scenario: Activity image attachments are supported by the workflow
+- **WHEN** a future Activity UI attaches images to a raw Activity
+- **THEN** the Activity workflow describes images before raw normalization
+- **AND** the raw normalizer receives the image description with the text fields
+
 #### Scenario: User changes arrive before normalization completes
 - **WHEN** status, deletion, restore, or ordering changes are accepted before Activity normalization applies
 - **THEN** those user changes are preserved after workflow apply

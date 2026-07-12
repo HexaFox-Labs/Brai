@@ -10,6 +10,7 @@ import {
 } from './inbox.js';
 import {
   applyNormalizedActivityForWorkflow,
+  describeActivityImagesForWorkflow,
   normalizeActivityRawForWorkflow,
   prepareActivityNormalization
 } from './activity-normalization.js';
@@ -83,6 +84,8 @@ export async function createInboxWorkflowRuntime({
       store.failInboxWorkflow({ ...input, nowIso: now().toISOString() })),
     prepareActivityNormalization: (input) => withUserScope(input.ownerUserId, () =>
       prepareActivityNormalization({ ...input, store, nowDate: now() })),
+    describeActivityImages: (input) => withUserScope(input.ownerUserId, () =>
+      describeActivityImagesForWorkflow({ ...input, store, nowDate: now() })),
     normalizeActivityRaw: (input) => withUserScope(input.ownerUserId, () =>
       normalizeActivityRawForWorkflow({
         ...input,

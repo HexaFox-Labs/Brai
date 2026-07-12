@@ -25,6 +25,9 @@ const DEFAULT_ACTIVITY_NORMALIZER_PROMPT_TEMPLATE = [
   'Описание:',
   '{{description}}',
   '',
+  'Описание вложений/изображений, если есть:',
+  '{{image_description}}',
+  '',
   'Автор:',
   '{{author}}',
   '',
@@ -54,6 +57,29 @@ export async function processActivityItem({
     const prepared = prepareActivityNormalization({ store, activityId, workflowId, runId, nowDate });
     if (prepared.skipped) return prepared;
 
+    let imageDescription = '';
+    if (prepared.imageRequired) {
+      const imageResult = await describeActivityImagesForWorkflow({
+        store,
+        activityId,
+        workflowId,
+        runId,
+        nowDate
+      });
+      if (!imageResult.ok) {
+        store.failActivityWorkflow({
+          activityId,
+          workflowId,
+          runId,
+          reason: imageResult.error,
+          step: 'image_describer',
+          nowIso: nowDate.toISOString()
+        });
+        return { ok: false, reason: 'image_description_failed' };
+      }
+      imageDescription = imageResult.imageDescription;
+    }
+
     let validationError = '';
     for (let attempt = 1; attempt <= 3; attempt += 1) {
       const result = await normalizeActivityRawForWorkflow({
@@ -63,6 +89,7 @@ export async function processActivityItem({
         runId,
         attempt,
         validationError,
+        imageDescription,
         codexBin,
         codexModel: attempt > 1 && codexFallbackModel ? codexFallbackModel : codexModel,
         codexTimeoutMs,
@@ -78,6 +105,7 @@ export async function processActivityItem({
             workflowId,
             runId,
             normalized: result.normalized,
+            imageDescription,
             nowDate
           });
         } catch (error) {
@@ -147,15 +175,59 @@ export function prepareActivityNormalization({ store, activityId, workflowId, ru
     });
     return { skipped: true, reason: 'raw_input_empty' };
   }
+  const imageRequired = activityImageRequired(item);
   store.recordActivityWorkflowStepFinished?.({
     activityId,
     workflowId,
     runId,
     stepKey: 'prepare_raw',
     status: 'completed',
+    nowIso: nowDate.toISOString(),
+    metadataJson: { image_required: imageRequired }
+  });
+  if (!imageRequired) {
+    store.recordActivityWorkflowStepSkipped?.({
+      activityId,
+      workflowId,
+      runId,
+      stepKey: 'image_describer',
+      reason: 'not_required',
+      nowIso: nowDate.toISOString()
+    });
+  }
+  return { ok: true, imageRequired };
+}
+
+export async function describeActivityImagesForWorkflow({
+  store,
+  activityId,
+  workflowId,
+  runId,
+  nowDate = new Date()
+}) {
+  const item = store.getActivityItem(activityId);
+  if (!item || !activityImageRequired(item)) return { ok: true, imageDescription: '' };
+  const active = store.markActivityWorkflowStep({
+    activityId,
+    workflowId,
+    runId,
+    step: 'image_describer',
+    attemptCount: 1,
     nowIso: nowDate.toISOString()
   });
-  return { ok: true };
+  if (!active) return { ok: false, error: 'workflow_not_active' };
+  const error = 'activity_image_describer_not_configured';
+  store.recordActivityWorkflowStepFinished?.({
+    activityId,
+    workflowId,
+    runId,
+    stepKey: 'image_describer',
+    status: 'failed',
+    errorCode: error,
+    errorSummary: error,
+    nowIso: nowDate.toISOString()
+  });
+  return { ok: false, error };
 }
 
 export async function normalizeActivityRawForWorkflow({
@@ -165,6 +237,7 @@ export async function normalizeActivityRawForWorkflow({
   runId,
   attempt,
   validationError = '',
+  imageDescription = '',
   codexBin,
   codexModel,
   codexTimeoutMs,
@@ -192,7 +265,12 @@ export async function normalizeActivityRawForWorkflow({
     return { ok: false, validationFailed: false, error: 'workflow_output_schema_missing' };
   }
   const agent = store.getAgent(ACTIVITY_NORMALIZER_AGENT_ID);
-  const promptTemplate = renderActivityPrompt(agent?.llm_prompt_template || DEFAULT_ACTIVITY_NORMALIZER_PROMPT_TEMPLATE, item, validationError);
+  const promptTemplate = renderActivityPrompt(
+    agent?.llm_prompt_template || DEFAULT_ACTIVITY_NORMALIZER_PROMPT_TEMPLATE,
+    item,
+    imageDescription,
+    validationError
+  );
   const result = await normalizeJsonWithAgent({
     agent,
     settings: store.appSettings?.(),
@@ -201,7 +279,7 @@ export async function normalizeActivityRawForWorkflow({
     codexTimeoutMs,
     externalAi,
     normalizer,
-    normalizerInput: { item, validationError },
+    normalizerInput: { item, imageDescription, validationError },
     promptTemplate,
     outputSchema,
     strictOutputSchema: workflowVersion === ACTIVITY_WORKFLOW_DEFINITION_VERSION,
@@ -217,6 +295,7 @@ export async function normalizeActivityRawForWorkflow({
     status: result.status === 'done' ? 'done' : 'failed',
     activityId,
     item,
+    imageDescription,
     output: result.status === 'done' ? result : result.output,
     error: result.error,
     model: result.model,
@@ -253,6 +332,7 @@ export function applyNormalizedActivityForWorkflow({
   workflowId,
   runId,
   normalized,
+  imageDescription = '',
   deferTerminal = false,
   nowDate = new Date()
 }) {
@@ -268,7 +348,7 @@ export function applyNormalizedActivityForWorkflow({
     workflowId,
     runId,
     normalized,
-    normalizationText: normalized.normalization,
+    normalizationText: normalizeActivityBlocks({ imageDescription, analysis: normalized.normalization }),
     deferTerminal,
     nowIso: nowDate.toISOString()
   });
@@ -322,11 +402,12 @@ export function failActivityNormalization({ store, activityId, workflowId, runId
   });
 }
 
-function renderActivityPrompt(template, item, validationError = '') {
+function renderActivityPrompt(template, item, imageDescription = '', validationError = '') {
   const prompt = template
     .replaceAll('{{activity_type}}', item.activity_type_id || 'action')
     .replaceAll('{{title}}', item.title || '')
     .replaceAll('{{description}}', item.description_md || '')
+    .replaceAll('{{image_description}}', imageDescription || '')
     .replaceAll('{{author}}', item.author || '')
     .replaceAll('{{reason}}', item.reason || '')
     .replaceAll('{{status}}', item.status || '')
@@ -354,7 +435,7 @@ function rawActivityText(item) {
 }
 
 function recordActivityNormalizerAiLog(store, {
-  agent, dt, status, activityId, item, output, error, model, durationMs,
+  agent, dt, status, activityId, item, imageDescription, output, error, model, durationMs,
   workflowId, runId, attemptNumber
 }) {
   return store.recordAiLog({
@@ -375,6 +456,7 @@ function recordActivityNormalizerAiLog(store, {
         { ref: 'activities.activity_type_id', value: item.activity_type_id || 'action' },
         { ref: 'activities.title', value: item.title || '' },
         { ref: 'activities.description_md', value: item.description_md || '' },
+        { ref: 'activity.normalization_text.image_description', value: imageDescription || '' },
         { ref: 'activities.author', value: item.author || '' },
         { ref: 'activities.reason', value: item.reason || '' },
         { ref: 'activities.status', value: item.status || '' }
@@ -392,6 +474,17 @@ function recordActivityNormalizerAiLog(store, {
       }
     }
   });
+}
+
+function activityImageRequired(item) {
+  return Array.isArray(item?.attachment_links) && item.attachment_links.length > 0;
+}
+
+function normalizeActivityBlocks({ imageDescription, analysis }) {
+  return [
+    imageDescription ? `## Описание картинки\n\n${imageDescription}` : '',
+    analysis
+  ].filter(Boolean).join('\n\n').trim();
 }
 
 function cleanNormalizedTitle(value) {

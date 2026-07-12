@@ -126,18 +126,30 @@ async function runActivityNormalization(context) {
     return prepared;
   }
 
+  let imageDescription = '';
+  if (prepared.imageRequired) {
+    const image = await runActivity('image_describer', () => activities.describeActivityImages(context));
+    if (!image.ok) {
+      await activities.failActivityNormalization({ ...context, reason: image.error, step: 'image_describer' });
+      return { ok: false, reason: 'image_description_failed' };
+    }
+    imageDescription = image.imageDescription;
+  }
+
   let validationError = '';
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     const result = await runActivity('raw_normalizer', () => activities.normalizeActivityRaw({
       ...context,
       attempt,
-      validationError
+      validationError,
+      imageDescription
     }));
     if (result.ok) {
       try {
         return await activities.applyNormalizedActivity({
           ...context,
-          normalized: result.normalized
+          normalized: result.normalized,
+          imageDescription
         });
       } catch (error) {
         await activities.failActivityNormalization({
