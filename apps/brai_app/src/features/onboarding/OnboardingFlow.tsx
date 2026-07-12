@@ -790,7 +790,11 @@ export function OnboardingFlow({
     if (state.step === "accessibility-why") {
       return (
         <StepScreen actions={<PrimaryButton onClick={() => go("accessibility-blocked")}>Три шага</PrimaryButton>}>
-          <InfoBlock icon={ShieldCheck} title="Особый доступ" />
+          <InfoBlock
+            icon={ShieldCheck}
+            title="Особый доступ"
+            text={"Делает возможным всё остальное, но требует особых разрешений.\n\nПозволяет:\n\nВставить текст в поле ввода\n\nРаботать с буфером обмена\n\nДелать снимки экрана\n\nВидеть то, что видите вы, чтобы помогать\n\nВсё под вашим контролем"}
+          />
         </StepScreen>
       );
     }
@@ -1386,7 +1390,7 @@ function StatusCard({ text, tone }: { text: string; tone: ChromeStatusTone }) {
   return (
     <Card
       className={cx(
-        "max-h-[32dvh] min-h-14 justify-center overflow-auto rounded-2xl px-4 py-2 text-sm leading-5 shadow-none",
+        "max-h-[32dvh] min-h-14 justify-center overflow-auto rounded-2xl px-4 py-2 text-base leading-6 shadow-none",
         tone === "bad" ? "border-destructive/35 bg-destructive/10 text-destructive" : tone === "ok" ? "border-primary/30 bg-primary/10 text-foreground" : "border-primary/15 bg-card/60 text-muted-foreground",
       )}
     >
@@ -1432,7 +1436,7 @@ function statusPromptForStep(step: OnboardingStep): string {
   if (step === "local-server") return "Введите URL локального сервера и нажмите Проверить.";
   if (step === "microphone") return "Нужен для голосового ввода команд и диктовки для транскрибации";
   if (step === "overlay") return "Они должны появляться поверх других приложений, чтобы выполнять своё предназначение. Кнопки не собирают никакие данные.";
-  if (step === "accessibility-why") return "Делает возможным всё остальное, но требует особых разрешений.\n\nПозволяет:\n\nВставить текст в поле ввода\n\nРаботать с буфером обмена\n\nДелать снимки экрана\n\nВидеть то, что видите вы, чтобы помогать\n\nВсё под вашим контролем";
+  if (step === "accessibility-why") return "";
   if (step === "accessibility-blocked") return "Android просто так не разрешает получить этот доступ. Откройте «Специальные возможности» по кнопке ниже и попробуйте включить Brai. Android должен показать, что настройка заблокирована. Это важно. Потом вернитесь назад и нажмите на продолжение.";
   if (step === "accessibility-restricted") return "Откройте карточку приложения, нажмите меню с тремя точками и выберите «разрешить ограниченные настройки». Это меню появляется только, если вы на предыдущем шаге получили отказ.";
   if (step === "accessibility-enable") return "Теперь снова откройте специальные возможности и ещё раз попробуйте включить Brai. Откроется меню, где нужно будет только включить доступ, а затем Разрешить. После вернитесь сюда и нажмите на кнопку Проверки";
