@@ -57,8 +57,7 @@ internal object RecordingArchiveStore {
     fun onAudioProcessed(context: Context, audioFile: File): Boolean {
         val config = ConfigStore(context)
         if (!config.processedAudioRetentionEnabled) {
-            deleteAudioWithSidecars(audioFile)
-            return true
+            return deleteAudioWithSidecars(audioFile)
         }
         val archiveDir = File(context.filesDir, PROCESSED_DIR).apply { mkdirs() }
         val target = uniqueTarget(archiveDir, audioFile.name)
