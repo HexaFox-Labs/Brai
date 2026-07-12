@@ -290,11 +290,13 @@ export function createBraiServer({
           return;
         }
 
+        const existingUser = store.getAuthUserByEmail(email);
+        const signInName = existingUser?.name || cleanName(body.name) || email;
         let response;
         try {
           response = await betterAuthTestEmailLogin({
             email,
-            name: cleanName(body.name) ?? email,
+            name: signInName,
             headers: requestHeaders(req)
           });
         } catch (error) {
@@ -313,6 +315,7 @@ export function createBraiServer({
         const text = await response.text();
         const payload = parseJson(text);
         let vaultPrepared = null;
+        let preliminaryLinked = false;
         if (response.ok && payload?.user?.id) {
           const finalized = await prepareSignedInAuthUser({
             store,
@@ -321,6 +324,7 @@ export function createBraiServer({
             route: url.pathname,
             operation: 'auth.test_email_login',
             payload,
+            preliminaryContext: authPreliminaryContext(body),
             ensureUserVault,
             now
           });
@@ -329,6 +333,7 @@ export function createBraiServer({
             return;
           }
           vaultPrepared = finalized.vaultPrepared;
+          preliminaryLinked = finalized.preliminaryLinked;
         }
         recordRuntimeLog(store, logger, {
           traceId,
@@ -343,7 +348,8 @@ export function createBraiServer({
             route: url.pathname,
             status_code: response.status,
             user_created_or_authenticated: Boolean(payload?.user?.id),
-            vault_prepared: vaultPrepared
+            vault_prepared: vaultPrepared,
+            preliminary_linked: preliminaryLinked
           }
         });
         relayAuthText(req, res, response, text, payload);
@@ -430,10 +436,12 @@ export function createBraiServer({
           sendJson(req, res, 400, { error: 'email_otp_required' });
           return;
         }
+        const existingUser = store.getAuthUserByEmail(email);
+        const signInName = existingUser?.name || cleanName(body.name) || email;
         let response;
         try {
           response = await auth.api.signInEmailOTP({
-            body: { email, otp, name: cleanName(body.name) ?? email },
+            body: { email, otp, name: signInName },
             headers: requestHeaders(req),
             asResponse: true
           });
@@ -453,6 +461,7 @@ export function createBraiServer({
         const text = await response.text();
         const payload = parseJson(text);
         let vaultPrepared = null;
+        let preliminaryLinked = false;
         if (response.ok && payload?.user?.id) {
           const finalized = await prepareSignedInAuthUser({
             store,
@@ -461,6 +470,7 @@ export function createBraiServer({
             route: url.pathname,
             operation: 'auth.otp_verify',
             payload,
+            preliminaryContext: authPreliminaryContext(body),
             ensureUserVault,
             now
           });
@@ -469,6 +479,7 @@ export function createBraiServer({
             return;
           }
           vaultPrepared = finalized.vaultPrepared;
+          preliminaryLinked = finalized.preliminaryLinked;
         }
         recordRuntimeLog(store, logger, {
           traceId,
@@ -483,7 +494,8 @@ export function createBraiServer({
             route: url.pathname,
             status_code: response.status,
             user_created_or_authenticated: Boolean(payload?.user?.id),
-            vault_prepared: vaultPrepared
+            vault_prepared: vaultPrepared,
+            preliminary_linked: preliminaryLinked
           }
         });
         relayAuthText(req, res, response, text, payload);
@@ -1248,7 +1260,7 @@ async function betterAuthSession(req, auth) {
   }
 }
 
-async function prepareSignedInAuthUser({ store, logger, traceId, route, operation, payload, ensureUserVault, now }) {
+async function prepareSignedInAuthUser({ store, logger, traceId, route, operation, payload, preliminaryContext = {}, ensureUserVault, now }) {
   let vaultPrepared = true;
   try {
     await ensureUserVault({ userId: payload.user.id, email: payload.user.email });
@@ -1270,8 +1282,32 @@ async function prepareSignedInAuthUser({ store, logger, traceId, route, operatio
       jsonData: { route, error_name: error instanceof Error ? error.name : 'Error' }
     });
   }
-  store.claimFirstUser(payload.user.id, now().toISOString());
-  return { ok: true, vaultPrepared };
+  const signedInAt = now().toISOString();
+  store.claimFirstUser(payload.user.id, signedInAt);
+  let preliminaryLinked = false;
+  try {
+    const preliminary = store.finalizeBraiCmdPreliminaryUser({
+      userId: payload.user.id,
+      preliminaryUserId: preliminaryContext.preliminaryUserId,
+      preliminaryClaimToken: preliminaryContext.preliminaryClaimToken,
+      deviceFingerprint: preliminaryContext.deviceFingerprint,
+      nowIso: signedInAt
+    });
+    preliminaryLinked = Boolean(preliminary.linked);
+  } catch (error) {
+    recordRuntimeLog(store, logger, {
+      traceId,
+      source: 'auth',
+      operation,
+      status: 'failed',
+      severityText: 'WARN',
+      userId: payload.user.id,
+      reason: 'preliminary_finalize_failed',
+      message: 'Auth sign-in preliminary finalization failed',
+      jsonData: { route, error_name: error instanceof Error ? error.name : 'Error' }
+    });
+  }
+  return { ok: true, vaultPrepared, preliminaryLinked };
 }
 
 function hasLegacyToken(req, token, parsedUrl = null) {
@@ -1340,6 +1376,14 @@ function cleanEmail(value) {
 
 function cleanName(value) {
   return typeof value === 'string' && value.trim() ? value.trim().slice(0, 120) : null;
+}
+
+function authPreliminaryContext(body) {
+  return {
+    preliminaryUserId: cleanName(body.preliminaryUserId),
+    preliminaryClaimToken: cleanName(body.preliminaryClaimToken),
+    deviceFingerprint: cleanName(body.deviceFingerprint)
+  };
 }
 
 function sendJson(req, res, status, body, extraHeaders = {}) {
