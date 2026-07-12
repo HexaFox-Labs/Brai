@@ -1,6 +1,7 @@
 "use client";
 
 import { Children, createContext, type FormEvent, type ReactNode, useContext, useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import {
   ArrowRight,
   Bell,
@@ -49,6 +50,7 @@ import { Textarea } from "@/shared/ui/textarea";
 import { Carousel, CarouselContent, CarouselItem, type CarouselApi } from "@/shared/ui/carousel";
 import { cx } from "../app/appUtils";
 import {
+  isValidOnboardingName,
   loadOnboardingState,
   saveOnboardingState,
   type OnboardingState,
@@ -95,11 +97,13 @@ const manualConfirmDelayMs = 3000;
 const verificationMinVisibleMs = process.env.NODE_ENV === "test" ? 1 : 1000;
 const failedCheckVisibleMs = process.env.NODE_ENV === "test" ? 100 : 2000;
 const welcomeSlides = [
-  { step: "welcome-1", title: "Brai рядом с вашим экраном", text: "Голос, текст и контекст доступны без переключения между приложениями.", icon: TextCursorInput },
-  { step: "welcome-2", title: "Голос превращается в действие", text: "Надиктуйте мысль, ответ или команду — Brai подготовит текст там, где вы работаете.", icon: Mic },
-  { step: "welcome-3", title: "Идеи не теряются", text: "Сохраняйте важное прямо с экрана и отправляйте агенту задачи вместе с контекстом.", icon: Send },
-  { step: "welcome-4", title: "Пора настроить основу", text: "Дальше выберем профиль, голосовой модуль и системные разрешения.", icon: Sparkles },
-] as const satisfies ReadonlyArray<{ step: OnboardingStep; title: string; text: string; icon: LucideIcon }>;
+  { step: "welcome-1", title: "А что, если исполнитель желаний существует?", text: "Люди веками мечтали найти джинна, философский камень или силу, способную воплощать желания. Представь, что теперь такая сила доступна тебе.", image: "/onboarding/welcome-1.webp" },
+  { step: "welcome-2", title: "Тебе достаточно сказать, чего ты хочешь", text: "Не нужно знать правильные команды, изучать сложные инструменты или разбираться, с чего начать. Брай поможет найти путь.", image: "/onboarding/welcome-2.webp" },
+  { step: "welcome-3", title: "У него только одна цель", text: "Понять, чего ты действительно хочешь, и помочь тебе этого достичь. Твои желания становятся его задачей.", image: "/onboarding/welcome-3.webp" },
+  { step: "welcome-4", title: "Он не просто советует", text: "Брай превращает желания в конкретные шаги, помогает принимать решения и может брать на себя часть задач.", image: "/onboarding/welcome-4.webp" },
+  { step: "welcome-5", title: "Вся твоя жизнь — в одном разуме", text: "Брай помнит твои цели, идеи, проекты, решения и заботы. Он видит не отдельный вопрос, а всю картину — и понимает тебя всё лучше.", image: "/onboarding/welcome-5.webp" },
+  { step: "welcome-6", title: "Твой исполнитель желаний уже здесь", text: "Не волшебством, а интеллектом, действиями и радикальной ясностью Брай помогает превращать желаемое в реальность.\n\nОн уже в твоих руках.", image: "/onboarding/welcome-6.webp" },
+] as const satisfies ReadonlyArray<{ step: OnboardingStep; title: string; text: string; image: string }>;
 const startButtonCss = `
 @keyframes brai-onboarding-start-button {
   0% { opacity: 0; }
@@ -425,7 +429,7 @@ export function OnboardingFlow({
   function chooseVoiceMode(voiceMode: VoiceMode) {
     if (voiceMode === "provider") go("provider-key", { voiceMode });
     if (voiceMode === "local") go("local-server", { voiceMode });
-    if (voiceMode === "cloud") go("cloud-privacy", { voiceMode });
+    if (voiceMode === "cloud") go("microphone", { voiceMode });
   }
 
   async function submitCloudLogin(email: string) {
@@ -443,7 +447,7 @@ export function OnboardingFlow({
 
   async function testProviderKey() {
     if (readyStep === "provider-key") {
-      go("overlay");
+      go("microphone");
       return;
     }
     if (!provider.trim() || providerKey.trim().length < 8) {
@@ -455,7 +459,7 @@ export function OnboardingFlow({
 
   async function testLocalServer() {
     if (readyStep === "local-server") {
-      go("overlay");
+      go("microphone");
       return;
     }
     await runVerification("local-server", async () => {
@@ -504,7 +508,7 @@ export function OnboardingFlow({
 
   async function checkAccessibility() {
     if (readyStep === "accessibility-enable") {
-      go("microphone");
+      go("notifications");
       return;
     }
     await runVerification("accessibility-enable", async () => {
@@ -515,7 +519,7 @@ export function OnboardingFlow({
 
   async function requestMic() {
     if (readyStep === "microphone") {
-      go("notifications");
+      go("overlay");
       return;
     }
     const checkOnly = permissionFallbackStep === "microphone";
@@ -601,10 +605,9 @@ export function OnboardingFlow({
       return (
         <ChoiceScreen
           title="Как запускаем Brai?"
-          text="Можно начать с чистого профиля или подключить приложение к уже существующему."
           choices={[
-            { icon: UserRound, title: "Начать с начала", text: "Создать локальную настройку и пройти все шаги.", onClick: () => choosePath("new") },
-            { icon: KeyRound, title: "Есть профиль", text: "Подключить облачную или self-hosted версию.", onClick: () => choosePath("existing") },
+            { icon: UserRound, title: "С чистого листа", text: "Начнём с нуля, познакомимся и всё настроим", onClick: () => choosePath("new") },
+            { icon: KeyRound, title: "Есть профиль", text: "Вы уже создавали профиль или вам его кто-то создал и передал ключ активации", onClick: () => choosePath("existing") },
           ]}
         />
       );
@@ -614,14 +617,17 @@ export function OnboardingFlow({
       return (
         <form className="flex min-h-0 flex-1 flex-col overflow-hidden" onSubmit={(event) => {
           event.preventDefault();
-          if (!state.name.trim()) return setError("Введите имя.");
+          if (!isValidOnboardingName(state.name)) return setError("Используйте минимум два символа: буквы, цифры или пробел.");
           go("setup-start");
         }}>
-          <div className="grid min-h-0 flex-1 content-center gap-5 overflow-hidden py-4">
-            <InfoBlock icon={UserRound} title="Как к вам обращаться?" text="Имя нужно для приветствия и будущих голосовых подсказок." />
-            <Input value={state.name} placeholder="Ваше имя" aria-label="Имя" onChange={(event) => update({ name: event.target.value })} />
+          <div className="grid min-h-0 flex-1 content-center gap-5 overflow-hidden py-2">
+            <InfoBlock icon={UserRound} title="Как к вам обращаться" text="Имя будет использоваться для персонализации в обращениях Brai и будет в аккаунте при регистрации" />
+            <Input autoFocus value={state.name} placeholder="Только буквы и пробел" aria-label="Имя" className="placeholder:text-muted-foreground/35" onChange={(event) => {
+              setError("");
+              update({ name: event.target.value });
+            }} />
           </div>
-          <StepActions><PrimaryButton disabled={!state.name.trim()}>Продолжить</PrimaryButton></StepActions>
+          <StepActions preserveBottomGap><PrimaryButton disabled={!isValidOnboardingName(state.name)}>Продолжить</PrimaryButton></StepActions>
         </form>
       );
     }
@@ -629,11 +635,9 @@ export function OnboardingFlow({
     if (state.step === "profile-version") {
       return (
         <ChoiceScreen
-          title="Какой профиль подключаем?"
-          text="Выберите источник существующего профиля."
           choices={[
-            { icon: Cloud, title: "Облачная версия", text: "Авторизация через Better Auth на серверах Brai.", onClick: () => chooseProfileVersion("cloud") },
-            { icon: Server, title: "Self-hosted версия", text: "Подключение по ключу доступа вашего сервера.", onClick: () => chooseProfileVersion("self-hosted") },
+            { icon: Cloud, title: "Облачная версия", text: "Авторизация по e-mail на серверах Brai", onClick: () => chooseProfileVersion("cloud") },
+            { icon: Server, title: "Self-hosted версия", text: "Подключение по URL и ключу доступа к частному приватному серверу", disabled: true, badge: "В разработке" },
           ]}
         />
       );
@@ -659,9 +663,9 @@ export function OnboardingFlow({
       );
     }
 
-    if (state.step === "setup-start") return <InfoScreen icon={ShieldCheck} title="Начинаем настройку" text="Сейчас подготовим Brai CMD, голосовой модуль и системные разрешения."><PrimaryButton onClick={() => go("features")}>Настроить</PrimaryButton></InfoScreen>;
-    if (state.step === "features") return <InfoScreen icon={Sparkles} title="Базовые возможности" text="Коротко покажем, что будет доступно после настройки."><PrimaryButton onClick={() => go("floating-buttons")}>Продолжить</PrimaryButton></InfoScreen>;
-    if (state.step === "floating-buttons") return <InfoScreen icon={Command} title="Плавающие кнопки" text="Brai CMD управляется кнопками поверх других приложений: они слушают голос, берут контекст экрана и помогают вставлять результат."><PrimaryButton onClick={() => go("demo-dictation")}>Продолжить</PrimaryButton></InfoScreen>;
+    if (state.step === "setup-start") return <InfoScreen icon={Command} title="Brai CMD" text="Превращает смартфон в командный центр, упрощая и ускоряя взаимодействие с Брай."><PrimaryButton onClick={() => go("floating-buttons")}>Далее</PrimaryButton></InfoScreen>;
+    if (state.step === "features") return <InfoScreen icon={Command} title="Плавающие кнопки" text="Brai CMD управляется кнопками поверх других приложений. Они слушают голос, берут контекст экрана, вставляют данные, добавляя магии в повседневные действия."><PrimaryButton onClick={() => go("demo-dictation")}>Ознакомиться</PrimaryButton></InfoScreen>;
+    if (state.step === "floating-buttons") return <InfoScreen icon={Command} title="Плавающие кнопки" text="Brai CMD управляется кнопками поверх других приложений. Они слушают голос, берут контекст экрана, вставляют данные, добавляя магии в повседневные действия."><PrimaryButton onClick={() => go("demo-dictation")}>Ознакомиться</PrimaryButton></InfoScreen>;
 
     if (state.step.startsWith("demo-")) {
       const demos = [
@@ -680,16 +684,59 @@ export function OnboardingFlow({
       );
     }
 
-    if (state.step === "special-settings") return <InfoScreen icon={ShieldCheck} title="Нужны системные настройки" text="Показанные функции требуют доступа поверх экрана, специальных возможностей, микрофона и уведомлений."><PrimaryButton onClick={() => go("voice-intro")}>Продолжить</PrimaryButton></InfoScreen>;
-    if (state.step === "voice-intro") return <InfoScreen icon={Mic} title="Сначала голосовой модуль" text="Без распознавания голоса Brai CMD не сможет принимать команды и вставлять продиктованный текст."><PrimaryButton onClick={() => go("voice-choice")}>Настроить Brai CMD</PrimaryButton></InfoScreen>;
+    if (state.step === "special-settings") {
+      return (
+        <InfoScreen
+          icon={ShieldCheck}
+          title="Требуется особая настройка"
+          text={"Продемонстрированные функции не могут работать без специальной настройки\n\nПоэтому далее мы проведём вас по шагам, чтобы всё заработало\n\nНичего сложного. Просто следуйте инструкциям шаг за шагом."}
+        >
+          <PrimaryButton onClick={() => go("security")}>Продолжить</PrimaryButton>
+        </InfoScreen>
+      );
+    }
+
+    if (state.step === "security") {
+      return (
+        <StepScreen actions={<PrimaryButton onClick={() => go("voice-intro")}>Продолжить</PrimaryButton>}>
+          <div className="grid gap-5">
+            <InfoBlock
+              icon={ShieldCheck}
+              title="Не беспокойтесь о безопасности"
+              text={"Приложение не шпионит за вами и ничего не делает без вашего ведома.\n\nУ приложения открыт исходный код, который может проверить любой человек или агент.\n\nПоэтому, несмотря на уведомления о нарушении безопасности, вы можете ему доверять."}
+            />
+            <Card className="rounded-2xl border-primary/15 bg-card/70 p-4 shadow-none">
+              <p className="m-0 text-base leading-6 text-muted-foreground">
+                Вот ссылка на исходный код.{" "}
+                <a className="font-medium text-primary underline-offset-4 hover:underline" href="https://github.com/sergobright/Brai" rel="noreferrer" target="_blank">
+                  sergobright/Brai
+                </a>
+              </p>
+            </Card>
+          </div>
+        </StepScreen>
+      );
+    }
+
+    if (state.step === "voice-intro") {
+      return (
+        <InfoScreen
+          icon={Mic}
+          title="Давайте настроим Brai CMD"
+          text={"Brai обладает мощными ИИ-функциями и может работать даже без этих настроек.\n\nНо Андроид приложение спроектировано так, чтобы телефон был вашим командным центром.\n\nПоэтому давайте настроим всё по шагам."}
+        >
+          <PrimaryButton onClick={() => go("voice-choice")}>Настроить Brai CMD</PrimaryButton>
+        </InfoScreen>
+      );
+    }
 
     if (state.step === "voice-choice") {
       const choices = [
-        { icon: KeyRound, title: "Ключ поставщика", text: "Выбрать поставщика и сохранить API-ключ.", onClick: () => chooseVoiceMode("provider") },
-        { icon: Cloud, title: "Облачный модуль", text: "Использовать облачное распознавание Brai.", onClick: () => chooseVoiceMode("cloud") },
-        { icon: Server, title: "Локальная модель", text: "Подключить URL модели на вашем сервере.", onClick: () => chooseVoiceMode("local") },
+        { icon: KeyRound, title: "API ключ", text: "Расшифровка напрямую через поставщика LLM. Нужен API ключ", onClick: () => chooseVoiceMode("provider") },
+        { icon: Server, title: "Локальная модель", text: "Расшифровка на вашем сервере. Нужен эндпойнт и ключ", disabled: true, badge: "В разработке" },
+        { icon: Cloud, title: "Облако Brai", text: "Расшифровка через серверы Брай. Ничего не требует, но есть лимиты на бесплатное использование", badge: "Самое простое", onClick: () => chooseVoiceMode("cloud") },
       ];
-      return <ChoiceScreen title="Как распознавать голос?" text="Выберите способ, который будет использовать Brai CMD." choices={choices} />;
+      return <ChoiceScreen compact title="Как распознавать голос" text="Без распознавания голоса Brai CMD не сможет принимать команды и вставлять продиктованный текст" choices={choices} />;
     }
 
     if (state.step === "provider-key") {
@@ -729,36 +776,46 @@ export function OnboardingFlow({
       );
     }
 
-    if (state.step === "cloud-privacy") return <InfoScreen icon={Cloud} title="Приватность облака" text="Аудио проходит через серверы Brai для расшифровки. Мы не храним содержимое запросов."><PrimaryButton onClick={() => go("overlay")}>Продолжить</PrimaryButton></InfoScreen>;
+    if (state.step === "cloud-privacy") return <InfoScreen icon={Cloud} title="Мы ничего не храним" text={"Ваши аудио с голосом и расшифровки обрабатываются на серверах Брай.\n\nНо после успешной доставки расшифровки вам мы всё сразу удаляем. Это наши принципы.\n\nДля полной приватности используйте локальные модели"}><PrimaryButton onClick={() => go("microphone")}>Согласен</PrimaryButton></InfoScreen>;
 
     if (state.step === "overlay") {
       return (
-        <PermissionScreen icon={MonitorUp} title="Поверх других приложений" text="Это разрешение нужно, чтобы плавающая кнопка Brai была доступна поверх текущего приложения.">
+        <SettingsImageScreen icon={MonitorUp} imageAlt="Включение плавающих кнопок Brai" imageHeight={1280} imageSrc="/onboarding/settings-2-floating-buttons.jpg" imageWidth={1280} title="Плавающие кнопки">
           <SecondaryButton icon={ExternalLink} onClick={openOverlay}>Открыть настройки</SecondaryButton>
           <CheckActionButton status={checkStatus("overlay")} onClick={checkOverlay} />
-        </PermissionScreen>
+        </SettingsImageScreen>
       );
     }
 
-    if (state.step === "accessibility-why") return <InfoScreen icon={ShieldCheck} title="Специальные возможности" text="Они нужны, чтобы вставлять текст в поля, работать с буфером и выполнять действия на экране."><PrimaryButton onClick={() => go("accessibility-blocked")}>Продолжить</PrimaryButton></InfoScreen>;
-    if (state.step === "accessibility-blocked") return <InfoScreen icon={Lock} title="Шаг 1: получить отказ" text="Откройте специальные возможности и попробуйте включить Brai. Android должен показать, что настройка заблокирована."><SecondaryButton icon={ExternalLink} onClick={openAccessibility}>Открыть</SecondaryButton><PrimaryButton disabled={isAndroid && manualConfirmReadyStep !== "accessibility-blocked"} icon={CheckCircle2} onClick={() => go("accessibility-restricted")}>Да, доступ заблокирован</PrimaryButton></InfoScreen>;
-    if (state.step === "accessibility-restricted") return <InfoScreen icon={ShieldCheck} title="Шаг 2: снять ограничение" text="Откройте карточку приложения, нажмите меню с тремя точками и выберите «Разрешить ограниченные настройки»."><SecondaryButton icon={ExternalLink} onClick={openAppSettings}>Открыть карточку приложения</SecondaryButton><PrimaryButton disabled={isAndroid && manualConfirmReadyStep !== "accessibility-restricted"} icon={CheckCircle2} onClick={() => go("accessibility-enable")}>Ограничение снято</PrimaryButton></InfoScreen>;
-    if (state.step === "accessibility-enable") return <InfoScreen icon={ShieldCheck} title="Шаг 3: включить доступ" text="Теперь снова откройте специальные возможности и включите Brai. После возврата мы проверим состояние."><SecondaryButton icon={ExternalLink} onClick={openAccessibility}>Открыть</SecondaryButton><CheckActionButton status={checkStatus("accessibility-enable")} onClick={checkAccessibility} /></InfoScreen>;
+    if (state.step === "accessibility-why") {
+      return (
+        <StepScreen actions={<PrimaryButton onClick={() => go("accessibility-blocked")}>Три шага</PrimaryButton>}>
+          <InfoBlock
+            icon={ShieldCheck}
+            title="Особый доступ"
+            text={"Делает возможным всё остальное, но требует особых разрешений.\n\nПозволяет:\n\nВставить текст в поле ввода\n\nРаботать с буфером обмена\n\nДелать снимки экрана\n\nВидеть то, что видите вы, чтобы помогать\n\nВсё под вашим контролем"}
+          />
+        </StepScreen>
+      );
+    }
+    if (state.step === "accessibility-blocked") return <SettingsImageScreen icon={Lock} imageAlt="Шаг 1: получите отказ в специальных возможностях" imageHeight={1280} imageSrc="/onboarding/settings-3-accessibility.jpg" imageWidth={1280} title="Шаг 1: Получить отказ"><SecondaryButton icon={ExternalLink} onClick={openAccessibility}>Открыть специальные возможности</SecondaryButton><PrimaryButton disabled={isAndroid && manualConfirmReadyStep !== "accessibility-blocked"} icon={CheckCircle2} onClick={() => go("accessibility-restricted")}>Продолжить</PrimaryButton></SettingsImageScreen>;
+    if (state.step === "accessibility-restricted") return <SettingsImageScreen icon={ShieldCheck} imageAlt="Шаг 2: снимите ограничение в карточке приложения" imageHeight={1181} imageSrc="/onboarding/settings-4-restricted.jpg" imageWidth={1280} title="Шаг 2: Снять ограничение"><SecondaryButton icon={ExternalLink} onClick={openAppSettings}>Открыть карточку приложения</SecondaryButton><PrimaryButton disabled={isAndroid && manualConfirmReadyStep !== "accessibility-restricted"} icon={CheckCircle2} onClick={() => go("accessibility-enable")}>Продолжить</PrimaryButton></SettingsImageScreen>;
+    if (state.step === "accessibility-enable") return <SettingsImageScreen icon={ShieldCheck} imageAlt="Шаг 3: включите особый доступ Brai" imageHeight={1280} imageSrc="/onboarding/settings-3-accessibility.jpg" imageWidth={1280} title="Шаг 3: Включить доступ"><SecondaryButton icon={ExternalLink} onClick={openAccessibility}>Открыть специальные возможности</SecondaryButton><CheckActionButton status={checkStatus("accessibility-enable")} onClick={checkAccessibility} /></SettingsImageScreen>;
 
     if (state.step === "microphone") return (
-      <PermissionScreen icon={Mic} title="Микрофон" text="Микрофон нужен для голосового ввода и команд.">
+      <SettingsImageScreen icon={Mic} imageAlt="Разрешение микрофона Brai" imageHeight={960} imageSrc="/onboarding/settings-1-microphone.jpg" imageWidth={1280} title="Микрофон">
         {permissionFallbackStep === "microphone" ? <SecondaryButton icon={ExternalLink} onClick={() => openPermissionAppSettings("microphone")}>Открыть настройки приложения</SecondaryButton> : null}
         <CheckActionButton idleLabel={permissionFallbackStep === "microphone" ? "Проверить" : "Разрешить микрофон"} status={checkStatus("microphone")} onClick={requestMic} />
-      </PermissionScreen>
+      </SettingsImageScreen>
     );
     if (state.step === "notifications") return (
-      <PermissionScreen icon={Bell} title="Уведомления" text="Уведомления нужны для фоновой записи, очереди и статуса отправки.">
+      <SettingsImageScreen icon={Bell} imageAlt="Разрешение уведомлений Brai" imageHeight={1280} imageSrc="/onboarding/settings-5-notifications.jpg" imageWidth={1280} title="Уведомления">
         {permissionFallbackStep === "notifications" ? <SecondaryButton icon={ExternalLink} onClick={() => openPermissionAppSettings("notifications")}>Открыть настройки приложения</SecondaryButton> : null}
         <CheckActionButton idleLabel={permissionFallbackStep === "notifications" ? "Проверить" : "Разрешить уведомления"} status={checkStatus("notifications")} onClick={requestNotifications} />
-      </PermissionScreen>
+      </SettingsImageScreen>
     );
 
-    if (state.step === "training-start") return <InfoScreen icon={CheckCircle2} title="Готово к обучению" text="Базовая настройка завершена. Осталось проверить голосовой сценарий в четыре шага."><SecondaryButton onClick={completeSetup}>Пропустить</SecondaryButton><PrimaryButton onClick={startTraining}>Обучение</PrimaryButton></InfoScreen>;
+    if (state.step === "training-start") return <InfoScreen icon={CheckCircle2} title="Готово к обучению" text={"Базовая настройка завершена. Осталось проверить голосовой сценарий в четыре шага.\n\nЕсли вы ещё не пользовались Brai CMD, то не пропускайте этот шаг."}><SecondaryButton onClick={completeSetup}>Пропустить</SecondaryButton><PrimaryButton onClick={startTraining}>Обучение</PrimaryButton></InfoScreen>;
     if (state.step === "training-dictate") return <TrainingDictate confirmed={trainingDictated} value={trainingText} onChange={(value) => {
       setTrainingText(value);
       if (!value.trim()) setTrainingDictated(false);
@@ -836,19 +893,21 @@ function ShinyButton({ children, onClick }: { children: ReactNode; onClick: () =
 }
 
 function CheckActionButton({ disabled, idleLabel = "Проверить", onClick, status }: { disabled?: boolean; idleLabel?: string; onClick: () => void | Promise<void>; status: CheckStatus }) {
+  const { transitionActive } = useContext(OnboardingChromeContext);
   const checking = status === "checking";
   const failed = status === "error";
   const ready = status === "ready";
+  const continuing = transitionActive && !checking && !failed;
   return (
     <PrimaryButton
       disabled={disabled || checking || failed}
-      icon={checking ? LoaderCircle : failed ? CircleX : ready ? CheckCircle2 : ShieldCheck}
-      iconClassName={checking ? "animate-spin" : ready ? "text-emerald-400" : undefined}
+      icon={checking ? LoaderCircle : failed ? CircleX : ready || continuing ? CheckCircle2 : ShieldCheck}
+      iconClassName={checking ? "animate-spin" : ready || continuing ? "text-emerald-400" : undefined}
       tone={failed ? "danger" : "default"}
       trailingArrow={false}
       onClick={onClick}
     >
-      {checking ? "Проверка" : failed ? "Ошибка" : ready ? "Продолжить" : idleLabel}
+      {checking ? "Проверка" : failed ? "Ошибка" : ready || continuing ? "Продолжить" : idleLabel}
     </PrimaryButton>
   );
 }
@@ -949,7 +1008,7 @@ function StepScreen({ actions, children }: { actions?: ReactNode; children: Reac
   );
 }
 
-function StepActions({ children }: { children: ReactNode }) {
+function StepActions({ children, preserveBottomGap = false }: { children: ReactNode; preserveBottomGap?: boolean }) {
   const { canBack, onBack, statusText, statusTone } = useContext(OnboardingChromeContext);
   const actions = Children.toArray(children).filter(Boolean);
   const mainAction = actions.at(-1);
@@ -958,7 +1017,12 @@ function StepActions({ children }: { children: ReactNode }) {
   if (!statusText && !mainAction && !canBack) return null;
 
   return (
-    <div className="grid shrink-0 gap-3 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] pt-5 [@media(max-height:700px)]:gap-2 [@media(max-height:700px)]:pb-[calc(env(safe-area-inset-bottom)+0.5rem)] [@media(max-height:700px)]:pt-2 [@media(max-height:800px)_and_(min-aspect-ratio:2/3)]:pb-[calc(env(safe-area-inset-bottom)+0.25rem)] [@media(max-height:800px)_and_(min-aspect-ratio:2/3)]:pt-1">
+    <div className={cx(
+      "grid shrink-0 gap-3 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] pt-5",
+      preserveBottomGap
+        ? "[@media(max-height:700px)]:pb-[calc(env(safe-area-inset-bottom)+1rem)] [@media(max-height:700px)]:pt-3 [@media(max-height:800px)_and_(min-aspect-ratio:2/3)]:pb-[calc(env(safe-area-inset-bottom)+1rem)] [@media(max-height:800px)_and_(min-aspect-ratio:2/3)]:pt-3"
+        : "[@media(max-height:700px)]:gap-2 [@media(max-height:700px)]:pb-[calc(env(safe-area-inset-bottom)+0.5rem)] [@media(max-height:700px)]:pt-2 [@media(max-height:800px)_and_(min-aspect-ratio:2/3)]:pb-[calc(env(safe-area-inset-bottom)+0.25rem)] [@media(max-height:800px)_and_(min-aspect-ratio:2/3)]:pt-1",
+    )}>
       {statusText ? <StatusCard text={statusText} tone={statusTone} /> : null}
       {extraActions.length ? <div className="grid gap-2">{extraActions}</div> : null}
       <div className={cx("grid gap-3", canBack && mainAction ? "grid-cols-[3rem_minmax(0,1fr)]" : canBack ? "grid-cols-[3rem]" : "grid-cols-1")}>
@@ -973,15 +1037,15 @@ function StepActions({ children }: { children: ReactNode }) {
   );
 }
 
-function InfoBlock({ compactOnShort = false, icon: Icon, title, text }: { compactOnShort?: boolean; icon: LucideIcon; title: string; text: string }) {
+function InfoBlock({ compactOnShort = false, icon: Icon, title, text }: { compactOnShort?: boolean; icon: LucideIcon; title: string; text?: string }) {
   return (
     <div className={cx("grid min-w-0 gap-4", compactOnShort ? "[@media(max-height:700px)]:gap-2 [@media(max-height:650px)]:gap-1.5 [@media(max-height:800px)_and_(min-aspect-ratio:2/3)]:gap-1" : "")}>
       <span className={cx("grid size-11 place-items-center rounded-full border border-primary/25 bg-primary/10 text-primary", compactOnShort ? "[@media(max-height:700px)]:size-9 [@media(max-height:650px)]:size-8 [@media(max-height:800px)_and_(min-aspect-ratio:2/3)]:hidden" : "")}>
         <Icon className={cx("size-5", compactOnShort ? "[@media(max-height:700px)]:size-4 [@media(max-height:650px)]:size-3.5" : "")} aria-hidden="true" />
       </span>
       <div className={cx("grid min-w-0 gap-2", compactOnShort ? "[@media(max-height:800px)_and_(min-aspect-ratio:2/3)]:gap-1" : "")}>
-        <h2 className={cx("m-0 break-words text-2xl font-semibold leading-tight", compactOnShort ? "[@media(max-height:700px)]:text-xl [@media(max-height:650px)]:text-lg [@media(max-height:800px)_and_(min-aspect-ratio:2/3)]:text-base" : "")}>{title}</h2>
-        <p className={cx("m-0 break-words text-sm leading-5 text-muted-foreground", compactOnShort ? "[@media(max-height:700px)]:text-xs [@media(max-height:700px)]:leading-4 [@media(max-height:650px)]:text-[0.72rem] [@media(max-height:650px)]:leading-[0.95rem] [@media(max-height:800px)_and_(min-aspect-ratio:2/3)]:text-[0.68rem] [@media(max-height:800px)_and_(min-aspect-ratio:2/3)]:leading-[0.82rem]" : "")}>{text}</p>
+        <h2 className={cx("m-0 break-words text-3xl font-semibold leading-tight", compactOnShort ? "[@media(max-height:700px)]:text-2xl [@media(max-height:650px)]:text-xl [@media(max-height:800px)_and_(min-aspect-ratio:2/3)]:text-xl" : "")}>{title}</h2>
+        {text ? <p className={cx("m-0 whitespace-pre-line break-words text-base leading-6 text-muted-foreground", compactOnShort ? "[@media(max-height:700px)]:text-sm [@media(max-height:700px)]:leading-5 [@media(max-height:650px)]:text-sm [@media(max-height:650px)]:leading-5 [@media(max-height:800px)_and_(min-aspect-ratio:2/3)]:text-sm [@media(max-height:800px)_and_(min-aspect-ratio:2/3)]:leading-5" : "")}>{text}</p> : null}
       </div>
     </div>
   );
@@ -998,17 +1062,27 @@ function InfoScreen({ children, eyebrow, icon, text, title }: { children: ReactN
   );
 }
 
-function ChoiceScreen({ choices, text, title }: { choices: Array<{ icon: LucideIcon; title: string; text: string; onClick: () => void }>; text: string; title: string }) {
+type OnboardingChoice = {
+  badge?: string;
+  disabled?: boolean;
+  icon?: LucideIcon;
+  onClick?: () => void;
+  text: string;
+  title: string;
+};
+
+function ChoiceScreen({ choices, compact = false, text, title }: { choices: OnboardingChoice[]; compact?: boolean; text?: string; title?: string }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="grid min-h-0 flex-1 content-center gap-4 overflow-hidden py-4">
-        <InfoBlock icon={Radio} title={title} text={text} />
-        <div className="grid gap-3 sm:grid-cols-2">
+      <div className={cx("grid min-h-0 flex-1 content-center overflow-hidden", compact ? "gap-3 py-2 [@media(max-height:700px)]:gap-2 [@media(max-height:700px)]:py-1" : "gap-4 py-4")}>
+        {title ? text ? <InfoBlock icon={Radio} title={title} text={text} /> : <h2 className={cx("m-0 break-words font-semibold leading-tight", compact ? "text-3xl [@media(max-height:700px)]:text-2xl [@media(max-height:650px)]:text-xl" : "text-3xl")}>{title}</h2> : null}
+        <div className={cx("grid", compact ? "gap-2 sm:grid-cols-3" : "gap-3 sm:grid-cols-2")}>
           {choices.map((choice) => (
-            <button key={choice.title} type="button" className="grid min-h-28 content-start gap-2 rounded-lg border border-primary/20 bg-primary/5 p-3 text-left transition-all duration-200 hover:bg-primary/10 active:scale-[0.98] active:border-primary/40 active:bg-primary/15 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40" onClick={choice.onClick}>
-              <choice.icon className="size-5 text-primary" aria-hidden="true" />
-              <span className="text-base font-semibold">{choice.title}</span>
-              <span className="text-sm leading-5 text-muted-foreground">{choice.text}</span>
+            <button key={choice.title} type="button" disabled={choice.disabled} className={cx("group grid items-start rounded-2xl border border-primary/20 bg-card/80 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:bg-primary/10 hover:shadow-md active:translate-y-0 active:scale-[0.98] active:bg-primary/15 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40 disabled:pointer-events-none disabled:border-primary/10 disabled:bg-card/35 disabled:text-muted-foreground disabled:opacity-55 disabled:shadow-none", compact ? "min-h-32 grid-cols-[2.75rem_minmax(0,1fr)_auto] gap-x-4 gap-y-2.5 p-4 [@media(max-height:700px)]:min-h-0 [@media(max-height:700px)]:grid-cols-[2.25rem_minmax(0,1fr)_auto] [@media(max-height:700px)]:gap-x-3 [@media(max-height:700px)]:gap-y-1.5 [@media(max-height:700px)]:p-3 [@media(max-height:650px)]:grid-cols-[2rem_minmax(0,1fr)_auto] [@media(max-height:650px)]:gap-x-2 [@media(max-height:650px)]:p-2.5" : "min-h-36 grid-cols-[2.5rem_minmax(0,1fr)_auto] gap-x-3 gap-y-2 p-5")} onClick={choice.onClick}>
+              {choice.icon ? <span className={cx("row-span-2 grid place-items-center border border-primary/20 bg-primary/10 text-primary", compact ? "size-11 rounded-xl [@media(max-height:700px)]:size-9 [@media(max-height:700px)]:rounded-lg [@media(max-height:650px)]:size-8" : "size-10 rounded-xl")}><choice.icon className={compact ? "size-5 [@media(max-height:700px)]:size-4" : "size-5"} aria-hidden="true" /></span> : null}
+              <span className={cx("col-start-2 font-semibold leading-tight", compact ? "text-lg [@media(max-height:700px)]:text-base [@media(max-height:650px)]:text-sm" : "text-lg")}>{choice.title}</span>
+              {choice.badge ? <span className="col-start-3 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary [@media(max-height:650px)]:px-2 [@media(max-height:650px)]:py-0.5">{choice.badge}</span> : <ArrowRight className="col-start-3 mt-0.5 size-4 text-muted-foreground transition-transform group-hover:translate-x-1" aria-hidden="true" />}
+              <span className={cx("col-start-2 col-end-4 text-muted-foreground", compact ? "text-base leading-6 [@media(max-height:700px)]:text-sm [@media(max-height:700px)]:leading-5 [@media(max-height:650px)]:text-xs [@media(max-height:650px)]:leading-4" : "text-base leading-6")}>{choice.text}</span>
             </button>
           ))}
         </div>
@@ -1021,7 +1095,14 @@ function ChoiceScreen({ choices, text, title }: { choices: Array<{ icon: LucideI
 function WelcomeCarousel({ currentStep, onStart, onStepChange }: { currentStep: OnboardingStep; onStart: () => void; onStepChange: (step: OnboardingStep) => void }) {
   const [api, setApi] = useState<CarouselApi>();
   const [current, setCurrent] = useState(() => welcomeStepIndex(currentStep));
-  const canStart = current === welcomeSlides.length - 1;
+  const [showStartButton, setShowStartButton] = useState(false);
+  const isLastSlide = current === welcomeSlides.length - 1;
+
+  useEffect(() => {
+    if (!isLastSlide) return;
+    const timer = window.setTimeout(() => setShowStartButton(true), 2000);
+    return () => window.clearTimeout(timer);
+  }, [isLastSlide]);
 
   useEffect(() => {
     if (!api) return;
@@ -1033,6 +1114,7 @@ function WelcomeCarousel({ currentStep, onStart, onStepChange }: { currentStep: 
     if (!api) return;
     const onSelect = () => {
       const index = api.selectedScrollSnap();
+      setShowStartButton(false);
       setCurrent(index);
       onStepChange(welcomeSlides[index]?.step ?? "welcome-1");
     };
@@ -1046,12 +1128,18 @@ function WelcomeCarousel({ currentStep, onStart, onStepChange }: { currentStep: 
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto] gap-5 overflow-hidden pt-[clamp(3rem,10dvh,7rem)] [@media(max-height:700px)]:gap-2 [@media(max-height:700px)]:pt-2 [@media(max-height:650px)]:pt-1">
         <Carousel setApi={setApi} opts={{ align: "start", startIndex: welcomeStepIndex(currentStep) }} className="h-full w-full min-w-0 overflow-hidden" aria-label="Приветствие Brai" data-nav-swipe-exclusion>
-          <CarouselContent viewportClassName="h-full" className="h-full w-full touch-pan-y">
-            {welcomeSlides.map(({ icon: Icon, step, text, title }, index) => (
-              <CarouselItem key={step} className="h-full basis-full">
-                <Card className="grid h-full w-full min-w-0 content-center gap-6 overflow-hidden rounded-2xl border-primary/15 bg-card/80 p-6 shadow-none [@media(max-height:700px)]:gap-3 [@media(max-height:700px)]:p-4 [@media(max-height:650px)]:gap-2 [@media(max-height:650px)]:p-3 [@media(max-height:800px)_and_(min-aspect-ratio:2/3)]:gap-1.5">
-                  <p className="m-0 text-sm font-medium text-muted-foreground [@media(max-height:700px)]:text-xs [@media(max-height:650px)]:text-[0.72rem] [@media(max-height:800px)_and_(min-aspect-ratio:2/3)]:text-[0.68rem]">Карточка {index + 1} из 4</p>
-                  <InfoBlock compactOnShort icon={Icon} title={title} text={text} />
+          <CarouselContent viewportClassName="h-full" className="!ml-0 h-full w-full touch-pan-y gap-4">
+            {welcomeSlides.map(({ image, step, text, title }) => (
+              <CarouselItem key={step} className="h-full basis-full !pl-0">
+                <Card className="relative h-full w-full min-w-0 overflow-hidden rounded-2xl border-primary/15 bg-black p-0 shadow-none">
+                  <Image src={image} alt="" width={640} height={1280} className="absolute inset-x-0 top-0 h-auto w-full max-w-none" aria-hidden="true" />
+                  <div className="absolute inset-0 bg-gradient-to-b from-transparent via-black/45 to-black" aria-hidden="true" />
+                  <div className="absolute inset-x-0 bottom-0 flex h-2/3 min-h-0 flex-col px-6 pt-6 [@media(max-height:700px)]:px-4 [@media(max-height:700px)]:pt-4 [@media(max-height:650px)]:px-3 [@media(max-height:650px)]:pt-3">
+                    <div className="grid min-h-0 gap-4 [@media(max-height:700px)]:gap-3">
+                      <h2 className="m-0 break-words text-3xl font-semibold leading-tight text-white [@media(max-height:700px)]:text-2xl [@media(max-height:650px)]:text-xl">{title}</h2>
+                      <p className="m-0 whitespace-pre-line break-words text-base leading-6 text-white/90 [@media(max-height:700px)]:text-sm [@media(max-height:700px)]:leading-5">{text}</p>
+                    </div>
+                  </div>
                 </Card>
               </CarouselItem>
             ))}
@@ -1064,17 +1152,22 @@ function WelcomeCarousel({ currentStep, onStart, onStepChange }: { currentStep: 
         </div>
       </div>
       <StepActions>
-        <PrimaryButton className={canStart ? "" : "invisible"} disabled={!canStart} aria-hidden={!canStart} tabIndex={canStart ? 0 : -1} onClick={onStart}>Начать</PrimaryButton>
+        <PrimaryButton className={showStartButton ? "opacity-100 duration-500" : "pointer-events-none opacity-0 duration-500"} disabled={!showStartButton} aria-hidden={!showStartButton} tabIndex={showStartButton ? 0 : -1} onClick={onStart}>Начать</PrimaryButton>
       </StepActions>
     </div>
   );
 }
 
-function PermissionScreen({ children, icon, text, title }: { children: ReactNode; icon: LucideIcon; text: string; title: string }) {
+function SettingsImageScreen({ children, icon, imageAlt, imageHeight, imageSrc, imageWidth, title }: { children: ReactNode; icon: LucideIcon; imageAlt: string; imageHeight: number; imageSrc: string; imageWidth: number; title: string }) {
   return (
-    <InfoScreen icon={icon} title={title} text={text}>
-      {children}
-    </InfoScreen>
+    <StepScreen actions={children}>
+      <div className="grid gap-4 [@media(max-height:700px)]:gap-3">
+        <InfoBlock icon={icon} title={title} />
+        <Card className="overflow-hidden rounded-2xl border-primary/15 bg-card/70 p-0 shadow-none">
+          <Image alt={imageAlt} className="h-auto max-h-[34dvh] w-full object-contain [@media(max-height:700px)]:max-h-[28dvh] [@media(max-height:620px)]:max-h-[22dvh]" height={imageHeight} src={imageSrc} unoptimized width={imageWidth} />
+        </Card>
+      </div>
+    </StepScreen>
   );
 }
 
@@ -1297,11 +1390,11 @@ function StatusCard({ text, tone }: { text: string; tone: ChromeStatusTone }) {
   return (
     <Card
       className={cx(
-        "h-14 justify-center rounded-2xl px-4 py-2 text-sm leading-5 shadow-none",
+        "max-h-[32dvh] min-h-14 justify-center overflow-auto rounded-2xl px-4 py-2 text-base leading-6 shadow-none",
         tone === "bad" ? "border-destructive/35 bg-destructive/10 text-destructive" : tone === "ok" ? "border-primary/30 bg-primary/10 text-foreground" : "border-primary/15 bg-card/60 text-muted-foreground",
       )}
     >
-      <p className="m-0 line-clamp-2">{text}</p>
+      <p className="m-0 whitespace-pre-line break-words">{text}</p>
     </Card>
   );
 }
@@ -1326,6 +1419,7 @@ function previousOnboardingStep(state: OnboardingState): { step: OnboardingStep;
 function screenIconForStep(step: OnboardingStep): LucideIcon {
   if (step === "locked" || step === "login" || step === "login-check") return Lock;
   if (step.startsWith("training")) return step === "training-offline" ? WifiOff : step === "training-storage" ? FileAudio : Mic;
+  if (step === "security") return ShieldCheck;
   if (step === "voice-choice" || step === "provider-key") return KeyRound;
   if (step === "local-server") return Server;
   if (step === "cloud-privacy") return Cloud;
@@ -1340,12 +1434,13 @@ function screenIconForStep(step: OnboardingStep): LucideIcon {
 function statusPromptForStep(step: OnboardingStep): string {
   if (step === "provider-key") return "Выберите поставщика, введите ключ и нажмите Проверить.";
   if (step === "local-server") return "Введите URL локального сервера и нажмите Проверить.";
-  if (step === "overlay") return "Включите разрешение поверх экрана и нажмите Проверить.";
-  if (step === "accessibility-blocked") return "Откройте специальные возможности, получите отказ и подтвердите шаг.";
-  if (step === "accessibility-restricted") return "Разрешите ограниченные настройки в карточке приложения.";
-  if (step === "accessibility-enable") return "Включите специальные возможности Brai и нажмите Проверить.";
-  if (step === "microphone") return "Разрешите микрофон и нажмите Продолжить после успешной проверки.";
-  if (step === "notifications") return "Разрешите уведомления и нажмите Продолжить после успешной проверки.";
+  if (step === "microphone") return "Нужен для голосового ввода команд и диктовки для транскрибации";
+  if (step === "overlay") return "Они должны появляться поверх других приложений, чтобы выполнять своё предназначение. Кнопки не собирают никакие данные.";
+  if (step === "accessibility-why") return "";
+  if (step === "accessibility-blocked") return "Android просто так не разрешает получить этот доступ. Откройте «Специальные возможности» по кнопке ниже и попробуйте включить Brai. Android должен показать, что настройка заблокирована. Это важно. Потом вернитесь назад и нажмите на продолжение.";
+  if (step === "accessibility-restricted") return "Откройте карточку приложения, нажмите меню с тремя точками и выберите «разрешить ограниченные настройки». Это меню появляется только, если вы на предыдущем шаге получили отказ.";
+  if (step === "accessibility-enable") return "Теперь снова откройте специальные возможности и ещё раз попробуйте включить Brai. Откроется меню, где нужно будет только включить доступ, а затем Разрешить. После вернитесь сюда и нажмите на кнопку Проверки";
+  if (step === "notifications") return "Уведомления нужны для фоновой записи, работы очереди, когда нет сети, для получения обратной связи от Брай. Разработчики не шлют вам никаких уведомлений. Это только для вас.";
   return "";
 }
 

@@ -57,6 +57,7 @@ Object.assign(parsed, {
 fs.writeFileSync(outVersionFile, `${JSON.stringify(parsed, null, 2)}\n`);
 ' "$ROOT" "$VERSION" "${BRAI_TARGET_APK_VERSION_CODE:-${BRAI_ANDROID_VERSION_CODE:-}}"
 "$NODE_BIN" "$SCRIPT_DIR/write-client-runtime-config.mjs"
+"$NODE_BIN" "$SCRIPT_DIR/normalize-next-static-export.mjs" "$OUT_DIR"
 
 echo "Publishing browser web assets..."
 "$SCRIPT_DIR/publish-web.sh"
