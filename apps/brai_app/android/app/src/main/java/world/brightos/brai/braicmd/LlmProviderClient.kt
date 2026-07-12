@@ -17,17 +17,42 @@ internal data class LlmProviderResult(
     val outputChars: Int
 )
 
-internal class LlmProviderClient(private val context: Context) {
+internal class LlmProviderClient @JvmOverloads constructor(
+    private val context: Context,
+    private val endpointOverrides: Map<String, String> = emptyMap()
+) {
     private val appContext = context.applicationContext
 
     fun test(providerId: String, apiKey: String, model: String, baseUrl: String): JSObject {
+        return connect(providerId, apiKey, model, baseUrl, "text")
+    }
+
+    fun probe(providerId: String, apiKey: String, baseUrl: String, capability: String): JSObject {
         val cleanProvider = cleanProvider(providerId)
-        val cleanKey = apiKey.trim()
-        if (cleanKey.isBlank()) throw IllegalArgumentException("api_key_required")
-        val models = runCatching { listModels(cleanProvider, cleanKey, baseUrl) }.getOrDefault(emptyList())
-        val selectedModel = model.trim().ifBlank { defaultModel(cleanProvider, models) }
-        if (selectedModel.isBlank()) throw IllegalArgumentException("model_required")
-        val response = complete(
+        val cleanKey = resolvedKey(cleanProvider, apiKey)
+        val models = compatibleModels(cleanProvider, capability, listModels(cleanProvider, cleanKey, baseUrl))
+        val array = JSArray()
+        models.forEach { array.put(it) }
+        return JSObject()
+            .put("ok", true)
+            .put("message", "Подключение проверено. Выберите модель.")
+            .put("providerId", cleanProvider)
+            .put("models", array)
+            .put("manualModel", models.isEmpty())
+    }
+
+    fun connect(providerId: String, apiKey: String, model: String, baseUrl: String, capability: String): JSObject {
+        val cleanProvider = cleanProvider(providerId)
+        val cleanKey = resolvedKey(cleanProvider, apiKey)
+        val selectedModel = model.trim()
+        if (selectedModel.isBlank()) throw IllegalArgumentException("Выберите модель")
+        if (capability == "speech") {
+            require(compatibleModels(cleanProvider, capability, listOf(selectedModel)).isNotEmpty()) {
+                "Выбранная модель не поддерживает распознавание речи"
+            }
+            SpeechProviderClient(appContext, endpointOverrides).test(cleanProvider, cleanKey, selectedModel)
+        } else {
+            val response = complete(
             providerId = cleanProvider,
             apiKey = cleanKey,
             model = selectedModel,
@@ -35,21 +60,21 @@ internal class LlmProviderClient(private val context: Context) {
             system = "Return only the word ok.",
             user = "ping",
             maxTokens = 16
-        )
-        if (response.text.isBlank()) throw IllegalStateException("empty_provider_response")
-        val array = JSArray()
-        models.forEach { array.put(it) }
+            )
+            if (response.text.isBlank()) throw IllegalStateException("Поставщик вернул пустой ответ")
+        }
         return JSObject()
             .put("ok", true)
             .put("message", "Подключено")
             .put("providerId", cleanProvider)
             .put("model", selectedModel)
-            .put("models", array)
     }
 
     fun postProcess(sourceText: String, prompt: String): LlmProviderResult {
         val config = ConfigStore(appContext)
-        val apiKey = SecureStringStore(appContext).read(SecureStringStore.KEY_LLM_API_KEY)
+        val secure = SecureStringStore(appContext)
+        secure.migrateLegacyProviderKey(config.llmProviderId)
+        val apiKey = secure.providerKey(config.llmProviderId)
         val providerId = cleanProvider(config.llmProviderId)
         val model = config.llmProviderModel
         if (apiKey.isBlank() || model.isBlank()) throw IllegalStateException("llm_provider_not_configured")
@@ -70,9 +95,9 @@ internal class LlmProviderClient(private val context: Context) {
 
     private fun listModels(providerId: String, apiKey: String, baseUrl: String): List<String> {
         val url = when (providerId) {
-            "openai" -> "https://api.openai.com/v1/models"
-            "groq" -> "https://api.groq.com/openai/v1/models"
-            "openrouter" -> "https://openrouter.ai/api/v1/models"
+            "openai" -> "${endpoint("openai", "https://api.openai.com/v1")}/models"
+            "groq" -> "${endpoint("groq", "https://api.groq.com/openai/v1")}/models"
+            "openrouter" -> "${endpoint("openrouter", "https://openrouter.ai/api/v1")}/models"
             "gemini" -> "https://generativelanguage.googleapis.com/v1beta/models?key=${urlEncode(apiKey)}"
             "custom-openai" -> "${openAiBaseUrl(baseUrl)}/models"
             else -> error("unsupported_provider")
@@ -134,9 +159,9 @@ internal class LlmProviderClient(private val context: Context) {
         }
 
         val url = when (providerId) {
-            "openai" -> "https://api.openai.com/v1/chat/completions"
-            "groq" -> "https://api.groq.com/openai/v1/chat/completions"
-            "openrouter" -> "https://openrouter.ai/api/v1/chat/completions"
+            "openai" -> "${endpoint("openai", "https://api.openai.com/v1")}/chat/completions"
+            "groq" -> "${endpoint("groq", "https://api.groq.com/openai/v1")}/chat/completions"
+            "openrouter" -> "${endpoint("openrouter", "https://openrouter.ai/api/v1")}/chat/completions"
             "custom-openai" -> "${openAiBaseUrl(baseUrl)}/chat/completions"
             else -> error("unsupported_provider")
         }
@@ -177,8 +202,8 @@ internal class LlmProviderClient(private val context: Context) {
         val body = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
         if (status !in 200..299) {
             val json = runCatching { JSONObject(body) }.getOrNull()
-            val message = json?.optString("error")?.takeIf { it.isNotBlank() }
-                ?: json?.optJSONObject("error")?.optString("message")?.takeIf { it.isNotBlank() }
+            val message = json?.optJSONObject("error")?.optString("message")?.takeIf { it.isNotBlank() }
+                ?: (json?.opt("error") as? String)?.takeIf { it.isNotBlank() }
                 ?: body.ifBlank { "provider_http_$status" }
             throw IllegalStateException(message)
         }
@@ -202,11 +227,37 @@ internal class LlmProviderClient(private val context: Context) {
             }
         } ?: models.firstOrNull().orEmpty()
 
+    private fun resolvedKey(providerId: String, supplied: String): String {
+        val clean = supplied.trim().ifBlank { SecureStringStore(appContext).providerKey(providerId) }
+        if (clean.isBlank()) throw IllegalArgumentException("Введите API-ключ")
+        return clean
+    }
+
+    private fun compatibleModels(providerId: String, capability: String, models: List<String>): List<String> {
+        if (capability == "speech") {
+            return models.filter { model ->
+                when (providerId) {
+                    "openai" -> model == "whisper-1" ||
+                        (model.startsWith("gpt-4o") && model.contains("transcribe") && !model.contains("diarize"))
+                    "groq" -> model == "whisper-large-v3" || model == "whisper-large-v3-turbo"
+                    else -> false
+                }
+            }
+        }
+        return models.filterNot { model ->
+            model.contains("embedding", true) || model.contains("whisper", true) ||
+                model.contains("transcribe", true) || model.contains("tts", true)
+        }
+    }
+
     private fun openAiBaseUrl(value: String): String {
         val clean = value.trim().trimEnd('/')
         require(clean.startsWith("https://") || clean.startsWith("http://")) { "base_url_required" }
         return if (clean.endsWith("/v1")) clean else "$clean/v1"
     }
+
+    private fun endpoint(providerId: String, fallback: String): String =
+        endpointOverrides[providerId]?.trimEnd('/') ?: fallback
 
     private fun urlEncode(value: String): String =
         java.net.URLEncoder.encode(value, Charsets.UTF_8.name()).replace("+", "%20")

@@ -56,6 +56,25 @@ class ConfigStoreTest {
     }
 
     @Test
+    fun mainDictationToggleIsIndependentFromContextActions() {
+        store.mainDictationEnabled = false
+
+        assertFalse(ConfigStore(RuntimeEnvironment.getApplication()).mainDictationEnabled)
+        assertTrue(store.contextActionIdeaEnabled)
+        assertTrue(store.contextActionScreenshotEnabled)
+    }
+
+    @Test
+    fun onboardingQueuePauseNeverPersists() {
+        store.onboardingQueuePaused = true
+        assertTrue(store.onboardingQueuePaused)
+
+        BraiCmdRuntimeState.onboardingQueuePaused = false
+
+        assertFalse(ConfigStore(RuntimeEnvironment.getApplication()).onboardingQueuePaused)
+    }
+
+    @Test
     fun preliminaryProfileDataPersists() {
         store.preliminaryUserId = "prelim-user"
         store.preliminaryClaimToken = "claim-token"

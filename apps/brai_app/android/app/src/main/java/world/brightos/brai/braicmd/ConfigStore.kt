@@ -10,12 +10,20 @@ enum class ContextDeliveryMode {
     Screenshot
 }
 
+internal object BraiCmdRuntimeState {
+    @Volatile
+    var onboardingQueuePaused: Boolean = false
+}
+
 class ConfigStore(context: Context) {
     private val appContext = context.applicationContext
     private val prefs = appContext.getSharedPreferences(AppConstants.PREFS, Context.MODE_PRIVATE)
 
     init {
         migrateLegacyPreferences()
+        if (prefs.contains(AppConstants.KEY_ONBOARDING_QUEUE_PAUSED)) {
+            prefs.edit().remove(AppConstants.KEY_ONBOARDING_QUEUE_PAUSED).apply()
+        }
     }
 
     var serverUrl: String
@@ -135,12 +143,40 @@ class ConfigStore(context: Context) {
         set(value) = prefs.edit().putBoolean(AppConstants.KEY_ONBOARDING_VOICE_ONLY, value).apply()
 
     var onboardingQueuePaused: Boolean
-        get() = prefs.getBoolean(AppConstants.KEY_ONBOARDING_QUEUE_PAUSED, false)
-        set(value) = prefs.edit().putBoolean(AppConstants.KEY_ONBOARDING_QUEUE_PAUSED, value).apply()
+        get() = BraiCmdRuntimeState.onboardingQueuePaused
+        set(value) { BraiCmdRuntimeState.onboardingQueuePaused = value }
 
     var overlayEnabled: Boolean
         get() = prefs.getBoolean(AppConstants.KEY_OVERLAY_ENABLED, false)
         set(value) = prefs.edit().putBoolean(AppConstants.KEY_OVERLAY_ENABLED, value).apply()
+
+    var mainDictationEnabled: Boolean
+        get() = prefs.getBoolean(AppConstants.KEY_MAIN_DICTATION_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(AppConstants.KEY_MAIN_DICTATION_ENABLED, value).apply()
+
+    var transcriptionProviderMode: String
+        get() = prefs.getString(AppConstants.KEY_TRANSCRIPTION_PROVIDER_MODE, AppConstants.DEFAULT_TRANSCRIPTION_PROVIDER_MODE)
+            .orEmpty()
+            .trim()
+            .takeIf { it == "cloud" || it == "key" }
+            ?: AppConstants.DEFAULT_TRANSCRIPTION_PROVIDER_MODE
+        set(value) = prefs.edit()
+            .putString(AppConstants.KEY_TRANSCRIPTION_PROVIDER_MODE, value.trim().takeIf { it == "key" } ?: AppConstants.DEFAULT_TRANSCRIPTION_PROVIDER_MODE)
+            .apply()
+
+    var transcriptionProviderId: String
+        get() = prefs.getString(AppConstants.KEY_TRANSCRIPTION_PROVIDER_ID, AppConstants.DEFAULT_LLM_PROVIDER_ID)
+            .orEmpty()
+            .trim()
+            .takeIf { it in SUPPORTED_TRANSCRIPTION_PROVIDERS }
+            ?: AppConstants.DEFAULT_LLM_PROVIDER_ID
+        set(value) = prefs.edit()
+            .putString(AppConstants.KEY_TRANSCRIPTION_PROVIDER_ID, value.trim().takeIf { it in SUPPORTED_TRANSCRIPTION_PROVIDERS } ?: AppConstants.DEFAULT_LLM_PROVIDER_ID)
+            .apply()
+
+    var transcriptionProviderModel: String
+        get() = prefs.getString(AppConstants.KEY_TRANSCRIPTION_PROVIDER_MODEL, "").orEmpty().trim()
+        set(value) = prefs.edit().putString(AppConstants.KEY_TRANSCRIPTION_PROVIDER_MODEL, value.trim()).apply()
 
     var mainIconOpacityPercent: Int
         get() = prefs.getInt(AppConstants.KEY_MAIN_ICON_OPACITY_PERCENT, AppConstants.DEFAULT_ICON_OPACITY_PERCENT)
@@ -235,6 +271,7 @@ class ConfigStore(context: Context) {
     companion object {
         private const val LEGACY_AUTH_TOKEN_PLACEHOLDER = "replace-with-local-token"
         val SUPPORTED_LLM_PROVIDERS = setOf("openai", "groq", "openrouter", "gemini", "custom-openai")
+        val SUPPORTED_TRANSCRIPTION_PROVIDERS = setOf("openai", "groq")
 
         private val LEGACY_SERVER_URLS = setOf(
             "https://your-server.example.com",

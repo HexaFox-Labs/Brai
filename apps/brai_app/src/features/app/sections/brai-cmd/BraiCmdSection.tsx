@@ -4,24 +4,27 @@ import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ArrowLeft, Check, CheckCircle2, CircleHelp, Download, LoaderCircle, Trash2, X, XCircle } from "lucide-react";
 import {
   deleteBraiCmdAudio,
+  connectBraiCmdProvider,
+  disconnectBraiCmdProvider,
   downloadBraiCmdAudio,
   getBraiCmdSettings,
   openBraiCmdPermission,
-  saveBraiCmdProvider,
-  setBraiCmdOverlayEnabled,
+  listenBraiCmdStateChanges,
+  probeBraiCmdProvider,
   testBraiCmdConnection,
-  testBraiCmdProvider,
   updateBraiCmdSettings,
   type BraiCmdAudioItem,
   type BraiCmdContextActions,
   type BraiCmdPermissionKey,
   type BraiCmdProviderId,
+  type BraiCmdProviderCapability,
   type BraiCmdProviderMode,
   type BraiCmdProviderTestResult,
   type BraiCmdSettingsPatch,
   type BraiCmdSnapshot,
 } from "@/shared/platform/braiCmd";
 import { installAndroidBackHandler } from "@/shared/platform/platform";
+import { getBraiLocalStorageItem, setBraiLocalStorageItem } from "@/shared/storage/localStorageKeys";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/shared/ui/alert";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
@@ -36,6 +39,7 @@ import { Switch } from "@/shared/ui/switch";
 import { Textarea } from "@/shared/ui/textarea";
 import { SECTION_GRID_CLASS } from "../../appModel";
 import { cx } from "../../appUtils";
+import { loadOnboardingState } from "../../../onboarding/onboardingModel";
 
 const PROVIDERS: Array<{ id: BraiCmdProviderId; label: string }> = [
   { id: "openai", label: "OpenAI" },
@@ -44,6 +48,7 @@ const PROVIDERS: Array<{ id: BraiCmdProviderId; label: string }> = [
   { id: "gemini", label: "Gemini" },
   { id: "custom-openai", label: "OpenAI-compatible" },
 ];
+const SPEECH_PROVIDERS = PROVIDERS.filter((provider) => provider.id === "openai" || provider.id === "groq");
 
 const PERMISSIONS: Array<{ id: BraiCmdPermissionKey; title: string; text: string }> = [
   { id: "accessibility", title: "Специальные возможности", text: "Чтение контекста и вставка текста." },
@@ -62,27 +67,33 @@ const CONTEXT_ACTIONS: Array<{ id: keyof BraiCmdContextActions; title: string; t
 
 type CmdPage = "main" | "provider" | "audio";
 type ConnectionStatus = "idle" | "testing" | "ok" | "error";
-type ConnectionState = { status: ConnectionStatus; message: string };
+type ConnectionState = { status: ConnectionStatus; message: string; stages?: NonNullable<Awaited<ReturnType<typeof testBraiCmdConnection>>>["stages"] };
 
 const initialConnection: ConnectionState = { status: "idle", message: "Протестируйте подключение" };
 const CMD_SECTION_CLASS = "max-w-3xl content-start gap-4 [&_[data-slot=card]]:rounded-xl [&_[data-slot=card-header]]:p-4 [&_[data-slot=card-panel]]:px-4 [&_[data-slot=card-panel]]:pb-4 [&_[data-slot=field-content]]:gap-1 [&_[data-slot=field-content]>[data-slot=field-label]]:text-base [&_[data-slot=field-content]>[data-slot=field-label]]:font-semibold [&_[data-slot=field-description]]:text-muted-foreground/75";
+const PROVIDER_RECONNECT_NOTICE_KEY = "brai_cmd_provider_reconnect_notice_dismissed";
 
 export function BraiCmdSection() {
   const [snapshot, setSnapshot] = useState<BraiCmdSnapshot | null>(null);
   const [page, setPage] = useState<CmdPage>("main");
+  const [providerCapability, setProviderCapability] = useState<BraiCmdProviderCapability>("text");
   const [loading, setLoading] = useState(true);
   const [connection, setConnection] = useState<ConnectionState>(initialConnection);
   const [settingsError, setSettingsError] = useState("");
+  const [providerReconnectNoticeDismissed, setProviderReconnectNoticeDismissed] = useState(() =>
+    typeof window !== "undefined" && getBraiLocalStorageItem(PROVIDER_RECONNECT_NOTICE_KEY) === "true");
 
   useEffect(() => {
-    let active = true;
-    void getBraiCmdSettings().then((next) => {
-      if (!active) return;
-      setSnapshot(next);
-      setLoading(false);
-    });
+    void getBraiCmdSettings().then((next) => { if (next) setSnapshot(next); setLoading(false); });
+    let remove: (() => void) | undefined;
+    void listenBraiCmdStateChanges(setSnapshot).then((handle) => { remove = () => void handle?.remove(); });
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void getBraiCmdSettings().then((next) => { if (next) setSnapshot(next); });
+    };
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
-      active = false;
+      remove?.();
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, []);
 
@@ -102,16 +113,12 @@ export function BraiCmdSection() {
     setSnapshot(next);
   }
 
-  async function toggleOverlay(enabled: boolean) {
-    const next = await setBraiCmdOverlayEnabled(enabled);
-    if (!next) return;
-    setSnapshot((current) => current ? { ...current, ...next, overlayEnabled: next.overlayEnabled ?? enabled } : current);
-  }
-
   async function testConnection() {
     setConnection({ status: "testing", message: "Проверка..." });
     const result = await testBraiCmdConnection();
-    setConnection(result?.ok ? { status: "ok", message: "Всё работает" } : { status: "error", message: "Подключение не работает" });
+    setConnection(result?.ok
+      ? { status: "ok", message: result.message || "Подключение к Brai работает", stages: result.stages }
+      : { status: "error", message: result?.message || "Подключение к Brai не работает", stages: result?.stages });
   }
 
   if (loading) {
@@ -131,6 +138,11 @@ export function BraiCmdSection() {
     );
   }
 
+  const onboardingUsedProvider = loadOnboardingState().voiceMode === "provider";
+  const hasSpeechProfile = snapshot.settings.providerProfiles.some((profile) =>
+    profile.configured && (profile.providerId === "openai" || profile.providerId === "groq"));
+  const showProviderReconnectNotice = onboardingUsedProvider && !hasSpeechProfile && !providerReconnectNoticeDismissed;
+
   return (
     <section className={cx(SECTION_GRID_CLASS, CMD_SECTION_CLASS)} aria-label="Brai CMD">
       {settingsError ? (
@@ -139,19 +151,31 @@ export function BraiCmdSection() {
           <AlertTitle>{settingsError}</AlertTitle>
         </Alert>
       ) : null}
+      {showProviderReconnectNotice && page === "main" ? (
+        <Alert>
+          <CircleHelp />
+          <AlertTitle>Подключите поставщика заново</AlertTitle>
+          <AlertDescription>Ранее введённый в онбординге ключ не был сохранён. Сейчас используется безопасный облачный режим Brai.</AlertDescription>
+          <AlertAction>
+            <Button type="button" variant="outline" onClick={() => {
+              setBraiLocalStorageItem(PROVIDER_RECONNECT_NOTICE_KEY, "true");
+              setProviderReconnectNoticeDismissed(true);
+            }}>Понятно</Button>
+          </AlertAction>
+        </Alert>
+      ) : null}
       {page === "main" ? (
         <MainPage
           snapshot={snapshot}
           connection={connection}
-          onAudio={() => setPage("audio")}
+          onAudio={() => { setPage("audio"); void getBraiCmdSettings().then((next) => { if (next) setSnapshot(next); }); }}
           onConnectionTest={() => void testConnection()}
-          onOverlayChange={(enabled) => void toggleOverlay(enabled)}
           onPatch={(patch) => void patchSettings(patch)}
           onPermission={(permission) => void openBraiCmdPermission(permission).then((next) => { if (next) setSnapshot(next); })}
-          onProvider={() => setPage("provider")}
+          onProvider={(capability) => { setProviderCapability(capability); setPage("provider"); }}
         />
       ) : page === "provider" ? (
-        <ProviderPage snapshot={snapshot} onBack={() => setPage("main")} onSnapshot={setSnapshot} />
+        <ProviderPage capability={providerCapability} snapshot={snapshot} onBack={() => setPage("main")} onSnapshot={setSnapshot} />
       ) : (
         <AudioPage snapshot={snapshot} onBack={() => setPage("main")} onPatch={(patch) => void patchSettings(patch)} onSnapshot={setSnapshot} />
       )}
@@ -164,7 +188,6 @@ function MainPage({
   connection,
   onAudio,
   onConnectionTest,
-  onOverlayChange,
   onPatch,
   onPermission,
   onProvider,
@@ -173,10 +196,9 @@ function MainPage({
   connection: ConnectionState;
   onAudio: () => void;
   onConnectionTest: () => void;
-  onOverlayChange: (enabled: boolean) => void;
   onPatch: (patch: BraiCmdSettingsPatch) => void;
   onPermission: (permission: BraiCmdPermissionKey) => void;
-  onProvider: () => void;
+  onProvider: (capability: BraiCmdProviderCapability) => void;
 }) {
   const { settings } = snapshot;
   return (
@@ -188,10 +210,10 @@ function MainPage({
         </CardHeader>
         <CardContent>
           <SwitchRow
-            checked={Boolean(snapshot.overlayEnabled)}
-            text="Выключает основную кнопку и кнопки контекста."
-            title="Переключатель активен"
-            onCheckedChange={onOverlayChange}
+            checked={settings.mainDictationEnabled}
+            text="Управляет только главной кнопкой. Кнопки контекста настраиваются отдельно."
+            title="Главная кнопка включена"
+            onCheckedChange={(checked) => onPatch({ mainDictationEnabled: checked })}
           />
         </CardContent>
       </Card>
@@ -225,12 +247,13 @@ function MainPage({
 
       <Card>
         <CardHeader>
-          <CardTitle>Проверка связи</CardTitle>
+          <CardTitle>Подключение к Brai</CardTitle>
+          <CardDescription>Проверяет серверы Brai, доступ устройства и доставку контекста. Пользовательский AI-провайдер проверяется отдельно.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
           <ConnectionAlert connection={connection} />
           <Button className="w-full sm:w-fit" disabled={connection.status === "testing"} type="button" onClick={onConnectionTest}>
-            {connection.status === "testing" ? "Проверка" : "Тест"}
+            {connection.status === "testing" ? "Проверка" : "Проверить подключение к Brai"}
           </Button>
         </CardContent>
       </Card>
@@ -274,6 +297,28 @@ function MainPage({
 
       <Card>
         <CardHeader>
+          <CardTitle>Распознавание речи</CardTitle>
+          <CardDescription>Выберите, куда приложение отправляет голос для получения текста.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Field orientation="responsive">
+            <FieldContent>
+              <FieldTitle>{settings.transcriptionMode === "cloud" ? "Облако Brai" : PROVIDERS.find((item) => item.id === settings.transcriptionProviderId)?.label}</FieldTitle>
+              <FieldDescription>
+                {settings.transcriptionMode === "cloud"
+                  ? "Аудио расшифровывается на серверах Brai."
+                  : settings.transcriptionConfigured
+                    ? `Модель: ${settings.transcriptionModel}`
+                    : "Подключение не завершено. Проверьте ключ и выберите модель."}
+              </FieldDescription>
+            </FieldContent>
+            <Button className="w-full sm:w-auto" type="button" variant="outline" onClick={() => onProvider("speech")}>Настроить</Button>
+          </Field>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Постобработка</CardTitle>
           <CardDescription>Улучшаем с ИИ текст полученный после расшифровки.</CardDescription>
         </CardHeader>
@@ -293,7 +338,7 @@ function MainPage({
                     <FieldTitle>Поставщик</FieldTitle>
                     <FieldDescription>{settings.providerConfigured ? "Поставщик подключён." : "Нужно выбрать облако Brai или подключить ключ поставщика."}</FieldDescription>
                   </FieldContent>
-                  <Button className="w-full justify-start sm:w-auto sm:justify-center" type="button" variant="outline" onClick={onProvider}>
+                  <Button className="w-full justify-start sm:w-auto sm:justify-center" type="button" variant="outline" onClick={() => onProvider("text")}>
                     {settings.providerConfigured ? <Check className="text-emerald-600 dark:text-emerald-300" /> : <X className="text-destructive" />}
                     Настроить
                   </Button>
@@ -335,18 +380,23 @@ function MainPage({
   );
 }
 
-function ProviderPage({ snapshot, onBack, onSnapshot }: { snapshot: BraiCmdSnapshot; onBack: () => void; onSnapshot: (snapshot: BraiCmdSnapshot) => void }) {
-  const [mode, setMode] = useState<BraiCmdProviderMode>(snapshot.settings.providerMode);
-  const [providerId, setProviderId] = useState<BraiCmdProviderId>(snapshot.settings.providerId);
+function ProviderPage({ capability, snapshot, onBack, onSnapshot }: { capability: BraiCmdProviderCapability; snapshot: BraiCmdSnapshot; onBack: () => void; onSnapshot: (snapshot: BraiCmdSnapshot) => void }) {
+  const speech = capability === "speech";
+  const [mode, setMode] = useState<BraiCmdProviderMode>(speech ? snapshot.settings.transcriptionMode : snapshot.settings.providerMode);
+  const [providerId, setProviderId] = useState<BraiCmdProviderId>(speech ? snapshot.settings.transcriptionProviderId : snapshot.settings.providerId);
   const [baseUrl, setBaseUrl] = useState(snapshot.settings.providerBaseUrl);
   const [apiKey, setApiKey] = useState("");
-  const [model, setModel] = useState(snapshot.settings.providerModel);
+  const [model, setModel] = useState(speech ? snapshot.settings.transcriptionModel : snapshot.settings.providerModel);
   const [models, setModels] = useState<string[]>([]);
+  const [verified, setVerified] = useState(false);
+  const [manualModel, setManualModel] = useState(false);
   const [testing, setTesting] = useState(false);
   const [result, setResult] = useState<BraiCmdProviderTestResult | null>(null);
+  const providers = speech ? SPEECH_PROVIDERS : PROVIDERS;
+  const hasProfile = snapshot.settings.providerProfiles.some((profile) => profile.providerId === providerId && profile.configured);
 
   async function saveCloud() {
-    const next = await updateBraiCmdSettings({ providerMode: "cloud" });
+    const next = await updateBraiCmdSettings(speech ? { transcriptionMode: "cloud" } : { providerMode: "cloud" });
     if (next) onSnapshot(next);
   }
 
@@ -354,37 +404,59 @@ function ProviderPage({ snapshot, onBack, onSnapshot }: { snapshot: BraiCmdSnaps
     const nextMode = value as BraiCmdProviderMode;
     setMode(nextMode);
     setResult(null);
+    setVerified(false);
     if (nextMode === "cloud") void saveCloud();
   }
 
-  async function connectProvider() {
+  async function probeProvider() {
     setTesting(true);
     try {
-      const tested = await testBraiCmdProvider({ providerId, apiKey, model, baseUrl });
+      const tested = await probeBraiCmdProvider({ providerId, apiKey, baseUrl, capability });
       setResult(tested);
       if (tested?.ok) {
         const nextModels = tested.models ?? [];
-        const nextModel = tested.model || model || nextModels[0] || "";
         setModels(nextModels);
-        setModel(nextModel);
-        const next = await saveBraiCmdProvider({ providerMode: "key", providerId, apiKey, model: nextModel, baseUrl });
-        if (next) onSnapshot(next);
+        setModel("");
+        setManualModel(Boolean(tested.manualModel));
+        setVerified(true);
       }
     } finally {
       setTesting(false);
     }
   }
 
+  async function connectProvider() {
+    setTesting(true);
+    try {
+      const connected = await connectBraiCmdProvider({ providerId, apiKey, model, baseUrl, capability });
+      setResult(connected);
+      if (connected?.ok && connected.state) onSnapshot(connected.state);
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  async function disconnectProvider() {
+    if (!window.confirm("Отключить поставщика? Использующие его функции переключатся на облако Brai.")) return;
+    const next = await disconnectBraiCmdProvider(providerId);
+    if (next) {
+      onSnapshot(next);
+      setMode("cloud");
+      setVerified(false);
+      setResult(null);
+    }
+  }
+
   return (
     <>
-      <PageBack title="Поставщик LLM" onBack={onBack} />
+      <PageBack title={speech ? "Распознавание речи" : "Поставщик постобработки"} onBack={onBack} />
       <Card>
         <CardHeader>
           <CardTitle>Режим</CardTitle>
         </CardHeader>
         <CardContent>
           <ChoiceRadioGroup value={mode} onValueChange={chooseMode}>
-            <ChoiceRadio id="brai-cmd-provider-cloud" text="Постобработка на серверах Brai." title="Облако Brai" value="cloud" />
+            <ChoiceRadio id="brai-cmd-provider-cloud" text={speech ? "Распознавание на серверах Brai." : "Постобработка на серверах Brai."} title="Облако Brai" value="cloud" />
             <ChoiceRadio id="brai-cmd-provider-key" text="Ваш ключ и выбранная модель." title="Свой API-ключ" value="key" />
           </ChoiceRadioGroup>
         </CardContent>
@@ -394,12 +466,11 @@ function ProviderPage({ snapshot, onBack, onSnapshot }: { snapshot: BraiCmdSnaps
         <Card>
           <CardHeader>
             <CardTitle>Облако Brai</CardTitle>
-            <CardDescription>Постобработка происходит на серверах Brai. Данные удаляются сразу после доставки на ваше устройство.</CardDescription>
+            <CardDescription>{speech ? "Распознавание речи происходит на серверах Brai." : "Постобработка происходит на серверах Brai."} Данные удаляются сразу после доставки на ваше устройство.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 text-sm text-muted-foreground">
             <p className="m-0">Сейчас бесплатное использование. В дальнейшем будет лимитировано + подписка.</p>
-            <p className="m-0">Используемая модель OpenAI gpt-oss-20b: 20 млрд параметров.</p>
-            <StatsGrid snapshot={snapshot} cloudOnly />
+            {!speech ? <><p className="m-0">Используемая модель OpenAI gpt-oss-20b: 20 млрд параметров.</p><StatsGrid snapshot={snapshot} cloudOnly /></> : null}
           </CardContent>
         </Card>
       ) : (
@@ -411,9 +482,9 @@ function ProviderPage({ snapshot, onBack, onSnapshot }: { snapshot: BraiCmdSnaps
             <FieldGroup className="gap-4">
               <Field>
                 <FieldLabel htmlFor="brai-cmd-provider-id">Поставщик</FieldLabel>
-                <Select value={providerId} onValueChange={(value) => setProviderId(value as BraiCmdProviderId)}>
+                <Select value={providerId} onValueChange={(value) => { setProviderId(value as BraiCmdProviderId); setVerified(false); setResult(null); setModel(""); }}>
                   <SelectTrigger id="brai-cmd-provider-id" className="w-full"><SelectValue /></SelectTrigger>
-                  <SelectContent>{PROVIDERS.map((provider) => <SelectItem key={provider.id} value={provider.id}>{provider.label}</SelectItem>)}</SelectContent>
+                  <SelectContent>{providers.map((provider) => <SelectItem key={provider.id} value={provider.id}>{provider.label}</SelectItem>)}</SelectContent>
                 </Select>
               </Field>
               {providerId === "custom-openai" ? (
@@ -424,9 +495,13 @@ function ProviderPage({ snapshot, onBack, onSnapshot }: { snapshot: BraiCmdSnaps
               ) : null}
               <Field>
                 <FieldLabel htmlFor="brai-cmd-provider-key">API ключ</FieldLabel>
-                <Input id="brai-cmd-provider-key" autoComplete="off" type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} />
+                <Input id="brai-cmd-provider-key" autoComplete="off" placeholder={hasProfile ? "Ключ сохранён; оставьте пустым, чтобы использовать его" : "API-ключ"} type="password" value={apiKey} onChange={(event) => { setApiKey(event.target.value); setVerified(false); }} />
               </Field>
-              {models.length > 0 ? (
+              {!verified ? (
+                <Button className="w-full sm:w-fit" disabled={testing} type="button" onClick={() => void probeProvider()}>
+                  {testing ? "Проверка" : "Проверить подключение"}
+                </Button>
+              ) : models.length > 0 ? (
                 <Field>
                   <FieldLabel htmlFor="brai-cmd-provider-model-select">Модель</FieldLabel>
                   <Select value={model} onValueChange={setModel}>
@@ -434,15 +509,14 @@ function ProviderPage({ snapshot, onBack, onSnapshot }: { snapshot: BraiCmdSnaps
                     <SelectContent>{models.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent>
                   </Select>
                 </Field>
-              ) : (
+              ) : manualModel ? (
                 <Field>
                   <FieldLabel htmlFor="brai-cmd-provider-model">Модель</FieldLabel>
-                  <Input id="brai-cmd-provider-model" placeholder="Оставьте пустым, если поставщик отдаёт список" value={model} onChange={(event) => setModel(event.target.value)} />
+                  <Input id="brai-cmd-provider-model" placeholder="Введите идентификатор модели" value={model} onChange={(event) => setModel(event.target.value)} />
                 </Field>
-              )}
-              <Button className="w-full sm:w-fit" disabled={testing || apiKey.trim().length === 0} type="button" onClick={() => void connectProvider()}>
-                {testing ? "Проверка" : "Подключить"}
-              </Button>
+              ) : null}
+              {verified ? <Button className="w-full sm:w-fit" disabled={testing || model.trim().length === 0} type="button" onClick={() => void connectProvider()}>{testing ? "Проверка модели" : "Подключить"}</Button> : null}
+              {hasProfile ? <Button className="w-full sm:w-fit" type="button" variant="destructive" onClick={() => void disconnectProvider()}>Отключить поставщика</Button> : null}
               {result ? <ProviderResultAlert result={result} /> : null}
             </FieldGroup>
           </CardContent>
@@ -484,6 +558,12 @@ function AudioPage({
     if (parsed >= 1 && parsed <= 999) onPatch({ processedAudioRetentionLimit: parsed });
   }
 
+  function changeRetention(value: string) {
+    const enabled = value === "processed";
+    if (!enabled && settings.processedAudioRetentionEnabled && !window.confirm("Удалить все обработанные аудиозаписи? Записи в очереди останутся.")) return;
+    onPatch({ processedAudioRetentionEnabled: enabled });
+  }
+
   return (
     <>
       <PageBack title="Аудиозаписи" onBack={onBack} />
@@ -493,15 +573,15 @@ function AudioPage({
         </CardHeader>
         <CardContent>
           <FieldGroup className="gap-4">
-            <ChoiceRadioGroup value={settings.processedAudioRetentionEnabled ? "processed" : "queue"} onValueChange={(value) => onPatch({ processedAudioRetentionEnabled: value === "processed" })}>
-              <ChoiceRadio id="brai-cmd-audio-queue" text="Без лимита для очереди." title="Только очередь" value="queue" />
+            <ChoiceRadioGroup value={settings.processedAudioRetentionEnabled ? "processed" : "queue"} onValueChange={changeRetention}>
+              <ChoiceRadio id="brai-cmd-audio-queue" text="Обработанные записи удаляются. Очередь хранится без лимита." title="Только очередь" value="queue" />
               <ChoiceRadio id="brai-cmd-audio-processed" text="Сохранять обработанные записи." title="Хранить больше аудиозаписей" value="processed" />
             </ChoiceRadioGroup>
             {settings.processedAudioRetentionEnabled ? (
               <Field orientation="responsive">
                 <FieldContent>
                   <FieldLabel htmlFor="brai-cmd-audio-limit">Сколько аудиозаписей хранить?</FieldLabel>
-                  <FieldDescription>Лимит применяется только к обработанным аудиозаписям.</FieldDescription>
+                  <FieldDescription>Лишние обработанные записи удаляются сразу. Очередь не затрагивается.</FieldDescription>
                 </FieldContent>
                 <Input
                   id="brai-cmd-audio-limit"
@@ -625,8 +705,20 @@ function ConnectionAlert({ connection }: { connection: ConnectionState }) {
     <Alert variant={connection.status === "ok" ? "success" : connection.status === "error" ? "destructive" : "default"}>
       <Icon className={connection.status === "testing" ? "animate-spin" : undefined} />
       <AlertTitle>{connection.message}</AlertTitle>
+      {connection.stages ? (
+        <AlertDescription>
+          {connection.stages.server ? <span className="block">Сервер: {stageLabel(connection.stages.server.status)}</span> : null}
+          {connection.stages.access ? <span className="block">Доступ устройства: {stageLabel(connection.stages.access.status)}</span> : null}
+          {connection.stages.contextDelivery ? <span className="block">Доставка контекста: {stageLabel(connection.stages.contextDelivery.status)}</span> : null}
+          {connection.stages.cloudTranscription ? <span className="block">Облачная расшифровка: {stageLabel(connection.stages.cloudTranscription.status)}</span> : null}
+        </AlertDescription>
+      ) : null}
     </Alert>
   );
+}
+
+function stageLabel(status: "ok" | "error" | "skipped") {
+  return status === "ok" ? "работает" : status === "skipped" ? "не используется" : "ошибка";
 }
 
 function ProviderResultAlert({ result }: { result: BraiCmdProviderTestResult }) {

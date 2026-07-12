@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto';
 const GROQ_TRANSCRIPTIONS_URL = 'https://api.groq.com/openai/v1/audio/transcriptions';
 const GROQ_CHAT_COMPLETIONS_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const OPENAI_TRANSCRIPTIONS_URL = 'https://api.openai.com/v1/audio/transcriptions';
+const GROQ_MODELS_URL = 'https://api.groq.com/openai/v1/models';
+const OPENAI_MODELS_URL = 'https://api.openai.com/v1/models';
 const MAX_POST_PROCESSING_PROMPT_CHARS = 4000;
 
 export function braiCmdConfigFromEnv(env = process.env) {
@@ -26,6 +28,7 @@ export function createBraiCmdRuntime(options = {}) {
     config,
     deps: {
       transcribeAudio: (file) => transcribeAudio(file, config),
+      probeTranscription: () => probeCloudTranscription(config),
       postProcessTranscript: (text, prompt) =>
         postProcessWithGroq(text, prompt, {
           apiKey: config.groqApiKey,
@@ -51,6 +54,8 @@ export function isBraiCmdPublicRoute(pathname) {
     '/v1/brai-cmd/health',
     '/v1/brai-cmd/access/request',
     '/v1/brai-cmd/dictate',
+    '/v1/brai-cmd/diagnostics',
+    '/v1/brai-cmd/post-process',
     '/v1/airwhisper/health',
     '/v1/airwhisper/access/request',
     '/v1/airwhisper/dictate'
@@ -83,6 +88,72 @@ export async function handleBraiCmdPublicRoute({ req, res, url, store, runtime, 
       url.pathname === '/v1/airwhisper/access/request'
     )) {
       await handleAccessRequest({ req, res, store, sendJson });
+      return;
+    }
+
+    if (req.method === 'POST' && url.pathname === '/v1/brai-cmd/diagnostics') {
+      const access = requireBraiCmdAccess(req, store);
+      const body = await readJsonBody(req, 16 * 1024);
+      let cloudTranscription = { status: 'skipped' };
+      if (body.includeCloudTranscription !== false) {
+        const probe = await runtime.deps.probeTranscription();
+        cloudTranscription = { status: 'ok', provider: probe.provider, model: probe.model };
+      }
+      safeRecordLog(store, {
+        source: 'brai-cmd',
+        operation: 'brai_cmd.diagnostics',
+        status: 'success',
+        severityText: 'INFO',
+        reason: null,
+        message: 'Brai Cmd diagnostics passed',
+        jsonData: { access_token_id: access.id, cloud_transcription: cloudTranscription.status }
+      });
+      sendJson(req, res, 200, {
+        ok: true,
+        stages: {
+          server: { status: 'ok' },
+          access: { status: 'ok' },
+          contextDelivery: { status: 'ok' },
+          cloudTranscription
+        }
+      });
+      return;
+    }
+
+    if (req.method === 'POST' && url.pathname === '/v1/brai-cmd/post-process') {
+      const access = requireBraiCmdAccess(req, store);
+      const body = await readJsonBody(req, 64 * 1024);
+      const text = stringField(body, 'text');
+      const prompt = stringField(body, 'prompt');
+      if (!text) throw new BraiCmdHttpError(400, 'Text is required', 'text_required');
+      if (!prompt) throw new BraiCmdHttpError(400, 'Prompt is required', 'prompt_required');
+      if (prompt.length > MAX_POST_PROCESSING_PROMPT_CHARS) {
+        throw new BraiCmdHttpError(400, 'Prompt is too long', 'prompt_too_long');
+      }
+      const started = Date.now();
+      const processed = await runtime.deps.postProcessTranscript(text, prompt);
+      safeRecordLog(store, {
+        source: 'brai-cmd',
+        operation: 'brai_cmd.post_process',
+        status: 'success',
+        severityText: 'INFO',
+        reason: null,
+        message: 'Brai Cmd text post-processing completed',
+        jsonData: {
+          access_token_id: access.id,
+          model: processed.model,
+          duration_ms: Date.now() - started,
+          input_chars: text.length + prompt.length,
+          output_chars: processed.text.length
+        }
+      });
+      sendJson(req, res, 200, {
+        text: processed.text,
+        provider: processed.provider ?? 'groq',
+        model: processed.model,
+        inputChars: text.length + prompt.length,
+        outputChars: processed.text.length
+      });
       return;
     }
 
@@ -362,6 +433,28 @@ async function transcribeAudio(file, config) {
       timeoutMs: config.transcriptionTimeoutMs
     });
   }
+}
+
+async function probeCloudTranscription(config) {
+  if (config.groqApiKey) {
+    await requestJson(`${GROQ_MODELS_URL}/${encodeURIComponent(config.transcriptionModel)}`, {
+      method: 'GET',
+      headers: { authorization: `Bearer ${config.groqApiKey}` },
+      timeoutMs: Math.min(config.transcriptionTimeoutMs, 15_000),
+      timeoutMessage: 'Groq transcription model check timed out'
+    });
+    return { provider: 'groq', model: config.transcriptionModel };
+  }
+  if (config.openaiApiKey) {
+    await requestJson(`${OPENAI_MODELS_URL}/${encodeURIComponent(config.openaiTranscriptionModel)}`, {
+      method: 'GET',
+      headers: { authorization: `Bearer ${config.openaiApiKey}` },
+      timeoutMs: Math.min(config.transcriptionTimeoutMs, 15_000),
+      timeoutMessage: 'OpenAI transcription model check timed out'
+    });
+    return { provider: 'openai', model: config.openaiTranscriptionModel };
+  }
+  throw new UpstreamError('Cloud transcription provider is not configured');
 }
 
 async function transcribeWithGroq(file, options) {

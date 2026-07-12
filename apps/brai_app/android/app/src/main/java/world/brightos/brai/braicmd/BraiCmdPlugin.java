@@ -35,12 +35,14 @@ import world.brightos.brai.capabilities.BraiAccessibilityService;
 )
 public final class BraiCmdPlugin extends Plugin {
     private static final String EVENT_ONBOARDING = "onboardingEvent";
+    private static final String EVENT_STATE_CHANGED = "stateChanged";
     private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
     private static volatile BraiCmdPlugin activePlugin;
 
     @Override
     public void load() {
         activePlugin = this;
+        new ConfigStore(getContext()).setOnboardingQueuePaused(false);
     }
 
     @Override
@@ -74,14 +76,19 @@ public final class BraiCmdPlugin extends Plugin {
     public void updateSettings(PluginCall call) {
         JSObject patch = call.getObject("patch", new JSObject());
         BraiCmdBridge.INSTANCE.updateSettings(getContext(), patch == null ? new JSObject() : patch);
-        call.resolve(BraiCmdBridge.INSTANCE.snapshot(getContext()));
+        JSObject snapshot = BraiCmdBridge.INSTANCE.snapshot(getContext());
+        notifyStateChangedNow(snapshot);
+        call.resolve(snapshot);
     }
 
     @PluginMethod
     public void saveProvider(PluginCall call) {
         JSObject input = call.getObject("provider", new JSObject());
         BraiCmdBridge.INSTANCE.saveProvider(getContext(), input == null ? new JSObject() : input);
-        call.resolve(BraiCmdBridge.INSTANCE.snapshot(getContext()));
+        RecordingService.Companion.retryPending(getContext());
+        JSObject snapshot = BraiCmdBridge.INSTANCE.snapshot(getContext());
+        notifyStateChangedNow(snapshot);
+        call.resolve(snapshot);
     }
 
     @PluginMethod
@@ -89,14 +96,16 @@ public final class BraiCmdPlugin extends Plugin {
         new Thread(() -> {
             JSObject result = new JSObject();
             try {
-                String status = new NetworkClient(getContext()).publicHealthCheck();
-                result.put("ok", "ok".equals(status) || !status.isBlank());
-                result.put("message", "Всё работает");
+                ConfigStore config = new ConfigStore(getContext());
+                org.json.JSONObject diagnostics = new NetworkClient(getContext()).diagnostics("cloud".equals(config.getTranscriptionProviderMode()));
+                result = new JSObject(diagnostics.toString());
+                result.put("message", "Подключение к Brai работает");
             } catch (Throwable error) {
                 result.put("ok", false);
-                result.put("message", "Подключение не работает");
+                result.put("message", providerMessage(error, "Не удалось подключиться к серверам Brai"));
             }
-            MAIN_HANDLER.post(() -> call.resolve(result));
+            JSObject finalResult = result;
+            MAIN_HANDLER.post(() -> call.resolve(finalResult));
         }).start();
     }
 
@@ -123,11 +132,79 @@ public final class BraiCmdPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void probeProvider(PluginCall call) {
+        JSObject input = call.getObject("provider", new JSObject());
+        JSObject provider = input == null ? new JSObject() : input;
+        new Thread(() -> {
+            JSObject result;
+            try {
+                result = new LlmProviderClient(getContext()).probe(
+                    provider.optString("providerId", ""),
+                    provider.optString("apiKey", ""),
+                    provider.optString("baseUrl", ""),
+                    provider.optString("capability", "text")
+                );
+            } catch (Throwable error) {
+                result = new JSObject();
+                result.put("ok", false);
+                result.put("message", providerMessage(error, "Не удалось проверить поставщика"));
+            }
+            JSObject finalResult = result;
+            MAIN_HANDLER.post(() -> call.resolve(finalResult));
+        }).start();
+    }
+
+    @PluginMethod
+    public void connectProvider(PluginCall call) {
+        JSObject input = call.getObject("provider", new JSObject());
+        JSObject provider = input == null ? new JSObject() : input;
+        new Thread(() -> {
+            JSObject result;
+            try {
+                result = new LlmProviderClient(getContext()).connect(
+                    provider.optString("providerId", ""),
+                    provider.optString("apiKey", ""),
+                    provider.optString("model", ""),
+                    provider.optString("baseUrl", ""),
+                    provider.optString("capability", "text")
+                );
+                BraiCmdBridge.INSTANCE.saveProvider(getContext(), provider);
+                result.put("state", BraiCmdBridge.INSTANCE.snapshot(getContext()));
+                RecordingService.Companion.retryPending(getContext());
+            } catch (Throwable error) {
+                result = new JSObject();
+                result.put("ok", false);
+                result.put("message", providerMessage(error, "Не удалось подключить поставщика"));
+            }
+            JSObject finalResult = result;
+            MAIN_HANDLER.post(() -> {
+                if (finalResult.optBoolean("ok")) notifyStateChanged();
+                call.resolve(finalResult);
+            });
+        }).start();
+    }
+
+    @PluginMethod
+    public void disconnectProvider(PluginCall call) {
+        String providerId = call.getString("providerId", "");
+        ConfigStore config = new ConfigStore(getContext());
+        String cleanProviderId = providerId == null ? "" : providerId.trim();
+        SecureStringStore secure = new SecureStringStore(getContext());
+        secure.clearProviderKey(cleanProviderId);
+        if (cleanProviderId.equals(config.getTranscriptionProviderId())) config.setTranscriptionProviderMode("cloud");
+        if (cleanProviderId.equals(config.getLlmProviderId())) config.setPostProcessingProviderMode("cloud");
+        JSObject snapshot = BraiCmdBridge.INSTANCE.snapshot(getContext());
+        notifyStateChangedNow(snapshot);
+        call.resolve(snapshot);
+    }
+
+    @PluginMethod
     public void deleteAudio(PluginCall call) {
         String id = call.getString("id", "");
         JSObject result = new JSObject();
         result.put("ok", RecordingArchiveStore.INSTANCE.delete(getContext(), id == null ? "" : id));
         result.put("state", BraiCmdBridge.INSTANCE.snapshot(getContext()));
+        notifyStateChanged();
         call.resolve(result);
     }
 
@@ -422,5 +499,27 @@ public final class BraiCmdPlugin extends Plugin {
         event.put("type", type);
         if (text != null) event.put("text", text);
         notifyListeners(EVENT_ONBOARDING, event);
+    }
+
+    public static void notifyStateChanged() {
+        BraiCmdPlugin plugin = activePlugin;
+        if (plugin == null) return;
+        MAIN_HANDLER.post(() -> plugin.notifyStateChangedNow(BraiCmdBridge.INSTANCE.snapshot(plugin.getContext())));
+    }
+
+    private void notifyStateChangedNow(JSObject snapshot) {
+        if (snapshot != null) notifyListeners(EVENT_STATE_CHANGED, snapshot);
+    }
+
+    private static String providerMessage(Throwable error, String fallback) {
+        String message = error.getMessage();
+        if (message == null || message.isBlank()) return fallback;
+        return switch (message) {
+            case "api_key_required" -> "Введите API-ключ";
+            case "model_required" -> "Выберите модель";
+            case "base_url_required" -> "Введите корректный Base URL";
+            case "unsupported_provider" -> "Этот поставщик не поддерживается";
+            default -> message;
+        };
     }
 }

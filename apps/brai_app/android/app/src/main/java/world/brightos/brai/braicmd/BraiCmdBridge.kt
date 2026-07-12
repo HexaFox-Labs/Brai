@@ -31,12 +31,19 @@ internal object BraiCmdBridge {
         if (patch.has("providerId")) config.llmProviderId = patch.optString("providerId")
         if (patch.has("providerModel")) config.llmProviderModel = patch.optString("providerModel")
         if (patch.has("providerBaseUrl")) config.llmProviderBaseUrl = patch.optString("providerBaseUrl")
+        if (patch.has("mainDictationEnabled")) config.mainDictationEnabled = patch.optBoolean("mainDictationEnabled")
+        if (patch.has("transcriptionMode")) config.transcriptionProviderMode = patch.optString("transcriptionMode")
+        if (patch.has("transcriptionProviderId")) config.transcriptionProviderId = patch.optString("transcriptionProviderId")
+        if (patch.has("transcriptionModel")) config.transcriptionProviderModel = patch.optString("transcriptionModel")
         if (patch.has("mainIconOpacityPercent")) config.mainIconOpacityPercent = patch.optInt("mainIconOpacityPercent")
         if (patch.has("mainIconSizePercent")) config.mainIconSizePercent = patch.optInt("mainIconSizePercent")
         if (patch.has("contextIconOpacityPercent")) config.screenshotIconOpacityPercent = patch.optInt("contextIconOpacityPercent")
         if (patch.has("contextIconSizePercent")) config.screenshotIconSizePercent = patch.optInt("contextIconSizePercent")
         if (patch.has("processedAudioRetentionEnabled")) config.processedAudioRetentionEnabled = patch.optBoolean("processedAudioRetentionEnabled")
         if (patch.has("processedAudioRetentionLimit")) config.processedAudioRetentionLimit = patch.optInt("processedAudioRetentionLimit")
+        if (patch.has("processedAudioRetentionEnabled") || patch.has("processedAudioRetentionLimit")) {
+            RecordingArchiveStore.reconcileProcessedRetention(context)
+        }
         patch.optJSONObject("contextActions")?.let { actions ->
             if (actions.has("voiceCommand")) config.contextActionIdeaEnabled = actions.optBoolean("voiceCommand")
             if (actions.has("screenshotInbox")) config.contextActionScreenshotEnabled = actions.optBoolean("screenshotInbox")
@@ -48,17 +55,28 @@ internal object BraiCmdBridge {
 
     fun saveProvider(context: Context, input: JSObject) {
         val config = ConfigStore(context)
-        config.postProcessingProviderMode = input.optString("providerMode", "key")
-        config.llmProviderId = input.optString("providerId", config.llmProviderId)
-        config.llmProviderModel = input.optString("model", config.llmProviderModel)
-        config.llmProviderBaseUrl = input.optString("baseUrl", config.llmProviderBaseUrl)
+        val capability = input.optString("capability", "text")
+        val providerId = input.optString("providerId", config.llmProviderId)
+        if (capability == "speech") {
+            config.transcriptionProviderMode = "key"
+            config.transcriptionProviderId = providerId
+            config.transcriptionProviderModel = input.optString("model", config.transcriptionProviderModel)
+        } else {
+            config.postProcessingProviderMode = "key"
+            config.llmProviderId = providerId
+            config.llmProviderModel = input.optString("model", config.llmProviderModel)
+            config.llmProviderBaseUrl = input.optString("baseUrl", config.llmProviderBaseUrl)
+        }
         val apiKey = input.optString("apiKey", "")
-        if (apiKey.isNotBlank()) SecureStringStore(context).write(SecureStringStore.KEY_LLM_API_KEY, apiKey)
+        if (apiKey.isNotBlank()) SecureStringStore(context).writeProviderKey(providerId, apiKey)
     }
 
     private fun settingsJson(context: Context): JSObject {
         val config = ConfigStore(context)
-        val keyConfigured = SecureStringStore(context).has(SecureStringStore.KEY_LLM_API_KEY)
+        val secure = SecureStringStore(context)
+        secure.migrateLegacyProviderKey(config.llmProviderId)
+        val keyConfigured = secure.hasProviderKey(config.llmProviderId)
+        val transcriptionConfigured = secure.hasProviderKey(config.transcriptionProviderId) && config.transcriptionProviderModel.isNotBlank()
         return JSObject()
             .put("postProcessingEnabled", config.postProcessingEnabled)
             .put("postProcessingPrompt", config.postProcessingPrompt)
@@ -67,6 +85,16 @@ internal object BraiCmdBridge {
             .put("providerModel", config.llmProviderModel)
             .put("providerBaseUrl", config.llmProviderBaseUrl)
             .put("providerConfigured", config.postProcessingProviderMode == "cloud" || (keyConfigured && config.llmProviderModel.isNotBlank()))
+            .put("mainDictationEnabled", config.mainDictationEnabled)
+            .put("transcriptionMode", config.transcriptionProviderMode)
+            .put("transcriptionProviderId", config.transcriptionProviderId)
+            .put("transcriptionModel", config.transcriptionProviderModel)
+            .put("transcriptionConfigured", config.transcriptionProviderMode == "cloud" || transcriptionConfigured)
+            .put("providerProfiles", com.getcapacitor.JSArray().apply {
+                ConfigStore.SUPPORTED_LLM_PROVIDERS.sorted().forEach { providerId ->
+                    if (secure.hasProviderKey(providerId)) put(JSObject().put("providerId", providerId).put("configured", true))
+                }
+            })
             .put("mainIconOpacityPercent", config.mainIconOpacityPercent)
             .put("mainIconSizePercent", config.mainIconSizePercent)
             .put("contextIconOpacityPercent", config.screenshotIconOpacityPercent)

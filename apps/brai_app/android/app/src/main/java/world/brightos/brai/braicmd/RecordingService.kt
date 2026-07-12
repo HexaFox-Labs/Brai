@@ -140,6 +140,7 @@ class RecordingService : Service() {
         ConversationContextStore.save(pendingFile, conversationContext)
         ScreenshotContextStore.move(recordingFile, pendingFile)
         InboxPayloadStore.saveAction(pendingFile, audioQueueAction)
+        BraiCmdPlugin.notifyStateChanged()
         if (ConfigStore(this).onboardingQueuePaused) {
             BraiCmdPlugin.notifyOnboardingEvent("queueSaved", null)
             postPendingState(
@@ -229,6 +230,7 @@ class RecordingService : Service() {
                 uploadInProgress.set(false)
                 val result = workerResult ?: QueueWorkerResult(QueueWorkerStatus.TransientFailure, queueSnapshot(this))
                 queueWorkerListeners.forEach { listener -> runCatching { listener(result) } }
+                BraiCmdPlugin.notifyStateChanged()
                 stopRecordingForeground()
                 stopSelf()
                 if (result.status == QueueWorkerStatus.Drained &&

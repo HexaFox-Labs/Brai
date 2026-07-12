@@ -59,14 +59,14 @@ describe("BraiApp settings", () => {
 
     await waitFor(() => expect(screen.getByRole("heading", { name: "Brai CMD" })).toBeInTheDocument());
     expect(screen.getAllByRole("heading", { name: "Brai CMD" })).toHaveLength(1);
-    expect(screen.getByText("Главная кнопка диктовки")).toBeInTheDocument();
+    expect(await screen.findByText("Главная кнопка диктовки")).toBeInTheDocument();
     expect(screen.getByText("Разрешения")).toBeInTheDocument();
-    expect(screen.getByText("Проверка связи")).toBeInTheDocument();
+    expect(screen.getByText("Подключение к Brai")).toBeInTheDocument();
     expect(cmdPlugin.getSettings).toHaveBeenCalledTimes(1);
     expect(cmdPlugin.openSettings).not.toHaveBeenCalled();
   });
 
-  it("toggles the main dictation button through the native overlay flag", async () => {
+  it("toggles only the main dictation setting", async () => {
     stubAndroidCapacitor();
     render(<BraiApp />);
 
@@ -74,10 +74,30 @@ describe("BraiApp settings", () => {
     await screen.findByText("Главная кнопка диктовки");
 
     cmdPlugin.setOverlayEnabled.mockClear();
-    cmdPlugin.setOverlayEnabled.mockResolvedValueOnce({ overlayEnabled: false });
-    fireEvent.click(screen.getByRole("switch", { name: "Переключатель активен" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Главная кнопка включена" }));
 
-    await waitFor(() => expect(cmdPlugin.setOverlayEnabled).toHaveBeenCalledWith({ enabled: false }));
+    await waitFor(() => expect(cmdPlugin.updateSettings).toHaveBeenCalledWith({ patch: { mainDictationEnabled: false } }));
+    expect(cmdPlugin.setOverlayEnabled).not.toHaveBeenCalled();
+  });
+
+  it("asks installations affected by the old onboarding to reconnect once", async () => {
+    stubAndroidCapacitor();
+    window.localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({
+      complete: true,
+      step: "login-check",
+      history: [],
+      path: "new",
+      profileVersion: "cloud",
+      voiceMode: "provider",
+      name: "Пользователь",
+    }));
+    render(<BraiApp />);
+
+    await openProfileMenuItem("Brai Cmd");
+    expect(await screen.findByText("Подключите поставщика заново")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Понятно" }));
+    expect(screen.queryByText("Подключите поставщика заново")).not.toBeInTheDocument();
+    expect(window.localStorage.getItem("brai_cmd_provider_reconnect_notice_dismissed")).toBe("true");
   });
 
   it("shows connection test results as visible status alerts", async () => {
@@ -85,16 +105,54 @@ describe("BraiApp settings", () => {
     render(<BraiApp />);
 
     await openProfileMenuItem("Brai Cmd");
-    fireEvent.click(await screen.findByRole("button", { name: "Тест" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Проверить подключение к Brai" }));
 
-    expect(await screen.findByText("Всё работает")).toBeInTheDocument();
+    expect(await screen.findByText("ok")).toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveClass("text-emerald-700");
 
     cmdPlugin.testConnection.mockResolvedValueOnce({ ok: false, message: "failed" });
-    fireEvent.click(screen.getByRole("button", { name: "Тест" }));
+    fireEvent.click(screen.getByRole("button", { name: "Проверить подключение к Brai" }));
 
-    expect(await screen.findByText("Подключение не работает")).toBeInTheDocument();
+    expect(await screen.findByText("failed")).toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveClass("text-destructive");
+  });
+
+  it("shows models only after provider verification and requires a selection", async () => {
+    stubAndroidCapacitor();
+    const connectedSnapshot = braiCmdSettingsSnapshot();
+    connectedSnapshot.settings.providerProfiles = [{ providerId: "openai", configured: true }];
+    cmdPlugin.getSettings.mockResolvedValueOnce(connectedSnapshot);
+    render(<BraiApp />);
+
+    await openProfileMenuItem("Brai Cmd");
+    const speechCard = (await screen.findByText("Распознавание речи")).closest("[data-slot=card]");
+    fireEvent.click(within(speechCard as HTMLElement).getByRole("button", { name: "Настроить" }));
+    fireEvent.click(screen.getByText("Свой API-ключ"));
+    expect(screen.queryByLabelText("Модель")).not.toBeInTheDocument();
+    const probeButton = screen.getByRole("button", { name: "Проверить подключение" });
+    await waitFor(() => expect(probeButton).toBeEnabled());
+    fireEvent.click(probeButton);
+    await waitFor(() => expect(cmdPlugin.probeProvider).toHaveBeenCalledWith({ provider: {
+      providerId: "openai",
+      apiKey: "",
+      baseUrl: "",
+      capability: "speech",
+    } }));
+    expect(await screen.findByText("Выберите модель")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByRole("combobox")).toHaveLength(2));
+    const modelSelect = screen.getAllByRole("combobox")[1];
+    expect(screen.getByRole("button", { name: "Подключить" })).toBeDisabled();
+    fireEvent.click(modelSelect);
+    fireEvent.click(await screen.findByRole("option", { name: "test-model" }));
+    fireEvent.click(screen.getByRole("button", { name: "Подключить" }));
+
+    await waitFor(() => expect(cmdPlugin.connectProvider).toHaveBeenCalledWith({ provider: {
+      providerId: "openai",
+      apiKey: "",
+      model: "test-model",
+      baseUrl: "",
+      capability: "speech",
+    } }));
   });
 
   it("uses a radio group and numeric text input for audio retention", async () => {

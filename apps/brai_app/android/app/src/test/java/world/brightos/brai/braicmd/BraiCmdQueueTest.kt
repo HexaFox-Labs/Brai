@@ -45,7 +45,7 @@ class BraiCmdQueueTest {
             InboxPayloadStore.saveAction(audio, action)
         }
         val screenshot = File(context.cacheDir, "snapshot-${System.nanoTime()}.png").apply { writeBytes(byteArrayOf(1)) }
-        requireNotNull(ScreenshotInboxStore.enqueue(context, screenshot))
+        val queuedScreenshot = requireNotNull(ScreenshotInboxStore.enqueue(context, screenshot))
         PendingTranscriptStore.add(context, "main", PendingTranscriptKind.MainDictation)
         PendingTranscriptStore.add(context, "reply", PendingTranscriptKind.ChatReply)
 
@@ -102,7 +102,7 @@ class BraiCmdQueueTest {
     }
 
     @Test
-    fun authBlockReportsTheExactItemsThatCouldNotBeSent() {
+    fun authBlockStopsAtTheFirstCloudBoundItemInsteadOfMarkingTheWholeQueue() {
         ConfigStore(context).authToken = ""
         recordings.mkdirs()
         val main = audio("blocked-main")
@@ -114,13 +114,11 @@ class BraiCmdQueueTest {
         val result = QueueTransportWorker(context).run(null)
 
         assertEquals(QueueTransportStatus.Blocked, result.status)
-        assertEquals(
-            setOf(
-                BraiCmdQueue.audioTransportId(main),
-                BraiCmdQueue.screenshotTransportId(queuedScreenshot)
-            ),
-            result.failedTransportIds
-        )
+        assertEquals(1, result.failedTransportIds.size)
+        assertTrue(result.failedTransportIds.single() in setOf(
+            BraiCmdQueue.audioTransportId(main),
+            BraiCmdQueue.screenshotTransportId(queuedScreenshot)
+        ))
     }
 
     @Test

@@ -188,6 +188,53 @@ test('Brai Cmd dictation accepts multipart audio and stores only usage metrics',
   }
 });
 
+test('Brai Cmd diagnostics and text post-processing require access and keep content out of logs', async () => {
+  const fixture = await createFixture(['2026-07-03T12:11:00.000Z'], {
+    braiCmd: {
+      deps: {
+        probeTranscription: async () => ({ provider: 'fake', model: 'fake-speech' }),
+        postProcessTranscript: async (text, prompt) => {
+          assert.equal(text, 'secret transcript');
+          assert.equal(prompt, 'fix punctuation');
+          return { text: 'processed secret', provider: 'fake', model: 'fake-text' };
+        }
+      }
+    }
+  });
+  try {
+    const denied = await fetch(`${fixture.url}/v1/brai-cmd/diagnostics`, { method: 'POST', body: '{}' });
+    assert.equal(denied.status, 401);
+
+    const access = await jsonRequest(fixture.url, '/v1/access/request', {
+      method: 'POST',
+      body: JSON.stringify({ displayName: 'Tester', deviceId: 'device-diagnostics' })
+    });
+    const headers = {
+      authorization: `Bearer ${access.body.token}`,
+      'x-brai-cmd-device-id': 'device-diagnostics',
+      'x-brai-cmd-client-version': 'test',
+      'content-type': 'application/json'
+    };
+    const diagnostics = await fetch(`${fixture.url}/v1/brai-cmd/diagnostics`, {
+      method: 'POST', headers, body: JSON.stringify({ includeCloudTranscription: true })
+    });
+    assert.equal(diagnostics.status, 200);
+    assert.deepEqual((await diagnostics.json()).stages.cloudTranscription, { status: 'ok', provider: 'fake', model: 'fake-speech' });
+
+    const processed = await fetch(`${fixture.url}/v1/brai-cmd/post-process`, {
+      method: 'POST', headers, body: JSON.stringify({ text: 'secret transcript', prompt: 'fix punctuation' })
+    });
+    assert.equal(processed.status, 200);
+    assert.equal((await processed.json()).text, 'processed secret');
+
+    const logs = fixture.store.db.prepare("SELECT operation, json_data FROM logs WHERE operation LIKE 'brai_cmd.%'").all();
+    assert.equal(JSON.stringify(logs).includes('secret transcript'), false);
+    assert.equal(JSON.stringify(logs).includes('processed secret'), false);
+  } finally {
+    await fixture.close();
+  }
+});
+
 test('Brai Cmd inbox route accepts Android access token and creates Inbox context items', async () => {
   const storageRoot = await mkdtemp(join(tmpdir(), 'brai-cmd-inbox-'));
   const previousFfmpeg = process.env.BRAI_THUMBNAIL_FFMPEG_BIN;

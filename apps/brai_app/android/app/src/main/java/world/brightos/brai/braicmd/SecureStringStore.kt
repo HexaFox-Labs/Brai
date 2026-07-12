@@ -49,6 +49,27 @@ internal class SecureStringStore(context: Context) {
         prefs.edit().remove(key).apply()
     }
 
+    fun providerKey(providerId: String): String {
+        return read(providerStorageKey(providerId))
+    }
+
+    fun migrateLegacyProviderKey(providerId: String) {
+        if (providerKey(providerId).isNotBlank()) return
+        val legacy = read(KEY_LLM_API_KEY)
+        if (legacy.isBlank()) return
+        write(providerStorageKey(providerId), legacy)
+        clear(KEY_LLM_API_KEY)
+    }
+
+    fun writeProviderKey(providerId: String, value: String) = write(providerStorageKey(providerId), value)
+
+    fun hasProviderKey(providerId: String): Boolean = providerKey(providerId).isNotBlank()
+
+    fun clearProviderKey(providerId: String) = clear(providerStorageKey(providerId))
+
+    private fun providerStorageKey(providerId: String): String =
+        "provider_${providerId.lowercase().replace(Regex("[^a-z0-9-]"), "")}_api_key"
+
     private fun secretKey(): SecretKey {
         val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
         (keyStore.getEntry(KEY_ALIAS, null) as? KeyStore.SecretKeyEntry)?.let { return it.secretKey }

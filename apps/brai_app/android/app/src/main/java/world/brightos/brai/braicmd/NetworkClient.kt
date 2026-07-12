@@ -39,6 +39,14 @@ data class PreliminaryProfileResponse(
     val duplicateDevice: Boolean
 )
 
+data class CloudPostProcessingResponse(
+    val text: String,
+    val provider: String,
+    val model: String,
+    val inputChars: Int,
+    val outputChars: Int
+)
+
 class ServerResponseException(
     val statusCode: Int,
     val code: String,
@@ -60,6 +68,20 @@ class NetworkClient(context: Context) {
     fun healthCheck(): String {
         val connection = openAuthenticatedConnection("/v1/health", "GET")
         return healthStatus(readJson(connection))
+    }
+
+    fun diagnostics(includeCloudTranscription: Boolean): JSONObject {
+        val connection = openAuthenticatedConnection("/v1/brai-cmd/diagnostics", "POST").apply {
+            doOutput = true
+            readTimeout = DEFAULT_READ_TIMEOUT_MS
+            setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        }
+        val body = JSONObject()
+            .put("includeCloudTranscription", includeCloudTranscription)
+            .toString()
+            .toByteArray(Charsets.UTF_8)
+        connection.outputStream.use { it.write(body) }
+        return readJson(connection)
     }
 
     fun requestPreliminaryProfile(displayName: String, deviceFingerprint: String): PreliminaryProfileResponse {
@@ -238,6 +260,28 @@ class NetworkClient(context: Context) {
         readJson(connection)
     }
 
+    fun postProcessText(text: String, prompt: String): CloudPostProcessingResponse {
+        val connection = openAuthenticatedConnection("/v1/brai-cmd/post-process", "POST").apply {
+            doOutput = true
+            readTimeout = DEFAULT_READ_TIMEOUT_MS
+            setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        }
+        val body = JSONObject()
+            .put("text", text.trim())
+            .put("prompt", prompt.trim())
+            .toString()
+            .toByteArray(Charsets.UTF_8)
+        connection.outputStream.use { it.write(body) }
+        val json = readJson(connection)
+        return CloudPostProcessingResponse(
+            text = json.optString("text").trim(),
+            provider = json.optString("provider", "brai-cloud"),
+            model = json.optString("model"),
+            inputChars = json.optInt("inputChars", text.length + prompt.length),
+            outputChars = json.optInt("outputChars", json.optString("text").length)
+        )
+    }
+
     private fun openPublicConnection(path: String, method: String): HttpURLConnection {
         val base = config.serverUrl.trim().trimEnd('/')
         require(base.startsWith("http://") || base.startsWith("https://")) { "Адрес сервера должен начинаться с http:// или https://" }
@@ -251,7 +295,7 @@ class NetworkClient(context: Context) {
 
     private fun openAuthenticatedConnection(path: String, method: String): HttpURLConnection {
         val token = config.authToken
-        require(token.isNotBlank()) { "Не указан токен доступа" }
+        if (token.isBlank()) throw QueueAuthBlockedException()
         return openPublicConnection(path, method).apply {
             setRequestProperty("Authorization", "Bearer $token")
             setRequestProperty("X-Brai-Cmd-Device-Id", config.installId)

@@ -7,6 +7,9 @@ type BraiCmdPlugin = {
   updateSettings(options: { patch: BraiCmdSettingsPatch }): Promise<BraiCmdSnapshot>;
   testConnection(): Promise<BraiCmdTestResult>;
   testProvider(options: { provider: BraiCmdProviderTestInput }): Promise<BraiCmdProviderTestResult>;
+  probeProvider(options: { provider: BraiCmdProviderProbeInput }): Promise<BraiCmdProviderTestResult>;
+  connectProvider(options: { provider: BraiCmdProviderConnectInput }): Promise<BraiCmdProviderConnectResult>;
+  disconnectProvider(options: { providerId: BraiCmdProviderId }): Promise<BraiCmdSnapshot>;
   saveProvider(options: { provider: BraiCmdProviderSaveInput }): Promise<BraiCmdSnapshot>;
   deleteAudio(options: { id: string }): Promise<{ ok: boolean; state?: BraiCmdSnapshot }>;
   downloadAudio(options: { id: string }): Promise<{ ok: boolean; path?: string; message?: string }>;
@@ -21,6 +24,7 @@ type BraiCmdPlugin = {
   setQueuePausedMode(options: { enabled: boolean }): Promise<BraiCmdState>;
   retryQueue(): Promise<BraiCmdState>;
   addListener(eventName: "onboardingEvent", listenerFunc: (event: BraiCmdOnboardingEvent) => void): Promise<PluginListenerHandle>;
+  addListener(eventName: "stateChanged", listenerFunc: (snapshot: BraiCmdSnapshot) => void): Promise<PluginListenerHandle>;
 };
 
 const BraiCmd = registerPlugin<BraiCmdPlugin>("BraiCmd");
@@ -54,6 +58,12 @@ export type BraiCmdContextActions = {
 };
 
 export type BraiCmdSettings = {
+  mainDictationEnabled: boolean;
+  transcriptionMode: BraiCmdProviderMode;
+  transcriptionProviderId: BraiCmdProviderId;
+  transcriptionModel: string;
+  transcriptionConfigured: boolean;
+  providerProfiles: Array<{ providerId: BraiCmdProviderId; configured: boolean }>;
   postProcessingEnabled: boolean;
   postProcessingPrompt: string;
   providerMode: BraiCmdProviderMode;
@@ -102,6 +112,12 @@ export type BraiCmdSnapshot = BraiCmdState & {
 export type BraiCmdTestResult = {
   ok: boolean;
   message: string;
+  stages?: {
+    server?: { status: "ok" | "error" | "skipped" };
+    access?: { status: "ok" | "error" | "skipped" };
+    contextDelivery?: { status: "ok" | "error" | "skipped" };
+    cloudTranscription?: { status: "ok" | "error" | "skipped"; provider?: string; model?: string };
+  };
 };
 
 export type BraiCmdProviderTestInput = {
@@ -109,6 +125,16 @@ export type BraiCmdProviderTestInput = {
   apiKey: string;
   model?: string;
   baseUrl?: string;
+};
+
+export type BraiCmdProviderCapability = "speech" | "text";
+
+export type BraiCmdProviderProbeInput = Omit<BraiCmdProviderTestInput, "model"> & {
+  capability: BraiCmdProviderCapability;
+};
+
+export type BraiCmdProviderConnectInput = BraiCmdProviderTestInput & {
+  capability: BraiCmdProviderCapability;
 };
 
 export type BraiCmdProviderSaveInput = BraiCmdProviderTestInput & {
@@ -119,7 +145,10 @@ export type BraiCmdProviderTestResult = BraiCmdTestResult & {
   providerId?: BraiCmdProviderId;
   model?: string;
   models?: string[];
+  manualModel?: boolean;
 };
+
+export type BraiCmdProviderConnectResult = BraiCmdProviderTestResult & { state?: BraiCmdSnapshot };
 
 export type BraiCmdOnboardingEvent = {
   type?: "voiceTextInserted" | "queueSaved";
@@ -175,6 +204,36 @@ export async function testBraiCmdProvider(provider: BraiCmdProviderTestInput): P
   if (!isNativeAndroid()) return null;
   try {
     return await BraiCmd.testProvider({ provider });
+  } catch {
+    return null;
+  }
+}
+
+/** Validates provider credentials and returns models compatible with one capability. */
+export async function probeBraiCmdProvider(provider: BraiCmdProviderProbeInput): Promise<BraiCmdProviderTestResult | null> {
+  if (!isNativeAndroid()) return null;
+  try {
+    return await BraiCmd.probeProvider({ provider });
+  } catch {
+    return null;
+  }
+}
+
+/** Verifies the selected model and persists the provider profile and role. */
+export async function connectBraiCmdProvider(provider: BraiCmdProviderConnectInput): Promise<BraiCmdProviderConnectResult | null> {
+  if (!isNativeAndroid()) return null;
+  try {
+    return await BraiCmd.connectProvider({ provider });
+  } catch {
+    return null;
+  }
+}
+
+/** Deletes one saved provider key; native code moves active roles back to Brai cloud. */
+export async function disconnectBraiCmdProvider(providerId: BraiCmdProviderId): Promise<BraiCmdSnapshot | null> {
+  if (!isNativeAndroid()) return null;
+  try {
+    return await BraiCmd.disconnectProvider({ providerId });
   } catch {
     return null;
   }
@@ -301,6 +360,18 @@ export async function listenBraiCmdOnboardingEvents(
   if (!isNativeAndroid()) return null;
   try {
     return await BraiCmd.addListener("onboardingEvent", onEvent);
+  } catch {
+    return null;
+  }
+}
+
+/** Subscribes to native queue and settings snapshots while the WebView stays mounted. */
+export async function listenBraiCmdStateChanges(
+  onSnapshot: (snapshot: BraiCmdSnapshot) => void,
+): Promise<PluginListenerHandle | null> {
+  if (!isNativeAndroid()) return null;
+  try {
+    return await BraiCmd.addListener("stateChanged", onSnapshot);
   } catch {
     return null;
   }

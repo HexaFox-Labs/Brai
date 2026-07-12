@@ -20,6 +20,9 @@ const cmdPlugin = vi.hoisted(() => ({
   openSettings: vi.fn(),
   preparePreliminaryProfile: vi.fn(),
   retryQueue: vi.fn(),
+  probeProvider: vi.fn(),
+  connectProvider: vi.fn(),
+  disconnectProvider: vi.fn(),
   saveProvider: vi.fn(),
   setAccessKey: vi.fn(),
   setOverlayEnabled: vi.fn(),
@@ -77,6 +80,12 @@ export function braiCmdSettingsSnapshot() {
       notifications: true,
     },
     settings: {
+      mainDictationEnabled: true,
+      transcriptionMode: "cloud",
+      transcriptionProviderId: "openai",
+      transcriptionModel: "",
+      transcriptionConfigured: true,
+      providerProfiles: [],
       postProcessingEnabled: false,
       postProcessingPrompt: "",
       providerMode: "cloud",
@@ -113,6 +122,7 @@ export function braiCmdSettingsSnapshot() {
 
 export function setupBraiAppTest() {
   beforeEach(async () => {
+    Element.prototype.scrollIntoView = vi.fn();
     const db = clientDb();
     await Promise.all(db.tables.map((table) => table.clear()));
     await setMeta("currentUserId", "test-user");
@@ -129,6 +139,9 @@ export function setupBraiAppTest() {
     cmdPlugin.openPermission.mockReset();
     cmdPlugin.preparePreliminaryProfile.mockReset();
     cmdPlugin.retryQueue.mockReset();
+    cmdPlugin.probeProvider.mockReset();
+    cmdPlugin.connectProvider.mockReset();
+    cmdPlugin.disconnectProvider.mockReset();
     cmdPlugin.saveProvider.mockReset();
     cmdPlugin.setAccessKey.mockReset();
     cmdPlugin.setOverlayEnabled.mockReset();
@@ -159,6 +172,9 @@ export function setupBraiAppTest() {
       deviceFingerprint: "test-device",
     });
     cmdPlugin.retryQueue.mockResolvedValue({ queuePausedMode: false });
+    cmdPlugin.probeProvider.mockResolvedValue({ ok: true, message: "Выберите модель", models: ["test-model"] });
+    cmdPlugin.connectProvider.mockResolvedValue({ ok: true, message: "Подключено", model: "test-model", state: braiCmdSettingsSnapshot() });
+    cmdPlugin.disconnectProvider.mockResolvedValue(braiCmdSettingsSnapshot());
     cmdPlugin.saveProvider.mockResolvedValue(braiCmdSettingsSnapshot());
     cmdPlugin.setAccessKey.mockResolvedValue({ accessGranted: true });
     cmdPlugin.setOverlayEnabled.mockResolvedValue({ overlayEnabled: true });

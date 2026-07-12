@@ -19,6 +19,7 @@ object AppConstants {
     const val KEY_ONBOARDING_VOICE_ONLY = "onboarding_voice_only"
     const val KEY_ONBOARDING_QUEUE_PAUSED = "onboarding_queue_paused"
     const val KEY_OVERLAY_ENABLED = "overlay_enabled"
+    const val KEY_MAIN_DICTATION_ENABLED = "main_dictation_enabled"
     const val KEY_BUTTON_X = "button_x"
     const val KEY_BUTTON_Y = "button_y"
     const val KEY_MAIN_ICON_OPACITY_PERCENT = "main_icon_opacity_percent"
@@ -34,6 +35,9 @@ object AppConstants {
     const val KEY_LLM_PROVIDER_ID = "llm_provider_id"
     const val KEY_LLM_PROVIDER_MODEL = "llm_provider_model"
     const val KEY_LLM_PROVIDER_BASE_URL = "llm_provider_base_url"
+    const val KEY_TRANSCRIPTION_PROVIDER_MODE = "transcription_provider_mode"
+    const val KEY_TRANSCRIPTION_PROVIDER_ID = "transcription_provider_id"
+    const val KEY_TRANSCRIPTION_PROVIDER_MODEL = "transcription_provider_model"
     const val KEY_PROCESSED_AUDIO_RETENTION_ENABLED = "processed_audio_retention_enabled"
     const val KEY_PROCESSED_AUDIO_RETENTION_LIMIT = "processed_audio_retention_limit"
 
@@ -49,6 +53,7 @@ object AppConstants {
     const val DEFAULT_CONTEXT_ACTION_ENABLED = true
     const val DEFAULT_LLM_PROVIDER_MODE = "cloud"
     const val DEFAULT_LLM_PROVIDER_ID = "openai"
+    const val DEFAULT_TRANSCRIPTION_PROVIDER_MODE = "cloud"
     const val DEFAULT_PROCESSED_AUDIO_RETENTION_LIMIT = 25
     const val MIN_PROCESSED_AUDIO_RETENTION_LIMIT = 1
     const val MAX_PROCESSED_AUDIO_RETENTION_LIMIT = 999

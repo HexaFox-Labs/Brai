@@ -80,6 +80,15 @@ internal object RecordingArchiveStore {
         return !audioFile.exists()
     }
 
+    fun reconcileProcessedRetention(context: Context) {
+        val config = ConfigStore(context)
+        if (!config.processedAudioRetentionEnabled) {
+            processedAudioFiles(context).forEach(::deleteAudioWithSidecars)
+            return
+        }
+        pruneProcessed(context, config.processedAudioRetentionLimit)
+    }
+
     fun listJson(context: Context): JSArray {
         val array = JSArray()
         queuedAudioFiles(context).forEach { file -> array.put(itemJson("queued", file)) }

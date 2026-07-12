@@ -38,7 +38,7 @@ import {
   requestAndroidMicrophone,
   requestAndroidNotifications,
 } from "@/shared/platform/androidCapabilities";
-import { ensureBraiCmdAccess, listenBraiCmdOnboardingEvents, retryBraiCmdQueue, setBraiCmdAccessKey, setBraiCmdOverlayEnabled, setBraiCmdQueuePausedMode, setBraiCmdVoiceOnlyMode, vibrateBraiCmdPress } from "@/shared/platform/braiCmd";
+import { connectBraiCmdProvider, ensureBraiCmdAccess, listenBraiCmdOnboardingEvents, probeBraiCmdProvider, retryBraiCmdQueue, setBraiCmdAccessKey, setBraiCmdOverlayEnabled, setBraiCmdQueuePausedMode, setBraiCmdVoiceOnlyMode, vibrateBraiCmdPress, type BraiCmdProviderId } from "@/shared/platform/braiCmd";
 import { installAndroidBackHandler, isNativeShell, platformName } from "@/shared/platform/platform";
 import type { AuthOnboardingContext, OtpSendResult } from "@/shared/api/braiApi";
 import { AnimatedShinyText } from "@/shared/ui/animated-shiny-text";
@@ -95,7 +95,10 @@ const OnboardingChromeContext = createContext<{
 });
 
 const screenTransitionDelayMs = process.env.NODE_ENV === "test" ? 0 : 280;
-const providerOptions = ["Groq", "OpenAI", "Deepgram", "AssemblyAI"] as const;
+const providerOptions: Array<{ id: BraiCmdProviderId; label: string }> = [
+  { id: "groq", label: "Groq" },
+  { id: "openai", label: "OpenAI" },
+];
 const manualConfirmDelayMs = 3000;
 const verificationMinVisibleMs = process.env.NODE_ENV === "test" ? 1 : 1000;
 const failedCheckVisibleMs = process.env.NODE_ENV === "test" ? 100 : 2000;
@@ -145,8 +148,11 @@ export function OnboardingFlow({
   const [state, setState] = useState<OnboardingState>(() => loadInitialOnboardingState(authRequired));
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [provider, setProvider] = useState("Groq");
+  const [provider, setProvider] = useState<BraiCmdProviderId>("groq");
   const [providerKey, setProviderKey] = useState("");
+  const [providerModels, setProviderModels] = useState<string[]>([]);
+  const [providerModel, setProviderModel] = useState("");
+  const [providerVerified, setProviderVerified] = useState(false);
   const [localUrl, setLocalUrl] = useState("");
   const [trainingText, setTrainingText] = useState("");
   const [offlineText, setOfflineText] = useState("");
@@ -254,6 +260,10 @@ export function OnboardingFlow({
     }
     void setBraiCmdQueuePausedMode(false);
   }, [isAndroid, state.step]);
+
+  useEffect(() => () => {
+    if (isAndroid) void setBraiCmdQueuePausedMode(false);
+  }, [isAndroid]);
 
   useEffect(() => {
     if (!isAndroid) return;
@@ -465,15 +475,38 @@ export function OnboardingFlow({
   }
 
   async function testProviderKey() {
-    if (readyStep === "provider-key") {
-      go("microphone");
-      return;
-    }
     if (!provider.trim() || providerKey.trim().length < 8) {
       setError("Выберите поставщика и введите полный ключ.");
       return;
     }
-    await runVerification("provider-key", async () => true, "Ключ не сохранён. Проверьте поставщика и ключ.");
+    setError("");
+    setCheckingStep("provider-key");
+    if (!providerVerified) {
+      const result = await probeBraiCmdProvider({ providerId: provider, apiKey: providerKey, capability: "speech" });
+      setCheckingStep(null);
+      if (!result?.ok) {
+        setError(result?.message || "Не удалось проверить ключ поставщика.");
+        return;
+      }
+      setProviderModels(result.models ?? []);
+      setProviderModel("");
+      setProviderVerified(true);
+      setMessage("Подключение проверено. Выберите модель распознавания.");
+      return;
+    }
+    if (!providerModel) {
+      setCheckingStep(null);
+      setError("Выберите модель распознавания.");
+      return;
+    }
+    const result = await connectBraiCmdProvider({ providerId: provider, apiKey: providerKey, model: providerModel, capability: "speech" });
+    setCheckingStep(null);
+    if (!result?.ok) {
+      setError(result?.message || "Не удалось подключить модель.");
+      return;
+    }
+    setMessage("");
+    go("microphone");
   }
 
   async function testLocalServer() {
@@ -760,10 +793,13 @@ export function OnboardingFlow({
 
     if (state.step === "provider-key") {
       return (
-        <StepScreen actions={<CheckActionButton disabled={!provider || providerKey.trim().length < 8} status={checkStatus("provider-key")} onClick={testProviderKey} />}>
+        <StepScreen actions={<CheckActionButton disabled={!provider || providerKey.trim().length < 8 || (providerVerified && !providerModel)} status={checkStatus("provider-key")} onClick={testProviderKey} />}>
           <InfoBlock icon={KeyRound} title="Ключ поставщика" text="Выберите поставщика, введите ключ и сохраните его для голосового модуля." />
           <Select value={provider} onValueChange={(value) => {
-            setProvider(value);
+            setProvider(value as BraiCmdProviderId);
+            setProviderVerified(false);
+            setProviderModels([]);
+            setProviderModel("");
             resetCheck("provider-key");
           }}>
             <SelectTrigger className="w-full" aria-label="Поставщик">
@@ -771,14 +807,27 @@ export function OnboardingFlow({
             </SelectTrigger>
             <SelectContent>
               {providerOptions.map((option) => (
-                <SelectItem key={option} value={option}>{option}</SelectItem>
+                <SelectItem key={option.id} value={option.id}>{option.label}</SelectItem>
               ))}
             </SelectContent>
           </Select>
           <Input value={providerKey} type="password" aria-label="Ключ поставщика" placeholder="API-ключ" onChange={(event) => {
             setProviderKey(event.target.value);
+            setProviderVerified(false);
+            setProviderModels([]);
+            setProviderModel("");
             resetCheck("provider-key");
           }} />
+          {providerVerified ? (
+            <Select value={providerModel} onValueChange={setProviderModel}>
+              <SelectTrigger className="w-full" aria-label="Модель распознавания">
+                <SelectValue placeholder="Выберите модель распознавания" />
+              </SelectTrigger>
+              <SelectContent>
+                {providerModels.map((model) => <SelectItem key={model} value={model}>{model}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          ) : null}
         </StepScreen>
       );
     }

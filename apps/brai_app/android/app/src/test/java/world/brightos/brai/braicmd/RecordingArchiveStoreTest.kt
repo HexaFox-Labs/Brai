@@ -44,6 +44,25 @@ class RecordingArchiveStoreTest {
         assertEquals(1, RecordingArchiveStore.listJson(context).countStatus("processed"))
     }
 
+    @Test
+    fun changingRetentionImmediatelyPrunesProcessedAudioOnly() {
+        val config = ConfigStore(context)
+        config.processedAudioRetentionEnabled = true
+        config.processedAudioRetentionLimit = 5
+        queueDir.mkdirs()
+        val queued = audio("queued")
+        repeat(5) { index ->
+            assertTrue(RecordingArchiveStore.onAudioProcessed(context, audio("processed-$index")))
+        }
+
+        config.processedAudioRetentionLimit = 3
+        RecordingArchiveStore.reconcileProcessedRetention(context)
+
+        assertTrue(queued.isFile)
+        assertEquals(1, RecordingArchiveStore.listJson(context).countStatus("queued"))
+        assertEquals(3, RecordingArchiveStore.listJson(context).countStatus("processed"))
+    }
+
     private fun audio(name: String): File =
         queueDir.resolve("$name.m4a").apply {
             writeBytes(byteArrayOf(1))

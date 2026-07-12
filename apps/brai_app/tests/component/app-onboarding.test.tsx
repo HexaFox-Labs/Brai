@@ -392,6 +392,38 @@ describe("BraiApp onboarding", () => {
     expect(screen.getByRole("button", { name: "Проверить" })).toBeDisabled();
   });
 
+  it("verifies a provider, requires a speech model, and saves the onboarding profile", async () => {
+    stubAndroidCapacitor();
+    window.localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({
+      complete: false,
+      history: ["voice-choice"],
+      name: "Test",
+      path: "new",
+      profileVersion: "self-hosted",
+      step: "provider-key",
+      voiceMode: "provider",
+    }));
+    render(<BraiApp />);
+
+    fireEvent.change(await screen.findByLabelText("Ключ поставщика"), { target: { value: "valid-test-key" } });
+    fireEvent.click(screen.getByRole("button", { name: "Проверить" }));
+
+    const modelSelect = await screen.findByRole("combobox", { name: "Модель распознавания" });
+    expect(cmdPlugin.probeProvider).toHaveBeenCalledWith({ provider: { providerId: "groq", apiKey: "valid-test-key", capability: "speech" } });
+    expect(screen.getByRole("button", { name: "Проверить" })).toBeDisabled();
+
+    fireEvent.click(modelSelect);
+    fireEvent.click(await screen.findByRole("option", { name: "test-model" }));
+    fireEvent.click(screen.getByRole("button", { name: "Проверить" }));
+
+    await waitFor(() => expect(cmdPlugin.connectProvider).toHaveBeenCalledWith({ provider: {
+      providerId: "groq",
+      apiKey: "valid-test-key",
+      model: "test-model",
+      capability: "speech",
+    } }));
+  });
+
   it("offers app settings after microphone permission is denied", async () => {
     stubAndroidCapacitor();
     androidCapabilitiesPlugin.requestMicrophone.mockResolvedValueOnce({ microphoneGranted: false });
