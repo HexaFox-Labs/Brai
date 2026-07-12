@@ -157,6 +157,12 @@ describe("BraiApp shell", () => {
           headers: { "content-type": "application/json" },
         });
       }
+      if (url.endsWith("/v1/version")) {
+        return new Response(JSON.stringify(testVersionState("0.0.10")), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
       return Promise.reject(new Error("offline"));
     }));
 
