@@ -410,18 +410,18 @@
       changed_when: false
       when: not ansible_check_mode
 
-    - name: Create preview slot status directory
-      ansible.builtin.file:
-        path: "{{ brai_env_root }}/preview-status"
-        state: directory
-        owner: "{{ brai_deploy_user }}"
-        group: "{{ brai_deploy_user }}"
-        mode: "2775"
-
     - name: Ensure public landing root exists
       ansible.builtin.file:
         path: "{{ brai_public_site_root }}"
         state: directory
+        group: "{{ brai_deploy_user }}"
+        mode: "2775"
+
+    - name: Create ADR site directory
+      ansible.builtin.file:
+        path: "{{ brai_adr_root }}"
+        state: directory
+        owner: "{{ brai_deploy_user }}"
         group: "{{ brai_deploy_user }}"
         mode: "2775"
 
@@ -460,15 +460,6 @@
       loop:
         - "{{ brai_env_root }}/preview-slots.json"
         - "{{ brai_env_root }}/preview-slots.lock"
-      when: not ansible_check_mode
-
-    - name: Ensure preview status ownership
-      ansible.builtin.file:
-        path: "{{ brai_env_root }}/preview-status"
-        owner: "{{ brai_deploy_user }}"
-        group: "{{ brai_deploy_user }}"
-        mode: "u=rwX,g=rwX,o=rX"
-        recurse: true
       when: not ansible_check_mode
 
     - name: Ensure per-environment Brai API env placeholders exist
@@ -551,6 +542,18 @@
         - Reload systemd
         - Restart Brai Temporal worker
 
+    - name: Install Brai stateful stack systemd units
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../systemd/{{ item }}"
+        dest: "/etc/systemd/system/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - brai-supabase.service
+        - brai-temporal.service
+      notify: Reload systemd
+
     - name: Install Brai DB Telegram backup systemd units
       ansible.builtin.copy:
         src: "{{ playbook_dir }}/../systemd/{{ item }}"
@@ -610,6 +613,10 @@
               - "http://{{ brai_public_site_legacy_domains[0] }}"
               - "--site"
               - "{{ brai_public_site_legacy_domains[0] }}"
+              - "--site"
+              - "http://{{ brai_adr_domain }}"
+              - "--site"
+              - "{{ brai_adr_domain }}"
               - "--site"
               - "http://{{ brai_envs.prod.domain }}"
               - "--site"
@@ -674,6 +681,10 @@
           - "--site"
           - "{{ brai_public_site_legacy_domains[0] }}"
           - "--site"
+          - "http://{{ brai_adr_domain }}"
+          - "--site"
+          - "{{ brai_adr_domain }}"
+          - "--site"
           - "http://{{ brai_envs.prod.domain }}"
           - "--site"
           - "{{ brai_envs.prod.domain }}"
@@ -724,6 +735,10 @@
           - "http://{{ brai_public_site_legacy_domains[0] }}"
           - "--site"
           - "{{ brai_public_site_legacy_domains[0] }}"
+          - "--site"
+          - "http://{{ brai_adr_domain }}"
+          - "--site"
+          - "{{ brai_adr_domain }}"
           - "--site"
           - "http://{{ brai_envs.prod.domain }}"
           - "--site"

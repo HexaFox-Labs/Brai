@@ -32,6 +32,15 @@ export async function enableNoPreviewAutoMerge({ branch, sha }) {
   assertSafeBranch(branch);
   assertSafeSha(sha);
 
+  const mergedPull = await mergedPullForHead(branch, sha);
+  if (mergedPull) {
+    return {
+      code: 0,
+      stdout: `Already merged exact head ${sha} in PR #${mergedPull.number}: ${mergedPull.url}\n`,
+      stderr: ""
+    };
+  }
+
   return withSourceCheckout({ branch, sha }, async (cwd, gitEnv) =>
     runExistingScript("deploy/scripts/accept-preview.sh", [branch], {
       cwd,
@@ -43,6 +52,35 @@ export async function enableNoPreviewAutoMerge({ branch, sha }) {
       })
     })
   );
+}
+
+async function mergedPullForHead(branch, sha) {
+  const result = await runCommand("gh", [
+    "pr",
+    "list",
+    "--base",
+    "main",
+    "--head",
+    branch,
+    "--state",
+    "merged",
+    "--limit",
+    "100",
+    "--json",
+    "number,url,headRefOid,mergedAt"
+  ], { cwd: ROOT, env: await deployEnv(), allowFailure: true });
+  if (result.code !== 0) return null;
+  try {
+    return exactMergedPull(JSON.parse(result.stdout), sha);
+  } catch {
+    return null;
+  }
+}
+
+export function exactMergedPull(pulls, sha) {
+  return Array.isArray(pulls)
+    ? pulls.find((pull) => pull?.headRefOid === sha && pull?.mergedAt && pull?.number && pull?.url) ?? null
+    : null;
 }
 
 export async function completeAcceptedPreviews({ targetBranch = "main", targetEnvironment = "prod", targetCommit, mode }) {
@@ -131,6 +169,14 @@ async function withSourceCheckout({ branch, sha }, callback) {
 
 export function cloneSourceForRemote(remote) {
   return Object.keys(remote.env ?? {}).length > 0 ? remote.url : ROOT;
+}
+
+export function commandFailureMessage(command, code, stdout, stderr) {
+  const tail = (value) => String(value ?? "").trim().split("\n").slice(-40).join("\n").slice(-6000);
+  const parts = [`${command} exited ${code}`];
+  if (tail(stderr)) parts.push(`stderr:\n${tail(stderr)}`);
+  if (tail(stdout)) parts.push(`stdout:\n${tail(stdout)}`);
+  return parts.join("\n");
 }
 
 async function fetchBranch(checkout, branch, remote) {
@@ -226,7 +272,7 @@ function runCommand(command, args, { cwd = ROOT, env = process.env, allowFailure
     child.on("close", (code) => {
       const result = { code, stdout, stderr };
       if (code === 0 || allowFailure) resolve(result);
-      else reject(Object.assign(new Error(`${command} exited ${code}: ${stderr || stdout}`), result));
+      else reject(Object.assign(new Error(commandFailureMessage(command, code, stdout, stderr)), result));
     });
   });
 }
