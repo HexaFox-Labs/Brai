@@ -174,6 +174,10 @@ export function setupBraiAppTest() {
       unobserve() {}
     });
     Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 360 });
+    Object.defineProperty(document, "elementFromPoint", {
+      configurable: true,
+      value: vi.fn(() => document.body),
+    });
     window.history.replaceState(null, "", "/");
     delete window.__BRAI_RUNTIME_CONFIG__;
     window.localStorage.clear();

@@ -40,7 +40,9 @@ import {
 } from "@/shared/platform/androidCapabilities";
 import { ensureBraiCmdAccess, listenBraiCmdOnboardingEvents, retryBraiCmdQueue, setBraiCmdAccessKey, setBraiCmdOverlayEnabled, setBraiCmdQueuePausedMode, setBraiCmdVoiceOnlyMode, vibrateBraiCmdPress } from "@/shared/platform/braiCmd";
 import { installAndroidBackHandler, isNativeShell, platformName } from "@/shared/platform/platform";
+import type { OtpSendResult } from "@/shared/api/braiApi";
 import { AnimatedShinyText } from "@/shared/ui/animated-shiny-text";
+import { AuthOtpEntry, type AuthOtpTimer } from "@/shared/ui/auth-otp-entry";
 import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/shared/ui/field";
@@ -64,7 +66,7 @@ type OnboardingFlowProps = {
   busy: boolean;
   authMode: "email" | "otp";
   onEmailLogin: (email: string) => Promise<void>;
-  onRequestOtp: (email: string) => Promise<void>;
+  onRequestOtp: (email: string) => Promise<OtpSendResult>;
   onStartupScreenChange: (active: boolean) => void;
   onVerifyOtp: (email: string, otp: string) => Promise<void>;
   onDone: () => void;
@@ -1209,12 +1211,14 @@ function OnboardingAuthForm({
   mode: "email" | "otp";
   onAuthenticated?: () => void;
   onEmailLogin: (email: string) => Promise<void>;
-  onRequestOtp: (email: string) => Promise<void>;
+  onRequestOtp: (email: string) => Promise<OtpSendResult>;
   onVerifyOtp: (email: string, otp: string) => Promise<void>;
 }) {
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [otpSent, setOtpSent] = useState(false);
+  const [otpFocusKey, setOtpFocusKey] = useState(0);
+  const [otpTimer, setOtpTimer] = useState<AuthOtpTimer>(defaultOtpTimer);
   const [error, setError] = useState("");
 
   async function submitEmail(event: FormEvent<HTMLFormElement>) {
@@ -1233,8 +1237,7 @@ function OnboardingAuthForm({
     setError("");
     try {
       if (!otpSent) {
-        await onRequestOtp(email);
-        setOtpSent(true);
+        await requestOtpCode();
         return;
       }
       await onVerifyOtp(email, otp);
@@ -1242,6 +1245,25 @@ function OnboardingAuthForm({
     } catch {
       setError(otpSent ? "Код не подошел." : "Не удалось отправить код.");
     }
+  }
+
+  async function requestOtpCode() {
+    setOtpSent(true);
+    setOtp("");
+    setOtpTimer((current) => ({ ...current, sentAtMs: null }));
+    setOtpFocusKey((current) => current + 1);
+    try {
+      applyOtpResult(await onRequestOtp(email));
+    } catch (error) {
+      setOtpSent(false);
+      throw error;
+    }
+  }
+
+  async function resendOtpCode() {
+    setError("");
+    setOtp("");
+    applyOtpResult(await onRequestOtp(email));
   }
 
   if (mode === "email") {
@@ -1298,17 +1320,15 @@ function OnboardingAuthForm({
           {otpSent ? (
             <Field data-invalid={Boolean(error)}>
               <FieldLabel htmlFor="onboarding-otp">Код</FieldLabel>
-              <Input
+              <AuthOtpEntry
                 id="onboarding-otp"
                 value={otp}
-                type="text"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                placeholder="код"
-                aria-label="Код из письма"
-                aria-invalid={Boolean(error)}
-                disabled={busy}
-                onChange={(event) => setOtp(event.target.value)}
+                timer={otpTimer}
+                autoFocusKey={otpFocusKey}
+                ariaInvalid={Boolean(error)}
+                disabled={busy && otpTimer.sentAtMs !== null}
+                onChange={setOtp}
+                onResend={resendOtpCode}
               />
               {error ? <FieldDescription className="text-destructive">{error}</FieldDescription> : null}
             </Field>
@@ -1320,6 +1340,29 @@ function OnboardingAuthForm({
       </StepActions>
     </form>
   );
+
+  function applyOtpResult(result: OtpSendResult) {
+    const nowMs = Date.now();
+    const previousSentAtMs = otpTimer.sentAtMs;
+    const previousStillValid =
+      previousSentAtMs !== null && nowMs < previousSentAtMs + otpTimer.expiresInSeconds * 1000;
+    setOtpTimer({
+      sentAtMs: result.resend_strategy === "reuse" && previousStillValid ? previousSentAtMs : nowMs,
+      expiresInSeconds: positiveSeconds(result.expires_in_seconds, defaultOtpTimer.expiresInSeconds),
+      resendAfterSeconds: positiveSeconds(result.resend_after_seconds, defaultOtpTimer.resendAfterSeconds),
+    });
+    setOtpFocusKey((current) => current + 1);
+  }
+}
+
+const defaultOtpTimer: AuthOtpTimer = {
+  sentAtMs: null,
+  expiresInSeconds: 5 * 60,
+  resendAfterSeconds: 60,
+};
+
+function positiveSeconds(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
 function TrainingDictate({ confirmed, onChange, onNext, value }: { confirmed: boolean; value: string; onChange: (value: string) => void; onNext: () => void }) {
