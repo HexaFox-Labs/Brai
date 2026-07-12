@@ -25,6 +25,14 @@ export type AuthSession = {
   user?: AuthUser | null;
 };
 
+export type OtpSendResult = {
+  sent?: boolean;
+  success?: boolean;
+  expires_in_seconds?: number;
+  resend_after_seconds?: number;
+  resend_strategy?: "rotate" | "reuse";
+};
+
 export type AiLogIoRow = {
   ref: string;
   value: unknown;
@@ -125,7 +133,7 @@ export class BraiApi {
     return this.request("/auth/session");
   }
 
-  async requestOtp(email: string): Promise<{ sent?: boolean; success?: boolean }> {
+  async requestOtp(email: string): Promise<OtpSendResult> {
     return this.request("/auth/otp/send", {
       method: "POST",
       json: { email },

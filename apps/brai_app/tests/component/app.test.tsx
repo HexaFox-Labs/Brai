@@ -126,6 +126,49 @@ describe("BraiApp shell", () => {
     expect(screen.queryByRole("button", { name: "Войти" })).not.toBeInTheDocument();
   });
 
+  it("shows the production OTP countdown and enables resend after one minute", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-12T10:00:00.000Z"));
+    try {
+      const auth = authPanelProps();
+      render(<AuthPanel {...auth} mode={resolveAuthMode(true)} />);
+
+      fireEvent.change(screen.getByRole("textbox", { name: "Email" }), { target: { value: "primary@example.com" } });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Получить код" }));
+        await Promise.resolve();
+      });
+
+      expect(auth.onRequestOtp).toHaveBeenCalledWith("primary@example.com");
+      const otpInput = screen.getByTestId("auth-otp-input");
+      expect(document.activeElement).toBe(otpInput);
+      expect(screen.getByText("Код действителен 5:00")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Отправить повторно через 1:00" })).toBeDisabled();
+
+      await act(async () => {
+        vi.advanceTimersByTime(59_000);
+      });
+      expect(screen.getByRole("button", { name: "Отправить повторно через 0:01" })).toBeDisabled();
+
+      await act(async () => {
+        vi.advanceTimersByTime(1_000);
+      });
+      const resend = screen.getByRole("button", { name: "Отправить повторно" });
+      expect(resend).toBeEnabled();
+      fireEvent.change(otpInput, { target: { value: "123456" } });
+      await act(async () => {
+        fireEvent.click(resend);
+        await Promise.resolve();
+      });
+
+      expect(auth.onRequestOtp).toHaveBeenCalledTimes(2);
+      expect(screen.getByTestId("auth-otp-input")).toHaveValue("");
+      expect(screen.getByText("Код действителен 5:00")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps collapsed desktop rail action icons clickable", async () => {
     Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 1200 });
     document.cookie = "sidebar_state=false; path=/";
@@ -1095,7 +1138,12 @@ function authPanelProps() {
   return {
     busy: false,
     onEmailLogin: vi.fn(async () => undefined),
-    onRequestOtp: vi.fn(async () => undefined),
+    onRequestOtp: vi.fn(async () => ({
+      success: true,
+      expires_in_seconds: 300,
+      resend_after_seconds: 60,
+      resend_strategy: "rotate" as const,
+    })),
     onVerifyOtp: vi.fn(async () => undefined),
   };
 }

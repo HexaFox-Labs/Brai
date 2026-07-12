@@ -5,8 +5,10 @@ import { useEffect, useRef, useState } from "react";
 import { CheckCircle2, KeyRound, Loader2, Lock, Mail, TriangleAlert, WifiOff, X, type LucideIcon } from "lucide-react";
 import { useEnvironmentBadgeLabel } from "@/shared/config/runtime";
 import { installAndroidBackHandler } from "@/shared/platform/platform";
+import type { OtpSendResult } from "@/shared/api/braiApi";
 import type { SyncStatus } from "@/shared/types/timer";
 import { AnimatedThemeToggler } from "@/shared/ui/animated-theme-toggler";
+import { AuthOtpEntry, type AuthOtpTimer } from "@/shared/ui/auth-otp-entry";
 import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
@@ -308,12 +310,14 @@ export function AuthPanel({
   busy: boolean;
   mode: "email" | "otp";
   onEmailLogin: (email: string) => Promise<void>;
-  onRequestOtp: (email: string) => Promise<void>;
+  onRequestOtp: (email: string) => Promise<OtpSendResult>;
   onVerifyOtp: (email: string, otp: string) => Promise<void>;
 }) {
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [otpSent, setOtpSent] = useState(false);
+  const [otpFocusKey, setOtpFocusKey] = useState(0);
+  const [otpTimer, setOtpTimer] = useState<AuthOtpTimer>(defaultOtpTimer);
   const [error, setError] = useState("");
 
   async function submitOtp(event: FormEvent<HTMLFormElement>) {
@@ -321,14 +325,32 @@ export function AuthPanel({
     setError("");
     try {
       if (!otpSent) {
-        await onRequestOtp(email);
-        setOtpSent(true);
+        await requestOtpCode();
         return;
       }
       await onVerifyOtp(email, otp);
     } catch {
       setError(otpSent ? "Код не подошел" : "Не удалось отправить код");
     }
+  }
+
+  async function requestOtpCode() {
+    setOtpSent(true);
+    setOtp("");
+    setOtpTimer((current) => ({ ...current, sentAtMs: null }));
+    setOtpFocusKey((current) => current + 1);
+    try {
+      applyOtpResult(await onRequestOtp(email));
+    } catch (error) {
+      setOtpSent(false);
+      throw error;
+    }
+  }
+
+  async function resendOtpCode() {
+    setError("");
+    setOtp("");
+    applyOtpResult(await onRequestOtp(email));
   }
 
   async function submitEmail(event: FormEvent<HTMLFormElement>) {
@@ -382,15 +404,13 @@ export function AuthPanel({
         onChange={(event) => setEmail(event.target.value)}
       />
       {otpSent ? (
-        <Input
-          className="my-0.5 mb-1"
+        <AuthOtpEntry
           value={otp}
-          type="text"
-          inputMode="numeric"
-          autoComplete="one-time-code"
-          placeholder="код"
-          aria-label="Код из письма"
-          onChange={(event) => setOtp(event.target.value)}
+          timer={otpTimer}
+          autoFocusKey={otpFocusKey}
+          disabled={busy && otpTimer.sentAtMs !== null}
+          onChange={setOtp}
+          onResend={resendOtpCode}
         />
       ) : null}
       {error ? <p className="m-0 text-sm text-destructive">{error}</p> : null}
@@ -400,6 +420,25 @@ export function AuthPanel({
       </Button>
     </Card>
   );
+
+  function applyOtpResult(result: OtpSendResult) {
+    setOtpTimer({
+      sentAtMs: Date.now(),
+      expiresInSeconds: positiveSeconds(result.expires_in_seconds, defaultOtpTimer.expiresInSeconds),
+      resendAfterSeconds: positiveSeconds(result.resend_after_seconds, defaultOtpTimer.resendAfterSeconds),
+    });
+    setOtpFocusKey((current) => current + 1);
+  }
+}
+
+const defaultOtpTimer: AuthOtpTimer = {
+  sentAtMs: null,
+  expiresInSeconds: 5 * 60,
+  resendAfterSeconds: 60,
+};
+
+function positiveSeconds(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
 export function EmptyState({

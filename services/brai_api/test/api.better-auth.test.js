@@ -11,7 +11,7 @@ import {
   jsonRequest,
   request
 } from '../test-support/api.js';
-import { OTP_EMAIL_SUBJECT, renderOtpEmail } from '../src/auth.js';
+import { OTP_EMAIL_SUBJECT, OTP_EXPIRES_IN_SECONDS, OTP_RESEND_AFTER_SECONDS, OTP_RESEND_STRATEGY, renderOtpEmail } from '../src/auth.js';
 import { createUserVaultPreparer } from '../src/server.js';
 
 function seedPrimaryUser(fixture, id = 'test-user') {
@@ -194,6 +194,10 @@ test('email OTP signs in, claims legacy data, and isolates the next user', async
       body: JSON.stringify({ email })
     });
     assert.equal(send.status, 200);
+    assert.equal(send.body.success, true);
+    assert.equal(send.body.expires_in_seconds, OTP_EXPIRES_IN_SECONDS);
+    assert.equal(send.body.resend_after_seconds, OTP_RESEND_AFTER_SECONDS);
+    assert.equal(send.body.resend_strategy, OTP_RESEND_STRATEGY);
     const otp = sentOtps.get(email);
     assert.ok(otp);
     const verify = await jsonRequest(fixture.url, '/auth/otp/verify', {
@@ -235,6 +239,11 @@ test('email OTP signs in, claims legacy data, and isolates the next user', async
     );
 
     const second = await otpLogin('second@example.com');
+    assert.notEqual(second.user.id, first.user.id);
+    assert.equal(
+      fixture.store.db.prepare('SELECT COUNT(*) AS count FROM "user"').get().count,
+      2
+    );
     const firstActivities = await jsonRequest(fixture.url, '/v1/activities', {
       headers: { cookie: first.cookie }
     });
