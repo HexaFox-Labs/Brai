@@ -2020,9 +2020,27 @@ test("task state rejects same-thread writes after local acceptance marker", () =
         acceptedAt: "2026-06-26T00:00:00.000Z",
       })}\n`,
     );
+    fs.writeFileSync(
+      path.join(repo, ".brai-task", "preview-handoff.json"),
+      `${JSON.stringify({
+        branch: "codex/foo",
+        commit: head,
+        slot: "A",
+        url: "https://a.test.brai.one",
+        runId: 123,
+        releaseNotes: {
+          short_changes: "Исправлена остановка агента.",
+          detailed_changes: "Stop hook блокирует ответ до завершения принятия preview.",
+          reason: "Нельзя завершать задачу во время production delivery.",
+        },
+        verifiedAt: "2026-06-26T00:00:00.000Z",
+      })}\n`,
+    );
     process.chdir(repo);
 
     const state = deriveTaskState();
+    assert.equal(state.receiptValidation.ok, true);
+    assert.equal(state.ok, false);
     assert.equal(state.reuse.ok, false);
     assert.match(state.reuse.message, /acceptance already started/);
 

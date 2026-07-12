@@ -1098,7 +1098,7 @@ function deriveTaskState() {
   }
   if (!hasImplementationWork) return base;
   if (!validation.ok && !completedWithReceipt) return { ...base, ok: false, message: validation.message };
-  if (!reuse.ok && !completedWithReceipt) return { ...base, ok: false, message: reuse.message };
+  if (!reuse.ok) return { ...base, ok: false, message: reuse.message };
   if (!socraticode.ok) return { ...base, ok: false, message: socraticode.message };
   if (classification.deliveryClass === DELIVERY_CLASS.BLOCKED) {
     return {
