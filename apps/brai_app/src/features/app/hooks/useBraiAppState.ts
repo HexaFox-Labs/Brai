@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
-import { BraiApi, DEFAULT_APP_SETTINGS, type AppSettings, type AuthUser, type OtpSendResult } from "@/shared/api/braiApi";
+import { BraiApi, DEFAULT_APP_SETTINGS, type AppSettings, type AuthOnboardingContext, type AuthUser, type OtpSendResult } from "@/shared/api/braiApi";
 import { defaultApiBase, isProductionEnvironment } from "@/shared/config/runtime";
 import {
   acknowledgeAndroidActionsWidgetStatusChanges,
@@ -646,10 +646,10 @@ export function useBraiAppState(initialSection: SectionId) {
     }
   }
 
-  async function onVerifyOtp(email: string, otp: string) {
+  async function onVerifyOtp(email: string, otp: string, context?: AuthOnboardingContext) {
     setBusy(true);
     try {
-      const result = await api.verifyOtp(email, otp);
+      const result = await api.verifyOtp(email, otp, context);
       if (result.authenticated) {
         setAuthUser(result.user ?? null);
         await ensureClientUser(result.user?.id ?? null);
@@ -665,10 +665,10 @@ export function useBraiAppState(initialSection: SectionId) {
     }
   }
 
-  async function onEmailLogin(email: string) {
+  async function onEmailLogin(email: string, context?: AuthOnboardingContext) {
     setBusy(true);
     try {
-      const result = await api.testEmailLogin(email);
+      const result = await api.testEmailLogin(email, context);
       if (result.authenticated) {
         setAuthUser(result.user ?? null);
         await ensureClientUser(result.user?.id ?? null);
