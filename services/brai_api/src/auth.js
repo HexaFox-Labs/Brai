@@ -6,7 +6,10 @@ import { Pool } from 'pg';
 import { isPostgresUrl, postgresPoolMax } from './postgres-sync-db.js';
 
 const DEFAULT_FROM = 'Brai <auth@mail.brai.one>';
-const OTP_EXPIRES_IN_SECONDS = 5 * 60;
+export const OTP_EXPIRES_IN_SECONDS = 5 * 60;
+export const OTP_RESEND_AFTER_SECONDS = 60;
+export const OTP_RESEND_STRATEGY = 'reuse';
+export const OTP_ALLOWED_ATTEMPTS = 5;
 export const OTP_EMAIL_SUBJECT = 'Код входа в Brai';
 const LOGO_URL = 'https://brai.one/brai-logo-email-white-bg.png';
 const DEFAULT_ALLOWED_HOSTS = [
@@ -85,7 +88,9 @@ export function createBraiAuth({
     },
     plugins: [
       emailOTP({
+        allowedAttempts: OTP_ALLOWED_ATTEMPTS,
         expiresIn: OTP_EXPIRES_IN_SECONDS,
+        resendStrategy: OTP_RESEND_STRATEGY,
         async sendVerificationOTP({ email, otp, type }) {
           await sender({ email, otp, type });
         }

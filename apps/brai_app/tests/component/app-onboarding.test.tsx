@@ -601,6 +601,17 @@ describe("BraiApp onboarding", () => {
           headers: { "content-type": "application/json" },
         });
       }
+      if (url.endsWith("/auth/otp/send")) {
+        return new Response(JSON.stringify({
+          success: true,
+          expires_in_seconds: 300,
+          resend_after_seconds: 60,
+          resend_strategy: "reuse",
+        }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
       return Promise.reject(new Error("offline"));
     });
     window.localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({
@@ -616,7 +627,15 @@ describe("BraiApp onboarding", () => {
     render(<BraiApp />);
 
     expect(await screen.findByText("Вход в облачный профиль")).toBeInTheDocument();
+    const email = screen.getByLabelText("Email");
+    fireEvent.change(email, { target: { value: "primary@example.com" } });
     expect(screen.getByRole("button", { name: "Получить код" })).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.submit(email.closest("form")!);
+      await Promise.resolve();
+    });
+    expect(await screen.findByTestId("auth-otp-input")).toBeInTheDocument();
+    expect(screen.getByText("Код действителен 5:00")).toBeInTheDocument();
     expectNoPasswordPrompt();
   });
 

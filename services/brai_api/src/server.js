@@ -12,7 +12,7 @@ import {
   receiveInbox,
   serveInboxAttachment
 } from './inbox.js';
-import { createBraiAuth } from './auth.js';
+import { createBraiAuth, OTP_EXPIRES_IN_SECONDS, OTP_RESEND_AFTER_SECONDS, OTP_RESEND_STRATEGY } from './auth.js';
 import {
   createBraiCmdRuntime,
   handleBraiCmdAdminRoute,
@@ -397,7 +397,18 @@ export function createBraiServer({
           message: 'OTP send completed',
           jsonData: { route: url.pathname, status_code: response.status, email_present: true }
         });
-        await relayAuthResponse(req, res, response);
+        const text = await response.text();
+        const payload = parseJson(text);
+        if (response.ok && payload && typeof payload === 'object') {
+          sendJson(req, res, response.status, {
+            ...payload,
+            expires_in_seconds: OTP_EXPIRES_IN_SECONDS,
+            resend_after_seconds: OTP_RESEND_AFTER_SECONDS,
+            resend_strategy: OTP_RESEND_STRATEGY
+          });
+          return;
+        }
+        relayAuthText(req, res, response, text, payload);
         return;
       }
 

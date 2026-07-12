@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
-import { BraiApi, DEFAULT_APP_SETTINGS, type AppSettings } from "@/shared/api/braiApi";
+import { BraiApi, DEFAULT_APP_SETTINGS, type AppSettings, type OtpSendResult } from "@/shared/api/braiApi";
 import { defaultApiBase, isProductionEnvironment } from "@/shared/config/runtime";
 import {
   acknowledgeAndroidActionsWidgetStatusChanges,
@@ -634,10 +634,10 @@ export function useBraiAppState(initialSection: SectionId) {
     setInboxPendingCount(0);
   }
 
-  async function onRequestOtp(email: string) {
+  async function onRequestOtp(email: string): Promise<OtpSendResult> {
     setBusy(true);
     try {
-      await api.requestOtp(email);
+      return await api.requestOtp(email);
     } catch (error) {
       setSyncStatus("auth_required");
       throw error;
