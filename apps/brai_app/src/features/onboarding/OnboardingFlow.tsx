@@ -523,7 +523,14 @@ export function OnboardingFlow({
       if (isAndroid) {
         const profile = await prepareBraiCmdPreliminaryProfile(displayName);
         if (!profile) {
-          setError("Нет соединения с серверами Brai, повторите.");
+          setPreliminaryDeviceFingerprint("");
+          setNameDuplicateBlocked(false);
+          go("setup-start", {
+            name: displayName,
+            preliminaryUserId: "",
+            preliminaryClaimToken: "",
+            duplicatePreliminaryUserId: "",
+          });
           return;
         }
         setPreliminaryDeviceFingerprint(profile.deviceFingerprint ?? "");

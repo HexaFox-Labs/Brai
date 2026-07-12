@@ -284,7 +284,7 @@ describe("BraiApp onboarding", () => {
     });
   });
 
-  it("keeps the user on the name step when preliminary profile creation is offline", async () => {
+  it("continues from the name step when preliminary profile creation is offline", async () => {
     stubAndroidCapacitor();
     cmdPlugin.preparePreliminaryProfile.mockRejectedValueOnce(new Error("offline"));
     window.localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({
@@ -301,8 +301,13 @@ describe("BraiApp onboarding", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Продолжить" }));
 
-    expect(await screen.findByText("Нет соединения с серверами Brai, повторите.")).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "Имя" })).toBeInTheDocument();
+    expect(await screen.findByText("Brai CMD")).toBeInTheDocument();
+    expect(screen.queryByText("Нет соединения с серверами Brai, повторите.")).not.toBeInTheDocument();
+    expect(JSON.parse(window.localStorage.getItem(ONBOARDING_STORAGE_KEY) || "{}")).toMatchObject({
+      preliminaryUserId: "",
+      preliminaryClaimToken: "",
+      duplicatePreliminaryUserId: "",
+    });
   });
 
   it("moves from the Brai CMD introduction to floating buttons", async () => {
