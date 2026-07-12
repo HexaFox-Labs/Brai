@@ -28,6 +28,12 @@ object AppConstants {
     const val KEY_CONTEXT_ACTION_SCREENSHOT_VOICE_ENABLED = "context_action_screenshot_voice_enabled"
     const val KEY_CONTEXT_ACTION_CHAT_ENABLED = "context_action_chat_enabled"
     const val KEY_CONTEXT_ACTION_SAVE_ENABLED = "context_action_save_enabled"
+    const val KEY_POST_PROCESSING_PROVIDER_MODE = "post_processing_provider_mode"
+    const val KEY_LLM_PROVIDER_ID = "llm_provider_id"
+    const val KEY_LLM_PROVIDER_MODEL = "llm_provider_model"
+    const val KEY_LLM_PROVIDER_BASE_URL = "llm_provider_base_url"
+    const val KEY_PROCESSED_AUDIO_RETENTION_ENABLED = "processed_audio_retention_enabled"
+    const val KEY_PROCESSED_AUDIO_RETENTION_LIMIT = "processed_audio_retention_limit"
 
     const val DEFAULT_SERVER_URL = BuildConfig.BRAI_ANDROID_API
     const val DEFAULT_HEADER_CONTEXT_ENABLED = true
@@ -39,6 +45,11 @@ object AppConstants {
     const val MIN_ICON_SIZE_PERCENT = 70
     const val MAX_ICON_SIZE_PERCENT = 130
     const val DEFAULT_CONTEXT_ACTION_ENABLED = true
+    const val DEFAULT_LLM_PROVIDER_MODE = "cloud"
+    const val DEFAULT_LLM_PROVIDER_ID = "openai"
+    const val DEFAULT_PROCESSED_AUDIO_RETENTION_LIMIT = 25
+    const val MIN_PROCESSED_AUDIO_RETENTION_LIMIT = 1
+    const val MAX_PROCESSED_AUDIO_RETENTION_LIMIT = 999
     const val DEFAULT_POST_PROCESSING_PROMPT =
         "Исправь пунктуацию, заглавные буквы и очевидные ошибки распознавания речи. " +
             "Не меняй смысл, стиль и язык текста. Верни только готовый текст."

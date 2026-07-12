@@ -98,6 +98,7 @@ class RecordingService : Service() {
             mediaRecorder.start()
             recorder = mediaRecorder
             outputFile = file
+            RecordingArchiveStore.saveNewMetadata(file)
             ScreenshotContextStore.save(file, screenshotFile)
             if (inboxDelivery) InboxPayloadStore.mark(file, inboxTextPrefix)
             InboxPayloadStore.saveAction(file, audioQueueAction)
@@ -298,6 +299,7 @@ class RecordingService : Service() {
             ConversationContextStore.move(file, pendingFile)
             ScreenshotContextStore.move(file, pendingFile)
             InboxPayloadStore.move(file, pendingFile)
+            RecordingArchiveStore.moveMetadata(file, pendingFile)
             return pendingFile
         }
         return runCatching {
@@ -306,6 +308,7 @@ class RecordingService : Service() {
             ConversationContextStore.move(file, pendingFile)
             ScreenshotContextStore.move(file, pendingFile)
             InboxPayloadStore.move(file, pendingFile)
+            RecordingArchiveStore.moveMetadata(file, pendingFile)
             pendingFile
         }.getOrDefault(file)
     }

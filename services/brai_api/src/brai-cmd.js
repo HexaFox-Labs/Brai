@@ -4,7 +4,6 @@ const GROQ_TRANSCRIPTIONS_URL = 'https://api.groq.com/openai/v1/audio/transcript
 const GROQ_CHAT_COMPLETIONS_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const OPENAI_TRANSCRIPTIONS_URL = 'https://api.openai.com/v1/audio/transcriptions';
 const MAX_POST_PROCESSING_PROMPT_CHARS = 4000;
-const BRAI_CMD_AGENT_ID = 'brai-cmd.dictate.transcription';
 
 export function braiCmdConfigFromEnv(env = process.env) {
   return {
@@ -213,7 +212,6 @@ async function handleDictate({ req, res, store, runtime, access, sendJson, route
   const started = Date.now();
   const requestId = randomUUID();
   const { config, deps } = runtime;
-  const agent = store.getAgent(BRAI_CMD_AGENT_ID);
   const clientVersion = headerValue(req, 'x-brai-cmd-client-version') || headerValue(req, 'x-airwhisper-client-version');
   let audioBytes = 0;
   let audioDurationMs = 0;
@@ -228,8 +226,9 @@ async function handleDictate({ req, res, store, runtime, access, sendJson, route
   let contextEnabled = false;
   let postProcessed = false;
   let postProcessingModel = '';
+  let postProcessingInputChars = 0;
+  let postProcessingOutputChars = 0;
   let text = '';
-  let aiLogWritten = false;
 
   try {
     const contentType = headerValue(req, 'content-type');
@@ -264,18 +263,22 @@ async function handleDictate({ req, res, store, runtime, access, sendJson, route
     contextEnabled = titleContextEnabled(multipart.fields);
     if (postProcessingPrompt && text.trim()) {
       const postProcessingStarted = Date.now();
+      postProcessingInputChars = text.trim().length + postProcessingPrompt.trim().length;
       const processed = await deps.postProcessTranscript(text, postProcessingPrompt);
       postProcessingMs = Date.now() - postProcessingStarted;
       postProcessed = true;
       postProcessingModel = processed.model;
       text = processed.text;
+      postProcessingOutputChars = text.length;
     } else if (contextEnabled && normalizedContextJson && text.trim()) {
       const contextReplyStarted = Date.now();
+      postProcessingInputChars = text.trim().length + normalizedContextJson.trim().length;
       const generated = await deps.generateContextReply(text, normalizedContextJson);
       postProcessingMs = Date.now() - contextReplyStarted;
       postProcessed = true;
       postProcessingModel = generated.model;
       text = generated.text;
+      postProcessingOutputChars = text.length;
     }
 
     const totalMs = Date.now() - started;
@@ -291,35 +294,14 @@ async function handleDictate({ req, res, store, runtime, access, sendJson, route
       postProcessingMs,
       totalMs,
       transcriptChars: text.length,
+      postProcessingInputChars,
+      postProcessingOutputChars,
       clientVersion,
       requestId,
       route,
       postProcessingRequested: Boolean(postProcessingPrompt),
       contextRequested: Boolean(contextEnabled)
     });
-    recordBraiCmdAiLog(store, {
-      agent,
-      status: 'done',
-      requestId,
-      accessTokenId: access.id,
-      clientVersion,
-      audio,
-      audioBytes,
-      audioDurationMs,
-      postProcessingPrompt,
-      normalizedContextJson,
-      contextEnabled,
-      text,
-      provider,
-      model,
-      fallbackUsed,
-      postProcessed,
-      postProcessingModel,
-      transcriptionMs,
-      postProcessingMs,
-      totalMs
-    });
-    aiLogWritten = true;
 
     sendJson(req, res, 200, {
       text,
@@ -333,9 +315,12 @@ async function handleDictate({ req, res, store, runtime, access, sendJson, route
         postProcessingMs
       },
       postProcessed,
-      postProcessingModel
+      postProcessingModel,
+      postProcessingInputChars,
+      postProcessingOutputChars
     });
   } catch (error) {
+    const totalMs = Date.now() - started;
     store.recordBraiCmdUsage({
       accessTokenId: access.id,
       success: false,
@@ -347,89 +332,18 @@ async function handleDictate({ req, res, store, runtime, access, sendJson, route
       fallbackUsed,
       transcriptionMs,
       postProcessingMs,
-      totalMs: Date.now() - started,
+      totalMs,
       transcriptChars: 0,
+      postProcessingInputChars,
+      postProcessingOutputChars,
       clientVersion,
       requestId,
       route,
       postProcessingRequested: Boolean(postProcessingPrompt),
       contextRequested: Boolean(contextEnabled)
     });
-    if (!aiLogWritten) {
-      recordBraiCmdAiLog(store, {
-        agent,
-        status: 'failed',
-        requestId,
-        accessTokenId: access.id,
-        clientVersion,
-        audio,
-        audioBytes,
-        audioDurationMs,
-        postProcessingPrompt,
-        normalizedContextJson,
-        contextEnabled,
-        text,
-        provider,
-        model,
-        fallbackUsed,
-        postProcessed,
-        postProcessingModel,
-        transcriptionMs,
-        postProcessingMs,
-        totalMs: Date.now() - started,
-        error: errorCode(error),
-        errorMessage: errorText(error)
-      });
-    }
     throw error;
   }
-}
-
-function recordBraiCmdAiLog(store, input) {
-  store.recordAiLog({
-    agentId: BRAI_CMD_AGENT_ID,
-    agentVersion: input.agent?.version ?? '',
-    status: input.status,
-    aiTitle: input.status === 'done' ? 'Расшифровал Brai Cmd аудио' : 'Не расшифровал Brai Cmd аудио',
-    jsonData: {
-      schema: 'brai.ai_log.v1',
-      inputs: [
-        {
-          ref: 'request.file.audio',
-          value: {
-            field: input.audio?.fieldName ?? '',
-            filename: input.audio?.filename ?? '',
-            content_type: input.audio?.contentType ?? '',
-            bytes: input.audioBytes
-          }
-        },
-        { ref: 'request.field.audioDurationMs', value: input.audioDurationMs },
-        { ref: 'request.field.postProcessingPrompt', value: { present: Boolean(input.postProcessingPrompt), chars: input.postProcessingPrompt?.length ?? 0 } },
-        { ref: 'request.field.normalizedContextJson', value: { present: Boolean(input.normalizedContextJson), chars: input.normalizedContextJson?.length ?? 0 } },
-        { ref: 'request.field.headerContextEnabled', value: input.contextEnabled },
-        { ref: 'request.header.x-brai-cmd-client-version', value: input.clientVersion || '' }
-      ],
-      outputs: [
-        { ref: 'response.text', value: input.text || '' },
-        { ref: 'response.provider', value: input.provider || '' },
-        { ref: 'response.model', value: input.model || '' },
-        { ref: 'response.postProcessed', value: Boolean(input.postProcessed) },
-        { ref: 'response.postProcessingModel', value: input.postProcessingModel || '' }
-      ],
-      metadata: {
-        request_id: input.requestId,
-        access_token_id: input.accessTokenId,
-        fallback_used: Boolean(input.fallbackUsed),
-        timings_ms: {
-          total: input.totalMs,
-          transcription: input.transcriptionMs,
-          post_processing: input.postProcessingMs
-        },
-        error: input.error ?? null,
-        error_message: input.errorMessage ?? null
-      }
-    }
-  });
 }
 
 async function transcribeAudio(file, config) {

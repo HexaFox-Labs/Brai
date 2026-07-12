@@ -108,6 +108,7 @@ internal class QueueTransportWorker(context: Context) {
             text,
             PendingTranscriptKind.MainDictation
         )
+        recordStats(file, response)
         if (file.name == autoInsertAudioFileName) autoInsertTranscriptFile = transcriptFile.name
         if (response.fallbackUsed) {
             fallbackUsed = true
@@ -123,6 +124,7 @@ internal class QueueTransportWorker(context: Context) {
             val response = client.uploadAudio(file, null, null)
             transcript = response.text.trim()
             if (transcript.isBlank()) throw QueueEmptyModelException()
+            recordStats(file, response)
             // Persist before Inbox delivery so retries never retranscribe a completed upload.
             InboxPayloadStore.saveTranscript(file, transcript)
         }
@@ -149,9 +151,22 @@ internal class QueueTransportWorker(context: Context) {
     }
 
     private fun completeAudio(file: File) {
-        if (!AudioQueueStore.complete(file)) {
+        if (!AudioQueueStore.complete(appContext, file)) {
             throw IOException("Не удалось исключить отправленную запись из очереди")
         }
+    }
+
+    private fun recordStats(file: File, response: DictationResponse) {
+        BraiCmdStatsStore(appContext).recordSuccess(
+            BraiCmdStatsInput(
+                audioBytes = file.length(),
+                audioDurationMs = response.audioDurationMs,
+                transcriptChars = response.text.length,
+                cloudInputChars = response.postProcessingInputChars,
+                cloudOutputChars = response.postProcessingOutputChars,
+                cloudRequest = response.postProcessed && response.postProcessingProvider == "brai-cloud"
+            )
+        )
     }
 
     private fun result(

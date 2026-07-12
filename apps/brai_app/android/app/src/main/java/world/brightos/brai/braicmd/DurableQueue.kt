@@ -193,11 +193,14 @@ internal object AudioQueueStore {
     fun action(audioFile: File): AudioQueueAction =
         InboxPayloadStore.readAction(audioFile) ?: inferLegacyAction(audioFile)
 
-    fun complete(audioFile: File): Boolean {
+    fun complete(context: Context, audioFile: File): Boolean {
+        if (!audioFile.exists()) return true
+        if (RecordingArchiveStore.onAudioProcessed(context, audioFile)) return true
         val doneFile = File(audioFile.parentFile, "${audioFile.name}.done")
-        val excludedFromQueue = !audioFile.exists() || audioFile.renameTo(doneFile) || audioFile.delete()
+        val excludedFromQueue = audioFile.renameTo(doneFile) || audioFile.delete()
         if (!excludedFromQueue) return false
         sidecarSuffixes.forEach { suffix -> File("${audioFile.absolutePath}$suffix").delete() }
+        File("${audioFile.absolutePath}.metadata.json").delete()
         doneFile.delete()
         return true
     }

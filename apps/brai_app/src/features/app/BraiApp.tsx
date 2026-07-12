@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { BookOpen, Crown, Info, Settings } from "lucide-react";
-import { ensureBraiCmdAccess, openBraiCmdSettings, setBraiCmdOverlayEnabled, setBraiCmdQueuePausedMode, setBraiCmdVoiceOnlyMode } from "@/shared/platform/braiCmd";
+import { ensureBraiCmdAccess, setBraiCmdOverlayEnabled, setBraiCmdQueuePausedMode, setBraiCmdVoiceOnlyMode } from "@/shared/platform/braiCmd";
 import { installAndroidBackHandler, isNativeShell, platformName } from "@/shared/platform/platform";
 import { getBraiLocalStorageItem, removeBraiLocalStorageItem, setBraiLocalStorageItem } from "@/shared/storage/localStorageKeys";
 import { ScrollArea } from "@/shared/ui/scroll-area";
@@ -69,13 +69,12 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
   }
 
   function openBraiCmd() {
-    void openBraiCmdSettings().then((opened) => {
-      if (!opened) app.selectSection("brai-cmd");
-    });
+    app.selectSection("brai-cmd");
   }
 
   async function openNativeBraiCmdSettings() {
-    return await openBraiCmdSettings();
+    app.selectSection("brai-cmd");
+    return true;
   }
 
   useEffect(() => {

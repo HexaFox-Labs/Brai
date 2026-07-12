@@ -62,14 +62,108 @@ public final class BraiCmdPlugin extends Plugin {
 
     @PluginMethod
     public void openSettings(PluginCall call) {
-        Intent intent = new Intent(getContext(), BraiCmdSettingsActivity.class)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        if (getActivity() != null) {
-            getActivity().startActivity(intent);
-        } else {
-            getContext().startActivity(intent);
+        call.resolve(BraiCmdBridge.INSTANCE.snapshot(getContext()));
+    }
+
+    @PluginMethod
+    public void getSettings(PluginCall call) {
+        call.resolve(BraiCmdBridge.INSTANCE.snapshot(getContext()));
+    }
+
+    @PluginMethod
+    public void updateSettings(PluginCall call) {
+        JSObject patch = call.getObject("patch", new JSObject());
+        BraiCmdBridge.INSTANCE.updateSettings(getContext(), patch == null ? new JSObject() : patch);
+        call.resolve(BraiCmdBridge.INSTANCE.snapshot(getContext()));
+    }
+
+    @PluginMethod
+    public void saveProvider(PluginCall call) {
+        JSObject input = call.getObject("provider", new JSObject());
+        BraiCmdBridge.INSTANCE.saveProvider(getContext(), input == null ? new JSObject() : input);
+        call.resolve(BraiCmdBridge.INSTANCE.snapshot(getContext()));
+    }
+
+    @PluginMethod
+    public void testConnection(PluginCall call) {
+        new Thread(() -> {
+            JSObject result = new JSObject();
+            try {
+                String status = new NetworkClient(getContext()).publicHealthCheck();
+                result.put("ok", "ok".equals(status) || !status.isBlank());
+                result.put("message", "Всё работает");
+            } catch (Throwable error) {
+                result.put("ok", false);
+                result.put("message", "Подключение не работает");
+            }
+            MAIN_HANDLER.post(() -> call.resolve(result));
+        }).start();
+    }
+
+    @PluginMethod
+    public void testProvider(PluginCall call) {
+        JSObject input = call.getObject("provider", new JSObject());
+        JSObject provider = input == null ? new JSObject() : input;
+        new Thread(() -> {
+            try {
+                JSObject result = new LlmProviderClient(getContext()).test(
+                    provider.optString("providerId", ""),
+                    provider.optString("apiKey", ""),
+                    provider.optString("model", ""),
+                    provider.optString("baseUrl", "")
+                );
+                MAIN_HANDLER.post(() -> call.resolve(result));
+            } catch (Throwable error) {
+                JSObject result = new JSObject();
+                result.put("ok", false);
+                result.put("message", error.getMessage() == null || error.getMessage().isBlank() ? "Не удалось подключить поставщика" : error.getMessage());
+                MAIN_HANDLER.post(() -> call.resolve(result));
+            }
+        }).start();
+    }
+
+    @PluginMethod
+    public void deleteAudio(PluginCall call) {
+        String id = call.getString("id", "");
+        JSObject result = new JSObject();
+        result.put("ok", RecordingArchiveStore.INSTANCE.delete(getContext(), id == null ? "" : id));
+        result.put("state", BraiCmdBridge.INSTANCE.snapshot(getContext()));
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void downloadAudio(PluginCall call) {
+        String id = call.getString("id", "");
+        new Thread(() -> {
+            JSObject result = new JSObject();
+            try {
+                String path = RecordingArchiveStore.INSTANCE.download(getContext(), id == null ? "" : id);
+                result.put("ok", true);
+                result.put("path", path);
+            } catch (Throwable error) {
+                result.put("ok", false);
+                result.put("message", "Не удалось сохранить аудиозапись");
+            }
+            MAIN_HANDLER.post(() -> call.resolve(result));
+        }).start();
+    }
+
+    @PluginMethod
+    public void openPermission(PluginCall call) {
+        String permission = call.getString("permission", "");
+        if ("accessibility".equals(permission)) {
+            startSettingsActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+        } else if ("overlay".equals(permission)) {
+            openOverlaySettings(call);
+            return;
+        } else if ("microphone".equals(permission)) {
+            requestMicrophone(call);
+            return;
+        } else if ("notifications".equals(permission)) {
+            requestNotifications(call);
+            return;
         }
-        call.resolve(stateJson());
+        call.resolve(BraiCmdBridge.INSTANCE.snapshot(getContext()));
     }
 
     @PluginMethod

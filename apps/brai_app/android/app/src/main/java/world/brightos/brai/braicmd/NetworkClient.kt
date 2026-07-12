@@ -17,7 +17,13 @@ data class DictationResponse(
     val text: String,
     val provider: String,
     val model: String,
-    val fallbackUsed: Boolean
+    val fallbackUsed: Boolean,
+    val audioDurationMs: Long,
+    val postProcessed: Boolean,
+    val postProcessingProvider: String,
+    val postProcessingModel: String,
+    val postProcessingInputChars: Int,
+    val postProcessingOutputChars: Int
 )
 
 data class AccessResponse(
@@ -78,6 +84,8 @@ class NetworkClient(context: Context) {
             setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
         }
         val shouldPostProcess = config.postProcessingEnabled
+        val shouldPostProcessOnServer = shouldPostProcess && config.postProcessingProviderMode != "key"
+        val durationMs = audioDurationMs(file)
         val shouldSendHeaderContext = conversationContext?.isReliable() == true
         val shouldSendScreenshot = screenshotFile?.isFile == true && screenshotFile.length() > 0L
         BufferedOutputStream(connection.outputStream).use { out ->
@@ -85,7 +93,7 @@ class NetworkClient(context: Context) {
             writeField(out, boundary, "deviceId", config.installId)
             writeField(out, boundary, "clientVersion", BuildConfig.VERSION_NAME)
             writeField(out, boundary, "appPackage", appContext.packageName)
-            writeField(out, boundary, "audioDurationMs", audioDurationMs(file).toString())
+            writeField(out, boundary, "audioDurationMs", durationMs.toString())
             if (shouldSendHeaderContext) {
                 writeField(out, boundary, "headerContextEnabled", "true")
                 writeField(out, boundary, "screenTitle", conversationContext.recipientName)
@@ -98,7 +106,7 @@ class NetworkClient(context: Context) {
                 writeField(out, boundary, "screenshotContextEnabled", "true")
                 writeFile(out, boundary, "screenshot", screenshotFile.name, "image/jpeg", screenshotFile)
             }
-            if (shouldPostProcess) {
+            if (shouldPostProcessOnServer) {
                 writeField(out, boundary, "postProcessingEnabled", "true")
                 writeField(out, boundary, "postProcessingPrompt", postProcessingPrompt())
             }
@@ -106,11 +114,33 @@ class NetworkClient(context: Context) {
             out.write("--$boundary--\r\n".toByteArray())
         }
         val json = readJson(connection)
+        val serverText = json.optString("text")
+        if (shouldPostProcess && config.postProcessingProviderMode == "key" && serverText.trim().isNotBlank()) {
+            val processed = LlmProviderClient(appContext).postProcess(serverText, postProcessingPrompt())
+            return DictationResponse(
+                text = processed.text,
+                provider = json.optString("provider"),
+                model = json.optString("model"),
+                fallbackUsed = json.optBoolean("fallbackUsed", false),
+                audioDurationMs = durationMs,
+                postProcessed = true,
+                postProcessingProvider = processed.provider,
+                postProcessingModel = processed.model,
+                postProcessingInputChars = processed.inputChars,
+                postProcessingOutputChars = processed.outputChars
+            )
+        }
         return DictationResponse(
-            text = json.optString("text"),
+            text = serverText,
             provider = json.optString("provider"),
             model = json.optString("model"),
-            fallbackUsed = json.optBoolean("fallbackUsed", false)
+            fallbackUsed = json.optBoolean("fallbackUsed", false),
+            audioDurationMs = durationMs,
+            postProcessed = json.optBoolean("postProcessed", false),
+            postProcessingProvider = if (json.optBoolean("postProcessed", false)) "brai-cloud" else "",
+            postProcessingModel = json.optString("postProcessingModel"),
+            postProcessingInputChars = json.optInt("postProcessingInputChars", 0),
+            postProcessingOutputChars = json.optInt("postProcessingOutputChars", 0)
         )
     }
 

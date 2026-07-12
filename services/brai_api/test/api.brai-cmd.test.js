@@ -25,7 +25,7 @@ test('Brai Cmd access tokens, health, admin summary, and migrations work in Brai
       fixture.store.db.prepare('SELECT description FROM schema_migrations WHERE version = 47').get().description,
       'add Brai Cmd dictation runtime'
     );
-    assert.ok(fixture.store.db.prepare("SELECT 1 FROM agents WHERE id = 'brai-cmd.dictate.transcription'").get());
+    assert.equal(fixture.store.db.prepare("SELECT 1 FROM agents WHERE id = 'brai-cmd.dictate.transcription'").get(), undefined);
 
     const denied = await fetch(`${fixture.url}/v1/health`);
     assert.equal(denied.status, 401);
@@ -161,15 +161,14 @@ test('Brai Cmd dictation accepts multipart audio and stores only usage metrics',
     assert.equal(usage.length, 2);
     assert.equal(usage.every((row) => row.success === 1), true);
     assert.equal(usage.every((row) => row.audio_bytes === 'fake-audio'.length), true);
+    assert.equal(usage[0].post_processing_input_chars, 'raw transcript'.length + 'fix it'.length);
+    assert.equal(usage[0].post_processing_output_chars, 'processed transcript'.length);
+    assert.equal(usage[1].post_processing_input_chars, 'raw transcript'.length + JSON.stringify({ messenger: 'telegram', messages: [] }).length);
+    assert.equal(usage[1].post_processing_output_chars, 'context reply'.length);
     assert.equal(JSON.stringify(usage).includes('processed transcript'), false);
     assert.equal(JSON.stringify(usage).includes('raw transcript'), false);
-    const aiLogs = fixture.store.db.prepare('SELECT agent_id, agent_version, status, json_data FROM ai_logs ORDER BY id').all();
-    assert.equal(aiLogs.length, 2);
-    assert.equal(aiLogs.every((row) => row.agent_id === 'brai-cmd.dictate.transcription'), true);
-    assert.equal(aiLogs.every((row) => row.agent_version === '1'), true);
-    assert.equal(aiLogs.every((row) => row.status === 'done'), true);
-    assert.equal(JSON.parse(aiLogs[0].json_data).outputs.find((output) => output.ref === 'response.text').value, 'processed transcript');
-    assert.equal(JSON.parse(aiLogs[1].json_data).outputs.find((output) => output.ref === 'response.text').value, 'context reply');
+    const aiLogs = fixture.store.db.prepare("SELECT agent_id, status, json_data FROM ai_logs WHERE agent_id LIKE 'brai-cmd.%' ORDER BY id").all();
+    assert.equal(aiLogs.length, 0);
 
     const runtimeLogs = fixture.store.db
       .prepare("SELECT json_data FROM logs WHERE operation = 'brai_cmd.dictate' ORDER BY id ASC")
@@ -322,10 +321,8 @@ test('Brai Cmd dictation rejects bad requests and records failure usage', async 
       fixture.store.db.prepare('SELECT success, error_code FROM brai_cmd_usage_events').get().error_code,
       'unsupported_media_type'
     );
-    const aiLog = fixture.store.db.prepare('SELECT agent_id, status, json_data FROM ai_logs').get();
-    assert.equal(aiLog.agent_id, 'brai-cmd.dictate.transcription');
-    assert.equal(aiLog.status, 'failed');
-    assert.equal(JSON.parse(aiLog.json_data).metadata.error, 'unsupported_media_type');
+    const aiLog = fixture.store.db.prepare("SELECT agent_id, status, json_data FROM ai_logs WHERE agent_id LIKE 'brai-cmd.%'").get();
+    assert.equal(aiLog, undefined);
   } finally {
     await fixture.close();
   }

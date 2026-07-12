@@ -39,24 +39,27 @@ describe("BraiApp settings", () => {
     expect(screen.getByRole("heading", { name: "Engine" })).toBeInTheDocument();
   });
 
-  it("opens the Brai Cmd web description outside Android", async () => {
+  it("opens the Brai Cmd section outside Android", async () => {
     render(<BraiApp />);
 
     await openProfileMenuItem("Brai Cmd");
 
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Brai Cmd" })).toBeInTheDocument());
-    expect(screen.getByText(/работает только в Android-приложении Brai/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Brai CMD" })).toBeInTheDocument());
+    expect(screen.getByText("Настройки Brai CMD доступны в Android-приложении Brai.")).toBeInTheDocument();
     expect(cmdPlugin.openSettings).not.toHaveBeenCalled();
   });
 
-  it("opens native Brai Cmd settings inside Android", async () => {
+  it("opens the Brai Cmd WebView settings inside Android", async () => {
     stubAndroidCapacitor();
     render(<BraiApp />);
 
     await openProfileMenuItem("Brai Cmd");
 
-    await waitFor(() => expect(cmdPlugin.openSettings).toHaveBeenCalledTimes(1));
-    expect(screen.queryByText(/работает только в Android-приложении Brai/)).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Brai CMD" })).toBeInTheDocument());
+    expect(screen.getByText("Разрешения")).toBeInTheDocument();
+    expect(screen.getByText("Проверка связи")).toBeInTheDocument();
+    expect(cmdPlugin.getSettings).toHaveBeenCalledTimes(1);
+    expect(cmdPlugin.openSettings).not.toHaveBeenCalled();
   });
 
   it("uses larger rows in the mobile menu that contains Brai Cmd", async () => {
