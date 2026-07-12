@@ -26,6 +26,7 @@ import { EngineSection } from "./sections/engine/EngineSection";
 import { FactorySection } from "./sections/factory/FactorySection";
 import { FocusBackground, FocusContextPanelSheet, FocusSection } from "./sections/focus/FocusSection";
 import { InboxSection } from "./sections/inbox/InboxSection";
+import { ProfileSection } from "./sections/profile/ProfileSection";
 import { SettingsSection } from "./sections/settings/SettingsSection";
 import type { MobileCreateDraft } from "./sections/MobileCreateComposer";
 
@@ -199,6 +200,8 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
           />
         ) : screenSection === "archive" ? (
           <ArchiveSection state={app.actions} localSnapshotReady={app.localSnapshotReady} onRestore={app.onRestoreAction} />
+        ) : screenSection === "profile" ? (
+          <ProfileSection />
         ) : screenSection === "factory" ? (
           <FactorySection onMobileOverlayChange={app.setActionOverlayOpen} />
         ) : screenSection === "focus" ? (
@@ -273,7 +276,7 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
       )}
       data-app-shell
     >
-      {!drawsFullscreenActive ? (
+      {!drawsFullscreenActive && !mobileViewport ? (
         <DesktopRail
           section={app.section}
           appVersionState={app.versionState}
@@ -283,6 +286,8 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
           versionError={app.versionError}
           versionRefreshing={app.versionRefreshing}
           syncStatus={app.displaySyncStatus}
+          authUser={app.authUser}
+          onProfile={() => app.selectSection("profile")}
           onSettings={app.openSettingsPage}
           onBraiCmd={openBraiCmd}
           onEngine={() => app.selectSection("engine")}
@@ -348,12 +353,9 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
         <MobileDockOverflowSheet
           side={mobileDockMenu}
           section={app.section}
-          appVersionState={app.versionState}
-          otaRefreshing={app.otaRefreshing}
-          otaState={app.otaState}
-          versionError={app.versionError}
-          versionRefreshing={app.versionRefreshing}
+          authUser={app.authUser}
           onClose={() => setMobileDockMenu(null)}
+          onProfile={() => app.selectSection("profile")}
           onSettings={app.openSettingsPage}
           onBraiCmd={openBraiCmd}
           onDraws={() => app.selectSection("draws")}

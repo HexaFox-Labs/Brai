@@ -42,5 +42,5 @@ ON CONFLICT (table_name) DO UPDATE SET
   updated_at_utc = excluded.updated_at_utc;
 
 INSERT INTO schema_migrations (version, applied_at_utc, description)
-VALUES (58, now()::text, 'add preliminary Brai Cmd users')
+VALUES (59, now()::text, 'add preliminary Brai Cmd users')
 ON CONFLICT (version) DO NOTHING;

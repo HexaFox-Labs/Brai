@@ -26,7 +26,7 @@ test('Brai Cmd access tokens, health, admin summary, and migrations work in Brai
       'add Brai Cmd dictation runtime'
     );
     assert.equal(
-      fixture.store.db.prepare('SELECT description FROM schema_migrations WHERE version = 58').get().description,
+      fixture.store.db.prepare('SELECT description FROM schema_migrations WHERE version = 59').get().description,
       'add preliminary Brai Cmd users'
     );
     assert.ok(fixture.store.db.prepare("SELECT 1 FROM agents WHERE id = 'brai-cmd.dictate.transcription'").get());
