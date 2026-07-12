@@ -100,7 +100,7 @@ Native-boundary preview branches SHALL publish a slot-specific preview APK befor
 - **AND** the work is merged into `main` before production deploy
 
 #### Scenario: Accepted previews contend for main
-- **WHEN** more than one open `codex/*` acceptance PR targets `main`
+- **WHEN** more than one open `Accept …` PR created by the Brai acceptance flow targets `main` from `codex/*`
 - **THEN** only the lowest PR number may start merge or auto-merge
 - **AND** later acceptance receipts use status `waiting_for_turn` until every earlier acceptance PR merges or closes
 - **AND** a reconciled preview is not invalidated by a later acceptance advancing `main` during verification

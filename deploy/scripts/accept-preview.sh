@@ -212,8 +212,8 @@ mark_reconcile_required() {
 
 wait_for_earlier_acceptance() {
   local earlier_pr earlier_number earlier_branch earlier_url
-  earlier_pr="$(gh pr list --base "$BASE_BRANCH" --state open --limit 1000 --json number,headRefName,url --jq \
-    "map(select((.number < $PR_NUMBER) and (.headRefName | startswith(\"codex/\")))) | sort_by(.number) | .[0] | select(.) | [.number, .headRefName, .url] | @tsv")"
+  earlier_pr="$(gh pr list --base "$BASE_BRANCH" --state open --limit 1000 --json number,headRefName,title,url --jq \
+    "map(select((.number < $PR_NUMBER) and (.headRefName | startswith(\"codex/\")) and (.title | startswith(\"Accept \")))) | sort_by(.number) | .[0] | select(.) | [.number, .headRefName, .url] | @tsv")"
   if [[ -z "$earlier_pr" ]]; then
     return 1
   fi

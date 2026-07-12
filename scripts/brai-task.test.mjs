@@ -2140,6 +2140,7 @@ test("accept preview checks verified preview before PR actions", () => {
   assert.match(script, /acceptance-reconcile/);
   assert.match(script, /waiting_for_turn/);
   assert.match(script, /\.number < \$PR_NUMBER/);
+  assert.match(script, /\.title \| startswith\(\\"Accept \\"\)/);
   assert.ok(script.indexOf("wait_for_earlier_acceptance") < script.indexOf('PR_MERGE_STATE="$(gh pr view'));
   assert.match(script, /BEHIND/);
   assert.match(script, /Brai task state must not be a symlink/);
