@@ -60,6 +60,9 @@ function matchesMediaQuery(query: string): boolean {
 
 export function setupBraiAppTest() {
   beforeEach(async () => {
+    delete window.Capacitor;
+    delete window.BraiAndroidBack;
+    delete window.__BRAI_RUNTIME_CONFIG__;
     const db = clientDb();
     await Promise.all(db.tables.map((table) => table.clear()));
     await setMeta("currentUserId", "test-user");
