@@ -34,6 +34,7 @@ const BASE_JSON_HEADERS = {
 const SESSION_COOKIE = 'brai_session';
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 const STATE_CHANGING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+const DRAW_SCENE_LIMIT_BYTES = 15 * 1024 * 1024;
 
 export function createBraiServer({
   databaseUrl,
@@ -787,6 +788,41 @@ export function createBraiServer({
         return;
       }
 
+      if (req.method === 'GET' && url.pathname === '/v1/draws') {
+        sendJson(req, res, 200, { draws: listDrawScenes(resolvedVaultRoot) });
+        return;
+      }
+
+      const drawRenameMatch = url.pathname.match(/^\/v1\/draws\/([^/]+)\/rename$/);
+      if (drawRenameMatch) {
+        if (req.method !== 'POST') {
+          sendJson(req, res, 405, { error: 'method_not_allowed' });
+          return;
+        }
+        const body = await readJson(req, { limit: 4096 });
+        const scene = renameDrawScene(resolvedVaultRoot, drawSceneFileName(drawRenameMatch[1]), drawSceneFileName(body.name));
+        sendJson(req, res, 200, scene);
+        return;
+      }
+
+      const drawMatch = url.pathname.match(/^\/v1\/draws\/([^/]+)$/);
+      if (drawMatch) {
+        const fileName = drawSceneFileName(drawMatch[1]);
+        if (req.method === 'GET') {
+          const scene = readDrawScene(resolvedVaultRoot, fileName);
+          sendJson(req, res, scene ? 200 : 404, scene ?? { error: 'not_found' });
+          return;
+        }
+        if (req.method === 'POST') {
+          const body = await readJson(req, { limit: DRAW_SCENE_LIMIT_BYTES });
+          const scene = writeDrawScene(resolvedVaultRoot, fileName, body.scene ?? body);
+          sendJson(req, res, 200, scene);
+          return;
+        }
+        sendJson(req, res, 405, { error: 'method_not_allowed' });
+        return;
+      }
+
       const inboxWorkflowMatch = req.method === 'GET'
         ? url.pathname.match(/^\/v1\/inbox\/([^/]+)\/workflow$/)
         : null;
@@ -1363,6 +1399,124 @@ function recordRuntimeLog(store, logger, input) {
   } catch (error) {
     logger.error?.('runtime log failed', { error: error instanceof Error ? error.message : String(error) });
   }
+}
+
+function listDrawScenes(vaultRoot) {
+  const drawsDir = ensureScopedDrawsDir(vaultRoot);
+  return fs.readdirSync(drawsDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.excalidraw'))
+    .map((entry) => drawSceneSummary(drawsDir, entry.name))
+    .sort((left, right) => right.updated_at_utc.localeCompare(left.updated_at_utc) || left.name.localeCompare(right.name));
+}
+
+function readDrawScene(vaultRoot, fileName) {
+  const drawsDir = ensureScopedDrawsDir(vaultRoot);
+  const filePath = safeDrawScenePath(drawsDir, fileName);
+  if (!fs.existsSync(filePath)) return null;
+  const scene = normalizeDrawScene(JSON.parse(fs.readFileSync(filePath, 'utf8')));
+  return { ...drawSceneSummary(drawsDir, fileName), scene };
+}
+
+function writeDrawScene(vaultRoot, fileName, scene) {
+  const drawsDir = ensureScopedDrawsDir(vaultRoot);
+  const filePath = safeDrawScenePath(drawsDir, fileName);
+  const nextScene = normalizeDrawScene(scene);
+  fs.writeFileSync(filePath, JSON.stringify(nextScene));
+  return { ...drawSceneSummary(drawsDir, fileName), scene: nextScene };
+}
+
+function renameDrawScene(vaultRoot, fromName, toName) {
+  const drawsDir = ensureScopedDrawsDir(vaultRoot);
+  const fromPath = safeDrawScenePath(drawsDir, fromName);
+  const toPath = safeDrawScenePath(drawsDir, toName);
+  if (!fs.existsSync(fromPath)) {
+    const error = new Error('not_found');
+    error.status = 404;
+    throw error;
+  }
+  if (fromPath !== toPath && fs.existsSync(toPath)) {
+    const error = new Error('draw_exists');
+    error.status = 409;
+    throw error;
+  }
+  if (fromPath !== toPath) fs.renameSync(fromPath, toPath);
+  const scene = normalizeDrawScene(JSON.parse(fs.readFileSync(toPath, 'utf8')));
+  return { ...drawSceneSummary(drawsDir, toName), scene };
+}
+
+function ensureScopedDrawsDir(vaultRoot) {
+  const userId = scopedUserId();
+  if (!userId) {
+    const error = new Error('user_required');
+    error.status = 409;
+    throw error;
+  }
+  const safeUserId = validateVaultUserId(userId);
+  const userDir = path.resolve(vaultRoot, safeUserId);
+  const drawsDir = path.join(userDir, 'Draws');
+  ensureDirectoryMode(drawsDir, 0o2770);
+  return drawsDir;
+}
+
+function drawSceneFileName(value) {
+  let decoded = '';
+  try {
+    decoded = decodeURIComponent(String(value ?? ''));
+  } catch {
+    const error = new Error('invalid_draw_name');
+    error.status = 400;
+    throw error;
+  }
+  const trimmed = decoded.trim();
+  const fileName = trimmed.endsWith('.excalidraw') ? trimmed : `${trimmed}.excalidraw`;
+  if (!/^[^/\\\0]{1,120}\.excalidraw$/u.test(fileName) || fileName.startsWith('.') || fileName.includes('..')) {
+    const error = new Error('invalid_draw_name');
+    error.status = 400;
+    throw error;
+  }
+  return fileName;
+}
+
+function safeDrawScenePath(drawsDir, fileName) {
+  const filePath = path.resolve(drawsDir, fileName);
+  const root = `${path.resolve(drawsDir)}${path.sep}`;
+  if (!filePath.startsWith(root)) {
+    const error = new Error('invalid_draw_name');
+    error.status = 400;
+    throw error;
+  }
+  return filePath;
+}
+
+function drawSceneSummary(drawsDir, fileName) {
+  const stat = fs.statSync(safeDrawScenePath(drawsDir, fileName));
+  return {
+    name: fileName,
+    title: fileName.replace(/\.excalidraw$/, ''),
+    updated_at_utc: stat.mtime.toISOString(),
+    size_bytes: stat.size
+  };
+}
+
+function normalizeDrawScene(scene) {
+  if (!scene || typeof scene !== 'object' || Array.isArray(scene)) {
+    const error = new Error('invalid_draw_scene');
+    error.status = 400;
+    throw error;
+  }
+  const appState = scene.appState && typeof scene.appState === 'object' && !Array.isArray(scene.appState)
+    ? { ...scene.appState }
+    : {};
+  delete appState.collaborators;
+  return {
+    ...scene,
+    type: 'excalidraw',
+    version: Number.isFinite(scene.version) ? scene.version : 2,
+    source: typeof scene.source === 'string' ? scene.source : 'brai',
+    elements: Array.isArray(scene.elements) ? scene.elements : [],
+    appState,
+    files: scene.files && typeof scene.files === 'object' && !Array.isArray(scene.files) ? scene.files : {}
+  };
 }
 
 function broadcast(sockets, payload, targetUserId = null) {

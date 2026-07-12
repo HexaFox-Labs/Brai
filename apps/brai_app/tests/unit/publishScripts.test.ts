@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 
 const execFileAsync = promisify(execFile);
 const workspaceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
+const appStaticRoutes = ["brai-cmd", "draws", "engine", "evil-eye", "factory", "focus", "inbox"];
 
 describe("mobile OTA publish scripts", () => {
   it("publishes browser web and Android OTA from one web-layer command", async () => {
@@ -49,6 +50,11 @@ describe("mobile OTA publish scripts", () => {
     await expect(readFile(path.join(root, "deploy/web/index.html"), "utf8")).resolves.toContain(
       "unified",
     );
+    for (const route of appStaticRoutes) {
+      await expect(readFile(path.join(root, `deploy/web/${route}/index.html`), "utf8")).resolves.toContain(
+        `${route} route`,
+      );
+    }
     await expect(readFile(path.join(root, "deploy/site/versions.html"), "utf8")).resolves.toContain(
       "landing-versions",
     );
@@ -768,6 +774,7 @@ describe("mobile OTA publish scripts", () => {
       "publish-environment-web-layer.sh",
       "publish-mobile-bundle.sh",
       "publish-web.sh",
+      "normalize-next-static-export.mjs",
       "resolve-required-apk-version.mjs",
       "write-client-runtime-config.mjs",
     ]) {
@@ -1064,6 +1071,11 @@ async function writeStaticExport(root: string, marker: string) {
   await mkdir(path.join(out, "_next"), { recursive: true });
   await mkdir(path.join(root, "apps/brai_app/public"), { recursive: true });
   await writeFile(path.join(out, "index.html"), `<main>${marker}</main>`);
+  for (const route of appStaticRoutes) {
+    await mkdir(path.join(out, route), { recursive: true });
+    await writeFile(path.join(out, `${route}.html`), `<main>${marker} ${route} route</main>`);
+    await writeFile(path.join(out, route, `__next.${route}.txt`), "rsc");
+  }
   await writeFile(path.join(out, "_next/app.js"), "console.log('ok')");
   await writeFile(path.join(out, "version.json"), JSON.stringify({ marker }));
   await writeFile(path.join(root, "apps/brai_app/public/version.json"), JSON.stringify({ version: "9.9.9" }));
