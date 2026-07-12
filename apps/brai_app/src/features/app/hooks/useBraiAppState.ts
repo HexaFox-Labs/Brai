@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
-import { BraiApi, DEFAULT_APP_SETTINGS, type AppSettings, type OtpSendResult } from "@/shared/api/braiApi";
+import { BraiApi, DEFAULT_APP_SETTINGS, type AppSettings, type AuthUser, type OtpSendResult } from "@/shared/api/braiApi";
 import { defaultApiBase, isProductionEnvironment } from "@/shared/config/runtime";
 import {
   acknowledgeAndroidActionsWidgetStatusChanges,
@@ -87,7 +87,7 @@ export function useBraiAppState(initialSection: SectionId) {
   const [actionPendingCount, setActionPendingCount] = useState(0);
   const [inboxPendingCount, setInboxPendingCount] = useState(0);
   const [busy, setBusy] = useState(false);
-  const authDisplayNameRef = useRef("");
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [timerBusy, setTimerBusy] = useState(false);
   const [actionOverlayOpen, setActionOverlayOpen] = useState(false);
   const [focusContextPanel, setFocusContextPanel] = useState<FocusContextPanel>(loadFocusContextPanelPreference);
@@ -651,7 +651,7 @@ export function useBraiAppState(initialSection: SectionId) {
     try {
       const result = await api.verifyOtp(email, otp);
       if (result.authenticated) {
-        authDisplayNameRef.current = result.user?.name ?? "";
+        setAuthUser(result.user ?? null);
         await ensureClientUser(result.user?.id ?? null);
         resetUserSnapshots();
         setSyncStatus("connecting");
@@ -670,7 +670,7 @@ export function useBraiAppState(initialSection: SectionId) {
     try {
       const result = await api.testEmailLogin(email);
       if (result.authenticated) {
-        authDisplayNameRef.current = result.user?.name ?? "";
+        setAuthUser(result.user ?? null);
         await ensureClientUser(result.user?.id ?? null);
         resetUserSnapshots();
         setSyncStatus("connecting");
@@ -686,7 +686,7 @@ export function useBraiAppState(initialSection: SectionId) {
 
   async function onLogout() {
     await api.logout();
-    authDisplayNameRef.current = "";
+    setAuthUser(null);
     await ensureClientUser(null);
     resetUserSnapshots();
     setLocalSnapshotReady(true);
@@ -764,14 +764,14 @@ export function useBraiAppState(initialSection: SectionId) {
       const session = await bootApi.session();
       if (cancelled) return;
       if (!session.authenticated) {
-        authDisplayNameRef.current = "";
+        setAuthUser(null);
         resetUserSnapshots();
         setLocalSnapshotReady(true);
         setSyncStatus("auth_required");
         return;
       }
 
-      authDisplayNameRef.current = session.user?.name ?? "";
+      setAuthUser(session.user ?? null);
       await ensureClientUser(session.user?.id ?? null);
       const [cachedState, cachedHistory, cachedGoal, cachedActions, cachedInbox, queued, queuedActions, queuedInbox] = await Promise.all([
         loadCanonicalState(),
@@ -1000,7 +1000,8 @@ export function useBraiAppState(initialSection: SectionId) {
       section !== "archive" &&
       section !== "settings" &&
       section !== "engine" &&
-      section !== "evil-eye",
+      section !== "evil-eye" &&
+      section !== "profile",
   );
 
   function setMobileContextPanelState(panel: MobileContextPanel | null) {
@@ -1034,7 +1035,7 @@ export function useBraiAppState(initialSection: SectionId) {
     setSyncStatus,
   });
 
-  return { actionOverlayOpen, actions, actionsInfoActive, active, appSettings, authDisplayName: authDisplayNameRef.current, authMode, bundlePublishedAt, busy, displaySyncStatus, focusBackground, focusContextPanel, focusGoalActive, focusHistoryActive, goal, history, inbox, inboxInfoActive, localSnapshotReady, markMobileContextPanelClosing, mobileContextPanel, mobileMenuOpen, ...actionCommands, ...inboxCommands, onDeleteFocusSession, onEditFocusInterval, onEditFocusSession, onEmailLogin, onLogout, onRequestOtp, onStart, onStartActionFocus, onStop, onStopActionFocus, onSwitchActionFocus, onUpdateAppSettings: updateAppSettings, onVerifyOtp, openSettingsPage, otaCheckedAt, otaRefreshing, otaState, refreshEngineOnce, refreshOtaStateOnce, section, selectSection, setActionOverlayOpen, setFocusBackground, setMobileContextPanel: setMobileContextPanelState, setMobileMenuOpen, setTheme, swipeNavigation, theme, timer, timerBusy, todayKey, toggleActionsInfoPanel, toggleFocusContextPanel, toggleInboxInfoPanel, totalPendingCount, versionCheckedAt, versionError, versionRefreshing, versionState };
+  return { actionOverlayOpen, actions, actionsInfoActive, active, appSettings, authDisplayName: authUser?.name ?? "", authMode, authUser, bundlePublishedAt, busy, displaySyncStatus, focusBackground, focusContextPanel, focusGoalActive, focusHistoryActive, goal, history, inbox, inboxInfoActive, localSnapshotReady, markMobileContextPanelClosing, mobileContextPanel, mobileMenuOpen, ...actionCommands, ...inboxCommands, onDeleteFocusSession, onEditFocusInterval, onEditFocusSession, onEmailLogin, onLogout, onRequestOtp, onStart, onStartActionFocus, onStop, onStopActionFocus, onSwitchActionFocus, onUpdateAppSettings: updateAppSettings, onVerifyOtp, openSettingsPage, otaCheckedAt, otaRefreshing, otaState, refreshEngineOnce, refreshOtaStateOnce, section, selectSection, setActionOverlayOpen, setFocusBackground, setMobileContextPanel: setMobileContextPanelState, setMobileMenuOpen, setTheme, swipeNavigation, theme, timer, timerBusy, todayKey, toggleActionsInfoPanel, toggleFocusContextPanel, toggleInboxInfoPanel, totalPendingCount, versionCheckedAt, versionError, versionRefreshing, versionState };
 }
 
 function loadAppSettingsPreference(): AppSettings {
