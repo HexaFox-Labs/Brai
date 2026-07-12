@@ -315,6 +315,21 @@ describe("BraiApp settings", () => {
       preliminaryUserId: "prelim-test-user",
       preliminaryClaimToken: "prelim-claim-token",
     });
+
+    fireEvent.click(screen.getByRole("button", { name: "Настройки Brai CMD" }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Brai CMD" })).toBeInTheDocument());
+    expect(document.querySelector("[data-standalone-section]")).toBeInTheDocument();
+    expect(document.querySelector("[data-app-shell]")).not.toBeInTheDocument();
+    expect(await screen.findByText("Главная кнопка диктовки")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Назад" }));
+    expect(await screen.findByText("Нужен вход")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Engine" }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Engine" })).toBeInTheDocument());
+    expect(document.querySelector("[data-standalone-section]")).toBeInTheDocument();
+    expect(document.querySelector("[data-app-shell]")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Проверить обновления" })).toBeInTheDocument();
   });
 
   it("returns from Settings through the Android back bridge", async () => {

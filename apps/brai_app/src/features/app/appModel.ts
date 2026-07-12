@@ -26,7 +26,7 @@ export function resolveAuthMode(production: boolean): AuthMode {
 export function sectionTitle(section: SectionId): string {
   if (section === "archive") return "Архив";
   if (section === "settings") return "Настройки";
-  if (section === "brai-cmd") return "Brai Cmd";
+  if (section === "brai-cmd") return "Brai CMD";
   if (section === "engine") return "Engine";
   if (section === "evil-eye") return "Evil Eye";
   if (section === "inbox") return "Входящие";

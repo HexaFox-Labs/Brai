@@ -65,12 +65,14 @@ type ConnectionStatus = "idle" | "testing" | "ok" | "error";
 type ConnectionState = { status: ConnectionStatus; message: string };
 
 const initialConnection: ConnectionState = { status: "idle", message: "Протестируйте подключение" };
+const CMD_SECTION_CLASS = "max-w-3xl content-start gap-4 [&_[data-slot=card]]:rounded-xl [&_[data-slot=card-header]]:p-4 [&_[data-slot=card-panel]]:px-4 [&_[data-slot=card-panel]]:pb-4 [&_[data-slot=field-content]]:gap-1 [&_[data-slot=field-content]>[data-slot=field-label]]:text-base [&_[data-slot=field-content]>[data-slot=field-label]]:font-semibold [&_[data-slot=field-description]]:text-muted-foreground/75";
 
 export function BraiCmdSection() {
   const [snapshot, setSnapshot] = useState<BraiCmdSnapshot | null>(null);
   const [page, setPage] = useState<CmdPage>("main");
   const [loading, setLoading] = useState(true);
   const [connection, setConnection] = useState<ConnectionState>(initialConnection);
+  const [settingsError, setSettingsError] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -92,7 +94,12 @@ export function BraiCmdSection() {
 
   async function patchSettings(patch: BraiCmdSettingsPatch) {
     const next = await updateBraiCmdSettings(patch);
-    if (next) setSnapshot(next);
+    if (!next) {
+      setSettingsError("Не удалось сохранить настройку. Повторите ещё раз.");
+      return;
+    }
+    setSettingsError("");
+    setSnapshot(next);
   }
 
   async function toggleOverlay(enabled: boolean) {
@@ -108,16 +115,15 @@ export function BraiCmdSection() {
   }
 
   if (loading) {
-    return <section className={cx(SECTION_GRID_CLASS, "max-w-3xl content-start")} aria-label="Brai CMD"><Card className="p-5 text-sm text-muted-foreground">Загрузка</Card></section>;
+    return <section className={cx(SECTION_GRID_CLASS, CMD_SECTION_CLASS)} aria-label="Brai CMD"><Card className="p-5 text-sm text-muted-foreground">Загрузка</Card></section>;
   }
 
   if (!snapshot) {
     return (
-      <section className={cx(SECTION_GRID_CLASS, "max-w-3xl content-start pb-[calc(6rem+env(safe-area-inset-bottom))]")} aria-label="Brai CMD">
-        <h1 className="text-2xl font-semibold">Brai CMD</h1>
+      <section className={cx(SECTION_GRID_CLASS, CMD_SECTION_CLASS)} aria-label="Brai CMD">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Android</CardTitle>
+            <CardTitle>Android</CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">Настройки Brai CMD доступны в Android-приложении Brai.</CardContent>
         </Card>
@@ -126,7 +132,13 @@ export function BraiCmdSection() {
   }
 
   return (
-    <section className={cx(SECTION_GRID_CLASS, "max-w-3xl content-start pb-[calc(6rem+env(safe-area-inset-bottom))] max-[860px]:pb-[calc(7rem+env(safe-area-inset-bottom))]")} aria-label="Brai CMD">
+    <section className={cx(SECTION_GRID_CLASS, CMD_SECTION_CLASS)} aria-label="Brai CMD">
+      {settingsError ? (
+        <Alert variant="destructive">
+          <XCircle />
+          <AlertTitle>{settingsError}</AlertTitle>
+        </Alert>
+      ) : null}
       {page === "main" ? (
         <MainPage
           snapshot={snapshot}
@@ -169,12 +181,10 @@ function MainPage({
   const { settings } = snapshot;
   return (
     <>
-      <h1 className="text-2xl font-semibold">Brai CMD</h1>
-
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Главная кнопка диктовки</CardTitle>
-          <CardDescription>Основная кнопка, которая превращает голос в текст, вставляй в поле ввода.</CardDescription>
+          <CardTitle>Главная кнопка диктовки</CardTitle>
+          <CardDescription>Превращает голос в текст и вставляет его в активное поле.</CardDescription>
         </CardHeader>
         <CardContent>
           <SwitchRow
@@ -188,7 +198,7 @@ function MainPage({
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Разрешения</CardTitle>
+          <CardTitle>Разрешения</CardTitle>
         </CardHeader>
         <CardContent>
           <FieldGroup className="gap-4">
@@ -215,7 +225,7 @@ function MainPage({
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Проверка связи</CardTitle>
+          <CardTitle>Проверка связи</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4">
           <ConnectionAlert connection={connection} />
@@ -227,7 +237,7 @@ function MainPage({
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Кнопки контекста</CardTitle>
+          <CardTitle>Кнопки контекста</CardTitle>
           <CardDescription>Вы можете включать и выключать набор кнопок</CardDescription>
         </CardHeader>
         <CardContent>
@@ -249,7 +259,7 @@ function MainPage({
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Настройки кнопок</CardTitle>
+          <CardTitle>Настройки кнопок</CardTitle>
         </CardHeader>
         <CardContent>
           <FieldGroup className="gap-5">
@@ -264,7 +274,7 @@ function MainPage({
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Постобработка</CardTitle>
+          <CardTitle>Постобработка</CardTitle>
           <CardDescription>Улучшаем с ИИ текст полученный после расшифровки.</CardDescription>
         </CardHeader>
         <CardContent>
@@ -280,12 +290,12 @@ function MainPage({
                 <Separator />
                 <Field orientation="responsive">
                   <FieldContent>
-                    <FieldTitle>Поставщик LLM</FieldTitle>
+                    <FieldTitle>Поставщик</FieldTitle>
                     <FieldDescription>{settings.providerConfigured ? "Поставщик подключён." : "Нужно выбрать облако Brai или подключить ключ поставщика."}</FieldDescription>
                   </FieldContent>
                   <Button className="w-full justify-start sm:w-auto sm:justify-center" type="button" variant="outline" onClick={onProvider}>
                     {settings.providerConfigured ? <Check className="text-emerald-600 dark:text-emerald-300" /> : <X className="text-destructive" />}
-                    Поставщик LLM
+                    Настроить
                   </Button>
                 </Field>
                 <Field>
@@ -305,7 +315,7 @@ function MainPage({
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Статистика Транскриптов</CardTitle>
+          <CardTitle>Статистика Транскриптов</CardTitle>
         </CardHeader>
         <CardContent>
           <StatsGrid snapshot={snapshot} />
@@ -314,7 +324,7 @@ function MainPage({
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Аудиозаписи</CardTitle>
+          <CardTitle>Аудиозаписи</CardTitle>
           <CardDescription>По умолчанию на телефоне сохраняются только аудиозаписи, которые ещё не удалось обработать. Вы можете их скачать или удалить.</CardDescription>
         </CardHeader>
         <CardContent>
@@ -370,12 +380,12 @@ function ProviderPage({ snapshot, onBack, onSnapshot }: { snapshot: BraiCmdSnaps
       <PageBack title="Поставщик LLM" onBack={onBack} />
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Режим</CardTitle>
+          <CardTitle>Режим</CardTitle>
         </CardHeader>
         <CardContent>
           <ChoiceRadioGroup value={mode} onValueChange={chooseMode}>
             <ChoiceRadio id="brai-cmd-provider-cloud" text="Постобработка на серверах Brai." title="Облако Brai" value="cloud" />
-            <ChoiceRadio id="brai-cmd-provider-key" text="Ваш API ключ и модель поставщика." title="Ключ поставщика" value="key" />
+            <ChoiceRadio id="brai-cmd-provider-key" text="Ваш ключ и выбранная модель." title="Свой API-ключ" value="key" />
           </ChoiceRadioGroup>
         </CardContent>
       </Card>
@@ -383,7 +393,7 @@ function ProviderPage({ snapshot, onBack, onSnapshot }: { snapshot: BraiCmdSnaps
       {mode === "cloud" ? (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Облако Brai</CardTitle>
+            <CardTitle>Облако Brai</CardTitle>
             <CardDescription>Постобработка происходит на серверах Brai. Данные удаляются сразу после доставки на ваше устройство.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 text-sm text-muted-foreground">
@@ -395,7 +405,7 @@ function ProviderPage({ snapshot, onBack, onSnapshot }: { snapshot: BraiCmdSnaps
       ) : (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Ключ поставщика</CardTitle>
+            <CardTitle>Ключ поставщика</CardTitle>
           </CardHeader>
           <CardContent>
             <FieldGroup className="gap-4">
@@ -479,7 +489,7 @@ function AudioPage({
       <PageBack title="Аудиозаписи" onBack={onBack} />
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Настройки</CardTitle>
+          <CardTitle>Настройки</CardTitle>
         </CardHeader>
         <CardContent>
           <FieldGroup className="gap-4">
@@ -510,7 +520,7 @@ function AudioPage({
       </Card>
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Файлы</CardTitle>
+          <CardTitle>Файлы</CardTitle>
         </CardHeader>
         <CardContent>
           <FieldGroup className="gap-4">
@@ -589,7 +599,7 @@ function RangeRow({ title, value, min, max, onChange }: { title: string; value: 
 
 function ChoiceRadioGroup({ children, onValueChange, value }: { children: ReactNode; value: string; onValueChange: (value: string) => void }) {
   return (
-    <RadioGroup className="grid gap-3 sm:grid-cols-2" value={value} onValueChange={onValueChange}>
+    <RadioGroup className="grid gap-2 sm:grid-cols-2" value={value} onValueChange={onValueChange}>
       {children}
     </RadioGroup>
   );
@@ -598,7 +608,7 @@ function ChoiceRadioGroup({ children, onValueChange, value }: { children: ReactN
 function ChoiceRadio({ id, text, title, value }: { id: string; text: string; title: string; value: string }) {
   return (
     <FieldLabel className="w-full cursor-pointer" htmlFor={id}>
-      <Field className="min-h-full rounded-md border p-4" orientation="horizontal">
+      <Field className="rounded-md border p-3" orientation="horizontal">
         <RadioGroupItem id={id} value={value} />
         <FieldContent>
           <FieldTitle>{title}</FieldTitle>

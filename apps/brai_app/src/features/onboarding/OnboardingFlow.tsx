@@ -1043,7 +1043,7 @@ function StepActions({ children, preserveBottomGap = false }: { children: ReactN
         : "[@media(max-height:700px)]:gap-2 [@media(max-height:700px)]:pb-[calc(env(safe-area-inset-bottom)+0.5rem)] [@media(max-height:700px)]:pt-2 [@media(max-height:800px)_and_(min-aspect-ratio:2/3)]:pb-[calc(env(safe-area-inset-bottom)+0.25rem)] [@media(max-height:800px)_and_(min-aspect-ratio:2/3)]:pt-1",
     )}>
       {statusText ? <StatusCard text={statusText} tone={statusTone} /> : null}
-      {extraActions.length ? <div className="grid gap-2">{extraActions}</div> : null}
+      {extraActions.length ? <div className="grid gap-3">{extraActions}</div> : null}
       <div className={cx("grid gap-3", canBack && mainAction ? "grid-cols-[3rem_minmax(0,1fr)]" : canBack ? "grid-cols-[3rem]" : "grid-cols-1")}>
         {canBack ? (
           <Button type="button" variant="outline" className="size-12 rounded-full border-primary/20 bg-transparent p-0 transition-all duration-200 hover:bg-primary/10 active:scale-[0.96] active:bg-primary/15 [@media(max-height:800px)_and_(min-aspect-ratio:2/3)]:size-10" aria-label="Назад" onClick={onBack}>

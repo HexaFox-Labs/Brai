@@ -66,18 +66,16 @@ internal object RecordingArchiveStore {
         val targets = sources.map { source ->
             if (source == audioFile) target else File("${target.absolutePath}${source.name.removePrefix(audioFile.name)}")
         }
-        val moved = runCatching {
+        val copied = runCatching {
             sources.zip(targets).forEach { (source, destination) ->
-                if (!source.renameTo(destination)) {
-                    source.copyTo(destination, overwrite = false)
-                    source.delete()
-                }
+                source.copyTo(destination, overwrite = false)
             }
         }.isSuccess
-        if (!moved) {
+        if (!copied) {
             targets.forEach(File::delete)
             return false
         }
+        sources.forEach(File::delete)
         pruneProcessed(context, config.processedAudioRetentionLimit)
         return !audioFile.exists()
     }
