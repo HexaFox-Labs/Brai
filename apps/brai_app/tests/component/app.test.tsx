@@ -26,6 +26,7 @@ describe("BraiApp shell", () => {
 
   it("renders the actions-first shell", async () => {
     render(<BraiApp />);
+    expect(document.querySelector("[data-startup-splash]")).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Действия" })).toBeInTheDocument();
     expect(screen.getAllByLabelText("Действия").length).toBeGreaterThan(0);
     ["Действия", "Входящие", "Фокус"].forEach((title) => {
@@ -50,6 +51,7 @@ describe("BraiApp shell", () => {
     await waitFor(() => expect(cmdPlugin.setVoiceOnlyMode).toHaveBeenCalledWith({ enabled: false }));
     expect(cmdPlugin.setQueuePausedMode).toHaveBeenCalledWith({ enabled: false });
     await waitFor(() => expect(cmdPlugin.setAccessKey).toHaveBeenCalledWith({ token: "authenticated-device-token", displayName: "Test" }));
+    expect(document.querySelector("[data-startup-splash]")).not.toBeInTheDocument();
     expect(cmdPlugin.ensureAccess).not.toHaveBeenCalled();
   });
 
@@ -718,6 +720,8 @@ describe("BraiApp shell", () => {
     expect(contextScrollArea).toHaveClass(
       "[--scroll-area-thumb-size:10px]",
       "[--scroll-area-gap:calc(var(--scroll-area-thumb-size)/2)]",
+      "max-[860px]:[--scroll-area-content-gutter:var(--scroll-area-thumb-size)]",
+      "max-[860px]:[--scroll-area-gap:0px]",
       "[&>[data-slot=scroll-area-viewport]]:pr-[var(--scroll-area-content-gutter)]",
     );
     expect(contextScrollArea).not.toHaveClass("[&>[data-slot=scroll-area-scrollbar]]:right-1", "[&>[data-slot=scroll-area-viewport]>div]:pr-5");
@@ -1167,6 +1171,7 @@ describe("BraiApp shell", () => {
     await waitFor(() => expect(screen.getByText("Live действие")).toBeInTheDocument());
     await openProfileMenuItem("Архив");
     await waitFor(() => expect(screen.getByRole("heading", { name: "Архив" })).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "Назад к настройкам" })).not.toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("Live архив")).toBeInTheDocument());
   });
 
@@ -1258,7 +1263,7 @@ describe("BraiApp shell", () => {
     await waitFor(() => expect(document.documentElement).toHaveAttribute("data-platform", "android"));
   });
 
-  it("keeps the desktop rail compact and static", async () => {
+  it("keeps the desktop rail compact and opens a separate contextual rail", async () => {
     Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 1200 });
     render(<BraiApp />);
     const shell = document.querySelector(".app-shell");
@@ -1267,7 +1272,8 @@ describe("BraiApp shell", () => {
 
     expect(shell).toBeInstanceOf(HTMLElement);
     expect(rail).toBeInstanceOf(HTMLElement);
-    expect(topbar?.querySelector("[data-screen-icon]")).toBeInTheDocument();
+    expect(topbar?.querySelector("[data-screen-icon]")).not.toBeInTheDocument();
+    expect(topbar?.querySelector('[aria-label="Закрыть контекстную панель"]')).toBeInTheDocument();
     expect(topbar?.querySelector('[aria-label="Свернуть меню"]')).not.toBeInTheDocument();
     expect(shell).not.toHaveClass("is-rail-expanded");
     expect(rail).not.toHaveClass("expanded");
@@ -1284,6 +1290,7 @@ describe("BraiApp shell", () => {
     expect(rail).toContainElement(screen.getByRole("button", { name: "Открыть меню профиля" }));
     expect(rail).not.toContainElement(screen.queryByRole("button", { name: "Настройки" }));
     expect(rail).not.toContainElement(screen.queryByRole("button", { name: "Архив" }));
+    expect(document.querySelector(".contextual-rail")).toBeInTheDocument();
 
     fireEvent.click(screen.getAllByRole("button", { name: "Фокус" }).at(-1) as HTMLElement);
     await waitFor(() => expect(screen.getByRole("heading", { name: "Фокус" })).toBeInTheDocument());

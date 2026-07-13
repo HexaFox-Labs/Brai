@@ -50,7 +50,9 @@ const actionsWidgetPlugin = vi.hoisted(() => ({
   saveSnapshot: vi.fn(),
 }));
 
-export { actionsWidgetPlugin, androidCapabilitiesPlugin, cmdPlugin, otaPlugin };
+const audioPlay = vi.hoisted(() => vi.fn());
+
+export { actionsWidgetPlugin, androidCapabilitiesPlugin, audioPlay, cmdPlugin, otaPlugin };
 
 vi.mock("@capacitor/core", () => ({
   registerPlugin: vi.fn((name: string) => {
@@ -124,6 +126,13 @@ export function setupBraiAppTest() {
   beforeEach(async () => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    audioPlay.mockReset();
+    audioPlay.mockResolvedValue(undefined);
+    vi.stubGlobal("Audio", class MockAudio {
+      preload = "";
+      constructor(public src: string) {}
+      play() { return audioPlay(); }
+    });
     cleanup();
     Element.prototype.scrollIntoView = vi.fn();
     const db = clientDb();

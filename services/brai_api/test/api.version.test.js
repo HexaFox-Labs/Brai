@@ -149,7 +149,7 @@ test('release login uses short air password and ignores app sessions', async () 
             apkVersion: 7,
             apkBuildKind: 'stable',
             publishedAt: '2026-06-29T12:00:00.000Z',
-            sizeBytes: 10 * 1024 * 1024
+            sizeBytes: 10_000_000
           }
         }
       })
