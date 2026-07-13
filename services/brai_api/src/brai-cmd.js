@@ -3,8 +3,6 @@ import { randomUUID } from 'node:crypto';
 const GROQ_TRANSCRIPTIONS_URL = 'https://api.groq.com/openai/v1/audio/transcriptions';
 const GROQ_CHAT_COMPLETIONS_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const OPENAI_TRANSCRIPTIONS_URL = 'https://api.openai.com/v1/audio/transcriptions';
-const GROQ_MODELS_URL = 'https://api.groq.com/openai/v1/models';
-const OPENAI_MODELS_URL = 'https://api.openai.com/v1/models';
 const MAX_POST_PROCESSING_PROMPT_CHARS = 4000;
 
 export function braiCmdConfigFromEnv(env = process.env) {
@@ -436,25 +434,50 @@ async function transcribeAudio(file, config) {
 }
 
 async function probeCloudTranscription(config) {
+  const file = silentWavProbe();
   if (config.groqApiKey) {
-    await requestJson(`${GROQ_MODELS_URL}/${encodeURIComponent(config.transcriptionModel)}`, {
-      method: 'GET',
-      headers: { authorization: `Bearer ${config.groqApiKey}` },
-      timeoutMs: Math.min(config.transcriptionTimeoutMs, 15_000),
-      timeoutMessage: 'Groq transcription model check timed out'
-    });
-    return { provider: 'groq', model: config.transcriptionModel };
+    try {
+      await requestJson(GROQ_TRANSCRIPTIONS_URL, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${config.groqApiKey}` },
+        body: audioForm(file, config.transcriptionModel),
+        timeoutMs: Math.min(config.transcriptionTimeoutMs, 15_000),
+        timeoutMessage: 'Groq transcription probe timed out'
+      });
+      return { provider: 'groq', model: config.transcriptionModel };
+    } catch (error) {
+      if (!config.openaiApiKey) throw error;
+    }
   }
   if (config.openaiApiKey) {
-    await requestJson(`${OPENAI_MODELS_URL}/${encodeURIComponent(config.openaiTranscriptionModel)}`, {
-      method: 'GET',
+    await requestJson(OPENAI_TRANSCRIPTIONS_URL, {
+      method: 'POST',
       headers: { authorization: `Bearer ${config.openaiApiKey}` },
+      body: audioForm(file, config.openaiTranscriptionModel),
       timeoutMs: Math.min(config.transcriptionTimeoutMs, 15_000),
-      timeoutMessage: 'OpenAI transcription model check timed out'
+      timeoutMessage: 'OpenAI transcription probe timed out'
     });
     return { provider: 'openai', model: config.openaiTranscriptionModel };
   }
   throw new UpstreamError('Cloud transcription provider is not configured');
+}
+
+function silentWavProbe() {
+  const pcmBytes = 3_200;
+  const data = Buffer.alloc(44 + pcmBytes);
+  data.write('RIFF', 0);
+  data.writeUInt32LE(36 + pcmBytes, 4);
+  data.write('WAVEfmt ', 8);
+  data.writeUInt32LE(16, 16);
+  data.writeUInt16LE(1, 20);
+  data.writeUInt16LE(1, 22);
+  data.writeUInt32LE(16_000, 24);
+  data.writeUInt32LE(32_000, 28);
+  data.writeUInt16LE(2, 32);
+  data.writeUInt16LE(16, 34);
+  data.write('data', 36);
+  data.writeUInt32LE(pcmBytes, 40);
+  return { data, contentType: 'audio/wav', filename: 'brai-diagnostics.wav' };
 }
 
 async function transcribeWithGroq(file, options) {
