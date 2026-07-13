@@ -8,6 +8,7 @@ import { useAppVersion } from "@/shared/config/runtime";
 import { installAndroidBackHandler } from "@/shared/platform/platform";
 import type { BraiOtaState } from "@/shared/platform/ota";
 import { FloatingDock } from "@/shared/ui/floating-dock";
+import { NavigationIndicator, UpdateNavigationDot } from "@/shared/ui/navigation-indicator";
 import { formatHourMinute } from "@/shared/time/format";
 import type { SyncStatus, TimerState } from "@/shared/types/timer";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarMenuButton } from "@/shared/ui/sidebar";
@@ -128,11 +129,13 @@ export function MobileDockOverflowButton({
   open = false,
   side,
   onClick,
+  hasUpdate = false,
 }: {
   hidden: boolean;
   open?: boolean;
   side: "left" | "right";
   onClick: () => void;
+  hasUpdate?: boolean;
 }) {
   return (
     <button
@@ -146,6 +149,7 @@ export function MobileDockOverflowButton({
       onClick={onClick}
     >
       {side === "left" ? <Ellipsis className="h-5 w-5" aria-hidden="true" /> : open ? <ChevronDown className="h-5 w-5" aria-hidden="true" /> : <ChevronUp className="h-5 w-5" aria-hidden="true" />}
+      {side === "left" && hasUpdate ? <NavigationIndicator position="bottom-center"><UpdateNavigationDot /></NavigationIndicator> : null}
     </button>
   );
 }
@@ -230,6 +234,8 @@ export function MobileDockOverflowSheet({
   onEngine,
   onArchive,
   onLogout,
+  engineDownloading = false,
+  engineHasUpdate = false,
 }: {
   side: "left" | "right";
   section: SectionId;
@@ -242,6 +248,8 @@ export function MobileDockOverflowSheet({
   onEngine: () => void;
   onArchive: () => void;
   onLogout: () => Promise<void>;
+  engineDownloading?: boolean;
+  engineHasUpdate?: boolean;
 }) {
   const suppressPopRef = useRef(false);
   const afterCloseRef = useRef<(() => void) | null>(null);
@@ -342,6 +350,8 @@ export function MobileDockOverflowSheet({
               <div className="min-h-0 px-3 pb-4">
                 <BraiUserMenuPanel
                   activeSection={section}
+                  engineDownloading={engineDownloading}
+                  engineHasUpdate={engineHasUpdate}
                   user={authUser}
                   onArchive={() => closeThen(onArchive)}
                   onBraiCmd={() => closeThen(onBraiCmd)}
@@ -422,17 +432,19 @@ function EngineRailButton({
     versionRefreshing,
   });
   const Icon = view.hasUpdate ? Download : Cpu;
+  const downloading = view.updateAction === "downloading-web" || view.updateAction === "downloading-apk";
 
   return (
     <SidebarMenuButton
       type="button"
-      aria-label="Engine"
-      className="size-10 justify-center p-0"
+      aria-label={view.hasUpdate ? "Engine, доступно обновление" : "Engine"}
+      className="relative size-10 justify-center p-0"
       isActive={active}
       tooltip="Engine"
       onClick={onClick}
     >
-      <Icon aria-hidden="true" />
+      <Icon className={cx(downloading && "motion-safe:animate-bounce")} aria-hidden="true" />
+      {view.hasUpdate ? <NavigationIndicator><UpdateNavigationDot /></NavigationIndicator> : null}
       <span className="sr-only">Engine</span>
     </SidebarMenuButton>
   );
