@@ -84,7 +84,7 @@ test("production copy reseeds copied tables before repair migrations and before 
   assert.ok(firstReseed > copyFunction.indexOf("OVERRIDING SYSTEM VALUE"));
   assert.ok(firstReseed < copyFunction.indexOf(reapply));
   assert.ok(secondReseed > copyFunction.indexOf(reapply));
-  assert.ok(copyFunction.indexOf(reseed) < copyFunction.indexOf('client.query("COMMIT")'));
+  assert.ok(secondReseed < copyFunction.indexOf('client.query("COMMIT")'));
   assert.doesNotMatch(copyFunction, /tables: truncatableTables/);
 });
 
