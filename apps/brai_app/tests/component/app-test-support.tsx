@@ -126,6 +126,7 @@ export function setupBraiAppTest() {
   beforeEach(async () => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    delete window.Capacitor;
     cleanup();
     Element.prototype.scrollIntoView = vi.fn();
     const db = clientDb();
