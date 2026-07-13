@@ -28,13 +28,9 @@ export const userAiStoreMethods = {
 
   setUserAiSettings(input, nowIso = new Date().toISOString()) {
     const userId = requireScopedUser(this);
-    const mode = normalizeMode(input?.model_provider_mode);
-    const text = mode === 'external' ? normalizeProfile(input?.text, 'text') : null;
-    const vision = mode === 'external' ? normalizeProfile(input?.vision, 'vision') : null;
-    if (mode === 'external') {
-      requireStoredCredential(this, userId, text.provider_id);
-      requireStoredCredential(this, userId, vision.provider_id);
-    }
+    const { model_provider_mode: mode, text, vision } = resolveUserAiSettings(input, this.userAiSettings());
+    if (text) requireStoredCredential(this, userId, text.provider_id);
+    if (vision) requireStoredCredential(this, userId, vision.provider_id);
     this.db.prepare(`
       INSERT INTO user_ai_settings (
         user_id, model_provider_mode, text_provider_id, text_model,
@@ -85,8 +81,8 @@ export const userAiStoreMethods = {
     `).all(userId).map((row) => ({
       ...row,
       in_use_by: [
-        ...(settings.text?.provider_id === row.provider_id ? ['text'] : []),
-        ...(settings.vision?.provider_id === row.provider_id ? ['vision'] : [])
+        ...(settings.model_provider_mode === 'external' && settings.text?.provider_id === row.provider_id ? ['text'] : []),
+        ...(settings.model_provider_mode === 'external' && settings.vision?.provider_id === row.provider_id ? ['vision'] : [])
       ]
     }));
   },
@@ -177,13 +173,31 @@ export const userAiStoreMethods = {
     const userId = requireScopedUser(this);
     const provider = normalizeProvider(providerId);
     const settings = this.userAiSettings();
-    if (settings.text?.provider_id === provider || settings.vision?.provider_id === provider) {
+    if (settings.model_provider_mode === 'external'
+      && (settings.text?.provider_id === provider || settings.vision?.provider_id === provider)) {
       throw userAiError('provider_in_use', 409);
     }
-    const result = this.db.prepare(`
-      DELETE FROM user_provider_credentials
-      WHERE user_id = ? AND provider_id = ?
-    `).run(userId, provider);
+    const run = this.db.transaction(() => {
+      if (settings.text?.provider_id === provider) {
+        this.db.prepare(`
+          UPDATE user_ai_settings
+          SET text_provider_id = NULL, text_model = NULL, updated_at_utc = ?
+          WHERE user_id = ?
+        `).run(nowIso, userId);
+      }
+      if (settings.vision?.provider_id === provider) {
+        this.db.prepare(`
+          UPDATE user_ai_settings
+          SET vision_provider_id = NULL, vision_model = NULL, updated_at_utc = ?
+          WHERE user_id = ?
+        `).run(nowIso, userId);
+      }
+      return this.db.prepare(`
+        DELETE FROM user_provider_credentials
+        WHERE user_id = ? AND provider_id = ?
+      `).run(userId, provider);
+    });
+    const result = run();
     if (!result.changes) throw userAiError('provider_not_found', 404);
     safeLog(this, {
       dt: nowIso,
@@ -238,6 +252,24 @@ export function normalizeProvider(value) {
   return provider;
 }
 
+/** Resolves a partial account AI settings update without coupling saved profiles to the active mode. */
+export function resolveUserAiSettings(input, current = {}) {
+  const patch = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
+  const mode = Object.hasOwn(patch, 'model_provider_mode')
+    ? normalizeMode(patch.model_provider_mode)
+    : normalizeMode(current.model_provider_mode ?? 'internal');
+  const text = Object.hasOwn(patch, 'text')
+    ? normalizeOptionalProfile(patch.text, 'text')
+    : normalizeOptionalProfile(current.text, 'text');
+  const vision = Object.hasOwn(patch, 'vision')
+    ? normalizeOptionalProfile(patch.vision, 'vision')
+    : normalizeOptionalProfile(current.vision, 'vision');
+  if (mode === 'external' && (!text || !vision)) {
+    throw userAiError(!text ? 'text_profile_required' : 'vision_profile_required', 400);
+  }
+  return { model_provider_mode: mode, text, vision };
+}
+
 function normalizeApiKey(value) {
   const key = typeof value === 'string' ? value.trim() : '';
   if (key.length < 8 || key.length > 2048 || /[\r\n]/.test(key)) throw userAiError('invalid_api_key', 400);
@@ -258,6 +290,10 @@ function normalizeProfile(value, capability) {
   if (!model) throw userAiError(`${capability}_model_required`, 400);
   if (model.length > 240) throw userAiError(`${capability}_model_invalid`, 400);
   return { provider_id: normalizeProvider(value.provider_id), model };
+}
+
+function normalizeOptionalProfile(value, capability) {
+  return value == null ? null : normalizeProfile(value, capability);
 }
 
 function strictBase64Url(value, expectedBytes = null) {

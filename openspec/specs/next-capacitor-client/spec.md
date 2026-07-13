@@ -523,6 +523,11 @@ profiles without persisting plaintext credentials in browser storage.
 - **AND** it offers provider/model selectors for text and vision
 - **AND** it explains disabled external-mode or delete actions
 
+#### Scenario: A provider returns a long model list
+- **WHEN** Web or Android opens a provider model selector with more items than fit on screen
+- **THEN** the shared selector keeps the list inside a bounded scrolling viewport
+- **AND** mouse-wheel, touch, and keyboard scrolling remain available
+
 ### Requirement: Account credentials synchronize through native Android code
 Brai Android SHALL synchronize account provider credentials through the native boundary
 without returning synchronized plaintext keys to React or the WebView.

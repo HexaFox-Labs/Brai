@@ -33,6 +33,12 @@ profiles for each authenticated user.
 - **AND** Inbox and Activity normalizers use the text profile
 - **AND** Inbox image description uses the vision profile
 
+#### Scenario: Profiles are configured before external mode is enabled
+- **WHEN** a user in internal mode saves a verified text or vision provider/model profile
+- **THEN** Brai persists the profile without changing the inference mode
+- **AND** reopening settings keeps the selected provider and model editable
+- **AND** external mode becomes available after both capability profiles are valid
+
 #### Scenario: External execution fails
 - **WHEN** the selected external provider rejects, limits, times out, or lacks the model
 - **THEN** the agent execution fails with a safe bounded error

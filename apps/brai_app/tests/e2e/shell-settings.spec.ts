@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { openEngineFromProfile, openProfileMenuItem, openSettingsFromProfile } from "./shell-helpers";
+import { openEngineFromProfile, openProfileMenuItem, openSettingsFromProfile, swipeTouch } from "./shell-helpers";
 
 test("shows Settings without update state", async ({ page }, testInfo) => {
   await page.goto("/");
@@ -16,6 +16,97 @@ test("shows Settings without update state", async ({ page }, testInfo) => {
   await expect(page.getByRole("heading", { name: "Синхронизация" })).toHaveCount(0);
   await expect(page.getByText("APK", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Выйти" })).toHaveCount(testInfo.project.name === "desktop" ? 1 : 0);
+});
+
+test("scrolls long provider model lists and saves profiles before external activation", async ({ page }, testInfo) => {
+  let settings = { model_provider_mode: "internal", text: null, vision: null } as {
+    model_provider_mode: "internal" | "external";
+    text: { provider_id: "openai"; model: string } | null;
+    vision: { provider_id: "openai"; model: string } | null;
+  };
+  await page.route("**/api/v1/ai/**", (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.pathname === "/api/v1/ai/settings") {
+      if (request.method() === "PATCH") settings = { ...settings, ...request.postDataJSON() };
+      return route.fulfill({ json: settings });
+    }
+    if (url.pathname === "/api/v1/ai/providers") {
+      return route.fulfill({ json: {
+        providers: [{
+          provider_id: "openai",
+          key_hint: "1234",
+          verified_at_utc: "2026-07-13T10:00:00.000Z",
+          updated_at_utc: "2026-07-13T10:00:00.000Z",
+          in_use_by: settings.model_provider_mode === "external" ? ["text", "vision"] : [],
+        }],
+      } });
+    }
+    if (url.pathname === "/api/v1/ai/providers/openai/models") {
+      const capability = url.searchParams.get("capability");
+      const models = capability === "text"
+        ? Array.from({ length: 80 }, (_, index) => ({ id: `text-model-${index}`, name: `Text model ${index}`, capabilities: ["text"] }))
+        : [{ id: "vision-model", name: "Vision model", capabilities: ["vision"] }];
+      return route.fulfill({ json: { models } });
+    }
+    return route.continue();
+  });
+
+  await page.goto("/");
+  await openSettingsFromProfile(page);
+  const providers = page.getByRole("combobox", { name: "Поставщик" });
+  const models = page.getByRole("combobox", { name: "Модель" });
+
+  await providers.nth(0).click();
+  await page.getByRole("option", { name: "OpenAI" }).click();
+  await models.nth(0).click();
+  const viewport = page.locator('[data-slot="select-viewport"]');
+  await expect(viewport).toBeVisible();
+  await expect.poll(() => viewport.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+  await viewport.evaluate(async (element) => {
+    const animations = element.parentElement?.getAnimations({ subtree: true }) ?? [];
+    await Promise.all(animations.map((animation) => animation.finished.catch(() => undefined)));
+  });
+  if (testInfo.project.name === "mobile") {
+    const box = await viewport.boundingBox();
+    if (!box) throw new Error("Missing model list viewport bounds");
+    const x = box.x + box.width / 2;
+    const startY = box.y + box.height / 2 + 60;
+    const endY = box.y + box.height / 2 - 60;
+    await expect(await page.evaluate(
+      ({ x, y }) => Boolean(document.elementFromPoint(x, y)?.closest('[data-slot="select-viewport"]')),
+      { x, y: startY },
+    )).toBe(true);
+    await swipeTouch(
+      page,
+      { x, y: startY },
+      { x, y: endY },
+    );
+  } else {
+    await viewport.hover();
+    await page.mouse.wheel(0, 900);
+  }
+  await expect.poll(() => viewport.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  await page.getByRole("option", { name: "Text model 79" }).click();
+
+  await providers.nth(1).click();
+  await page.getByRole("option", { name: "OpenAI" }).click();
+  await models.nth(1).click();
+  await page.getByRole("option", { name: "Vision model" }).click();
+  await page.getByRole("button", { name: "Сохранить модели" }).click();
+
+  await expect.poll(() => settings).toEqual({
+    model_provider_mode: "internal",
+    text: { provider_id: "openai", model: "text-model-79" },
+    vision: { provider_id: "openai", model: "vision-model" },
+  });
+  await expect(models.nth(0)).toContainText("Text model 79");
+  await expect(models.nth(1)).toContainText("Vision model");
+  const externalMode = page.getByRole("switch", { name: "Внешние модели по ключам" });
+  await expect(externalMode).toBeEnabled();
+  await externalMode.click();
+  await page.getByRole("button", { name: "Сохранить модели" }).click();
+  await expect.poll(() => settings.model_provider_mode).toBe("external");
 });
 
 test("opens Engine from the profile menu", async ({ page }) => {

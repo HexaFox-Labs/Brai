@@ -65,13 +65,22 @@ test('account AI providers are encrypted, capability-bound, replaceable, and use
     assert.equal(models.status, 200);
     assert.deepEqual(models.body.models.map((model) => model.id), ['gpt-vision']);
 
-    const external = await request(fixture.url, '/v1/ai/settings', {
+    const configured = await request(fixture.url, '/v1/ai/settings', {
       method: 'PATCH',
       body: JSON.stringify({
-        model_provider_mode: 'external',
+        model_provider_mode: 'internal',
         text: { provider_id: 'openai', model: 'gpt-text' },
         vision: { provider_id: 'openai', model: 'gpt-vision' }
       })
+    });
+    assert.equal(configured.status, 200);
+    assert.equal(configured.body.model_provider_mode, 'internal');
+    assert.deepEqual(configured.body.text, { provider_id: 'openai', model: 'gpt-text' });
+    assert.deepEqual(configured.body.vision, { provider_id: 'openai', model: 'gpt-vision' });
+
+    const external = await request(fixture.url, '/v1/ai/settings', {
+      method: 'PATCH',
+      body: JSON.stringify({ model_provider_mode: 'external' })
     });
     assert.equal(external.status, 200);
     assert.equal(external.body.model_provider_mode, 'external');
@@ -110,9 +119,12 @@ test('account AI providers are encrypted, capability-bound, replaceable, and use
       method: 'PATCH',
       body: JSON.stringify({ model_provider_mode: 'internal' })
     });
-    assert.deepEqual(internal.body.text, null);
-    assert.deepEqual(internal.body.vision, null);
+    assert.deepEqual(internal.body.text, { provider_id: 'openai', model: 'gpt-text' });
+    assert.deepEqual(internal.body.vision, { provider_id: 'openai', model: 'gpt-vision' });
     assert.equal((await request(fixture.url, '/v1/ai/providers/openai', { method: 'DELETE' })).status, 200);
+    const afterDelete = await request(fixture.url, '/v1/ai/settings');
+    assert.deepEqual(afterDelete.body.text, null);
+    assert.deepEqual(afterDelete.body.vision, null);
     assert.equal(fixture.store.db.prepare('SELECT COUNT(*) AS count FROM user_provider_credentials').get().count, 0);
 
     const logs = fixture.store.db.prepare(`

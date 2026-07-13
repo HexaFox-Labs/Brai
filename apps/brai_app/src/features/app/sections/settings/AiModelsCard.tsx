@@ -126,6 +126,9 @@ export function AiModelsCard({ api, busy }: { api: BraiApi; busy: boolean }) {
     draft?.vision?.model.trim() &&
     connectedIds.has(draft.vision.provider_id),
   );
+  const profilesValid = Boolean(draft && [draft.text, draft.vision].every((profile) => (
+    !profile || Boolean(profile.model.trim() && connectedIds.has(profile.provider_id))
+  )));
   const changed = Boolean(settings && draft && !sameSettings(settings, draft));
   const external = draft?.model_provider_mode === "external";
 
@@ -274,7 +277,7 @@ export function AiModelsCard({ api, busy }: { api: BraiApi; busy: boolean }) {
             <div className="flex justify-end">
               <Button
                 type="button"
-                disabled={locked || !changed || (external && !profilesReady)}
+                disabled={locked || !changed || !profilesValid || (external && !profilesReady)}
                 onClick={() => void saveRouting()}
               >
                 <Save />
@@ -452,7 +455,7 @@ function ProfileSelector(props: {
       <div className="grid gap-2">
         <Label htmlFor={`settings-${capability}-provider`}>Поставщик</Label>
         <Select
-          value={providerId}
+          value={providerId ?? ""}
           disabled={disabled || providers.length === 0}
           onValueChange={(value) => onChange({ provider_id: value as AiProviderId, model: "" })}
         >
@@ -469,7 +472,7 @@ function ProfileSelector(props: {
       <div className="grid gap-2">
         <Label htmlFor={`settings-${capability}-model`}>Модель</Label>
         <Select
-          value={profile?.model || undefined}
+          value={profile?.model ?? ""}
           disabled={disabled || !providerId || loading || modelOptions.length === 0}
           onValueChange={(model) => providerId && onChange({ provider_id: providerId, model })}
         >

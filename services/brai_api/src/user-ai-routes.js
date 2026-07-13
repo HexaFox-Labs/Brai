@@ -4,7 +4,7 @@ import {
   probeProviderCapability,
   validateProviderKey
 } from './user-ai-providers.js';
-import { normalizeProvider } from './store-user-ai.js';
+import { normalizeProvider, resolveUserAiSettings } from './store-user-ai.js';
 import { scopedUserId } from './user-scope.js';
 
 const PROVIDER_PATH = /^\/v1\/ai\/providers\/([^/]+)$/;
@@ -46,8 +46,10 @@ export async function handleUserAiRoute({
     if (req.method === 'PATCH' && url.pathname === '/v1/ai/settings') {
       const body = await readJson(req, { limit: 32 * 1024 });
       const settings = await serializeUserAiMutation(scopedUserId(), async () => {
-        await probeSettings(store, body, fetchImpl);
-        return store.setUserAiSettings(body, now().toISOString());
+        const current = store.userAiSettings();
+        const next = resolveUserAiSettings(body, current);
+        await probeSettings(store, current, next, fetchImpl);
+        return store.setUserAiSettings(next, now().toISOString());
       });
       sendJson(req, res, 200, settings);
       return;
@@ -199,13 +201,10 @@ export async function serializeUserAiMutation(userId, task) {
   }
 }
 
-async function probeSettings(store, body, fetchImpl) {
-  if (String(body?.model_provider_mode ?? '').trim().toLowerCase() !== 'external') return;
+async function probeSettings(store, current, next, fetchImpl) {
   await Promise.all(['text', 'vision'].map(async (capability) => {
-    const profile = body?.[capability];
-    if (!profile || typeof profile !== 'object' || Array.isArray(profile)) {
-      throw httpError(`${capability}_profile_required`, 400);
-    }
+    const profile = next[capability];
+    if (!profile || (next.model_provider_mode === 'internal' && sameProfile(profile, current[capability]))) return;
     const provider = normalizeProvider(profile.provider_id);
     const credential = configuredCredential(store, provider);
     await probeProviderCapability({
@@ -216,6 +215,10 @@ async function probeSettings(store, body, fetchImpl) {
       fetchImpl
     });
   }));
+}
+
+function sameProfile(left, right) {
+  return left?.provider_id === right?.provider_id && left?.model === right?.model;
 }
 
 async function probeReplacementBindings(store, provider, apiKey, fetchImpl) {

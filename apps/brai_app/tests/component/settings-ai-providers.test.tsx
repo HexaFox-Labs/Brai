@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SettingsSection } from "@/features/app/sections/settings/SettingsSection";
-import { BraiApi, type AiProviderCredential, type AiSettings } from "@/shared/api/braiApi";
+import { BraiApi, type AiModel, type AiProviderCredential, type AiSettings } from "@/shared/api/braiApi";
 
 const OPENAI_PROVIDER: AiProviderCredential = {
   provider_id: "openai",
@@ -102,6 +102,61 @@ describe("account AI settings", () => {
     });
   });
 
+  it("keeps saved profiles editable before external mode is enabled", async () => {
+    const state = installAiApiMock({ providers: [OPENAI_PROVIDER] });
+    renderSettings();
+
+    await screen.findByText("•••• 1234");
+    const providerSelects = screen.getAllByLabelText("Поставщик");
+    fireEvent.click(providerSelects[0]);
+    fireEvent.click(await screen.findByRole("option", { name: "OpenAI" }));
+    await waitFor(() => expect(screen.getAllByLabelText("Модель")[0]).toBeEnabled());
+    fireEvent.click(screen.getAllByLabelText("Модель")[0]);
+    fireEvent.click(await screen.findByRole("option", { name: "Text test" }));
+
+    fireEvent.click(providerSelects[1]);
+    fireEvent.click(await screen.findByRole("option", { name: "OpenAI" }));
+    await waitFor(() => expect(screen.getAllByLabelText("Модель")[1]).toBeEnabled());
+    fireEvent.click(screen.getAllByLabelText("Модель")[1]);
+    fireEvent.click(await screen.findByRole("option", { name: "Vision test" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Сохранить модели" }));
+
+    await waitFor(() => expect(state.settings).toEqual({
+      model_provider_mode: "internal",
+      text: { provider_id: "openai", model: "text-model" },
+      vision: { provider_id: "openai", model: "vision-model" },
+    }));
+    expect(screen.getAllByLabelText("Модель")[0]).toHaveTextContent("Text test");
+    expect(screen.getAllByLabelText("Модель")[1]).toHaveTextContent("Vision test");
+    expect(screen.getAllByLabelText("Модель")[0]).toBeEnabled();
+    expect(screen.getByRole("switch", { name: "Внешние модели по ключам" })).not.toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("renders long model lists in the shared scrollable select viewport", async () => {
+    installAiApiMock({
+      providers: [OPENAI_PROVIDER],
+      textModels: Array.from({ length: 80 }, (_, index) => ({
+        id: `text-model-${index}`,
+        name: `Text model ${index}`,
+        capabilities: ["text"],
+      })),
+    });
+    renderSettings();
+
+    await screen.findByText("•••• 1234");
+    fireEvent.click(screen.getAllByLabelText("Поставщик")[0]);
+    fireEvent.click(await screen.findByRole("option", { name: "OpenAI" }));
+    await waitFor(() => expect(screen.getAllByLabelText("Модель")[0]).toBeEnabled());
+    fireEvent.click(screen.getAllByLabelText("Модель")[0]);
+
+    const listbox = await screen.findByRole("listbox");
+    const viewport = listbox.querySelector('[data-slot="select-viewport"]');
+    expect(viewport).toHaveClass("max-h-72", "overflow-y-auto", "overscroll-contain", "touch-pan-y");
+    expect(listbox).toHaveClass("overflow-hidden");
+    expect(screen.getAllByRole("option")).toHaveLength(80);
+  });
+
   it("retries account metadata loading without reloading the app", async () => {
     const state = installAiApiMock({ failFirstSettingsLoad: true });
     renderSettings();
@@ -167,6 +222,7 @@ function installAiApiMock(options: {
   failFirstTextModelsLoad?: boolean;
   rotateTextModelNameOnSave?: boolean;
   settings?: AiSettings;
+  textModels?: AiModel[];
 } = {}) {
   const state: {
     providers: AiProviderCredential[];
@@ -193,7 +249,7 @@ function installAiApiMock(options: {
       return jsonResponse(state.settings);
     }
     if (url === "/v1/ai/settings" && method === "PATCH") {
-      state.settings = JSON.parse(String(init?.body)) as AiSettings;
+      state.settings = { ...state.settings, ...JSON.parse(String(init?.body)) as AiSettings };
       state.providers = state.providers.map((provider) => ({
         ...provider,
         in_use_by: state.settings.model_provider_mode === "external"
@@ -226,7 +282,7 @@ function installAiApiMock(options: {
       const name = options.rotateTextModelNameOnSave
         ? state.providerSaves > 0 ? "Text after replace" : "Text before replace"
         : "Text test";
-      return jsonResponse({ models: [{ id: "text-model", name, capabilities: ["text"] }] });
+      return jsonResponse({ models: options.textModels ?? [{ id: "text-model", name, capabilities: ["text"] }] });
     }
     if (url.endsWith("/models?capability=vision")) {
       return jsonResponse({ models: [{ id: "vision-model", name: "Vision test", capabilities: ["vision"] }] });
