@@ -12,6 +12,7 @@ import { OnboardingFlow, shouldShowOnboarding } from "@/features/onboarding/Onbo
 import { AppStartupSplash } from "./AppStartupSplash";
 import type { SectionId } from "./appModel";
 import { isPrimarySection, sectionIcon, sectionTitle } from "./appModel";
+import { braiCmdBootstrapRetryDelay } from "./braiCmdBootstrap.model";
 import { cx } from "./appUtils";
 import { AuthPanel, IconButton, MobileContextSheet, ScreenHeader, ThemeButton } from "./chrome/AppChrome";
 import { useBraiAppState } from "./hooks/useBraiAppState";
@@ -124,16 +125,16 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
 
   useEffect(() => {
     if (!nativeAndroid || !authUser) return;
-    const retryDelays = [1_000, 2_000, 5_000, 15_000, 30_000];
     let cancelled = false;
     let attempt = 0;
     let retryTimer: number | null = null;
     let inFlight = false;
+    let credentialReady = false;
     let credentialListener: { remove: () => Promise<void> } | null = null;
 
     function scheduleRetry() {
       if (cancelled || retryTimer != null) return;
-      const delay = retryDelays[Math.min(attempt, retryDelays.length - 1)];
+      const delay = braiCmdBootstrapRetryDelay(attempt);
       attempt += 1;
       retryTimer = window.setTimeout(() => {
         retryTimer = null;
@@ -158,6 +159,7 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
         if (!credentialState?.accessGranted) throw new Error("brai_cmd_credential_not_saved");
         await retryBraiCmdQueue();
         attempt = 0;
+        credentialReady = true;
       } catch {
         scheduleRetry();
       } finally {
@@ -165,19 +167,22 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
       }
     }
 
-    function provisionNow() {
+    function provisionNow(force = false) {
+      if (!force && credentialReady) return;
+      if (force) credentialReady = false;
       if (retryTimer != null) window.clearTimeout(retryTimer);
       retryTimer = null;
       attempt = 0;
       void provision();
     }
 
+    const onOnline = () => provisionNow();
     const onVisible = () => {
       if (document.visibilityState === "visible") provisionNow();
     };
-    window.addEventListener("online", provisionNow);
+    window.addEventListener("online", onOnline);
     document.addEventListener("visibilitychange", onVisible);
-    void listenBraiCmdCredentialRefreshRequired(provisionNow).then((listener) => {
+    void listenBraiCmdCredentialRefreshRequired(() => provisionNow(true)).then((listener) => {
       if (cancelled) void listener?.remove();
       else credentialListener = listener;
     });
@@ -186,7 +191,7 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
     return () => {
       cancelled = true;
       if (retryTimer != null) window.clearTimeout(retryTimer);
-      window.removeEventListener("online", provisionNow);
+      window.removeEventListener("online", onOnline);
       document.removeEventListener("visibilitychange", onVisible);
       void credentialListener?.remove();
     };

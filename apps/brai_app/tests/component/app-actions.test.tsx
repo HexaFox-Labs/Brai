@@ -177,7 +177,10 @@ describe("BraiApp actions", () => {
       expect(await pendingActivityEvents()).toEqual(expect.arrayContaining([
         expect.objectContaining({
           actionId: "action-widget",
+          attemptCount: 1,
+          lastError: "offline",
           payload: { status: "Done" },
+          status: "failed",
           type: "set_status",
         }),
       ]));
@@ -222,7 +225,10 @@ describe("BraiApp actions", () => {
       expect(await pendingActivityEvents()).toEqual(expect.arrayContaining([
         expect.objectContaining({
           actionId: "action-widget-done",
+          attemptCount: 1,
+          lastError: "offline",
           payload: { status: "New" },
+          status: "failed",
           type: "set_status",
         }),
       ]));

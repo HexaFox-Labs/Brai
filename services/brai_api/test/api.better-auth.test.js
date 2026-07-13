@@ -171,6 +171,46 @@ test('test email login creates or reuses a Better Auth user without sending OTP 
     `).all(first.body.user.id).map((row) => row.status).sort();
     assert.deepEqual(deviceTokenStatuses, ['active', 'revoked']);
 
+    const concurrent = await Promise.all([
+      jsonRequest(fixture.url, '/v1/brai-cmd/device-token', {
+        method: 'POST',
+        headers: { cookie: firstCookie, origin: 'capacitor://localhost' },
+        body: JSON.stringify({ deviceId: 'authenticated-install-1' })
+      }),
+      jsonRequest(fixture.url, '/v1/brai-cmd/device-token', {
+        method: 'POST',
+        headers: { cookie: firstCookie, origin: 'capacitor://localhost' },
+        body: JSON.stringify({ deviceId: 'authenticated-install-1' })
+      })
+    ]);
+    assert.deepEqual(concurrent.map((response) => response.status), [201, 201]);
+    assert.equal(fixture.store.db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM brai_cmd_access_tokens
+      WHERE user_id = ? AND status = 'active'
+    `).get(first.body.user.id).count, 1);
+    const concurrentHealthStatuses = await Promise.all(concurrent.map(async (response) => (
+      await jsonRequest(fixture.url, '/v1/health', {
+        headers: {
+          authorization: `Bearer ${response.body.token}`,
+          'x-brai-cmd-device-id': 'authenticated-install-1'
+        }
+      })
+    ).status));
+    assert.deepEqual(concurrentHealthStatuses.sort(), [200, 401]);
+
+    const secondDevice = await jsonRequest(fixture.url, '/v1/brai-cmd/device-token', {
+      method: 'POST',
+      headers: { cookie: firstCookie, origin: 'capacitor://localhost' },
+      body: JSON.stringify({ deviceId: 'authenticated-install-2' })
+    });
+    assert.equal(secondDevice.status, 201);
+    assert.equal(fixture.store.db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM brai_cmd_access_tokens
+      WHERE user_id = ? AND status = 'active'
+    `).get(first.body.user.id).count, 2);
+
     const repeat = await jsonRequest(fixture.url, '/auth/test-email-login', {
       method: 'POST',
       headers: { origin: 'https://a.test.brai.one' },
@@ -188,6 +228,24 @@ test('test email login creates or reuses a Better Auth user without sending OTP 
     assert.equal(second.status, 200);
     assert.notEqual(second.body.user.id, first.body.user.id);
     assert.equal(fixture.store.primaryUserId(), first.body.user.id);
+    const secondUserSameDevice = await jsonRequest(fixture.url, '/v1/brai-cmd/device-token', {
+      method: 'POST',
+      headers: { cookie: second.headers.get('set-cookie'), origin: 'capacitor://localhost' },
+      body: JSON.stringify({ deviceId: 'authenticated-install-1' })
+    });
+    assert.equal(secondUserSameDevice.status, 201);
+    const sameDeviceOwners = fixture.store.db.prepare(`
+      SELECT user_id
+      FROM brai_cmd_access_tokens
+      WHERE status = 'active'
+        AND device_id_hash = (
+          SELECT device_id_hash
+          FROM brai_cmd_access_tokens
+          WHERE user_id = ? AND status = 'active'
+        )
+      ORDER BY user_id
+    `).all(second.body.user.id).map((row) => row.user_id);
+    assert.deepEqual(sameDeviceOwners, [first.body.user.id, second.body.user.id].sort());
   } finally {
     await fixture.close();
   }

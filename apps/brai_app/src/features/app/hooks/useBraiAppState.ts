@@ -252,7 +252,20 @@ export function useBraiAppState(initialSection: SectionId) {
   }
 
   const provisionBraiCmdDeviceToken = useCallback(
-    (device: { deviceId: string; clientVersion?: string; appPackage?: string }) => apiRef.current.braiCmdDeviceToken(device),
+    async (device: { deviceId: string; clientVersion?: string; appPackage?: string }) => {
+      try {
+        return await apiRef.current.braiCmdDeviceToken(device);
+      } catch (error) {
+        if (error instanceof Error && error.name === "UnauthorizedError") {
+          authTransitionRef.current += 1;
+          setAuthUser(null);
+          await ensureClientUser(null);
+          setLocalSnapshotReady(true);
+          setSyncStatus("auth_required");
+        }
+        throw error;
+      }
+    },
     [],
   );
 
@@ -708,6 +721,10 @@ export function useBraiAppState(initialSection: SectionId) {
 
   function handleError(error: unknown) {
     if (error instanceof Error && error.name === "UnauthorizedError") {
+      authTransitionRef.current += 1;
+      setAuthUser(null);
+      void ensureClientUser(null);
+      setLocalSnapshotReady(true);
       setSyncStatus("auth_required");
       return;
     }

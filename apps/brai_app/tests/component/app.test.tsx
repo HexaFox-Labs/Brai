@@ -62,6 +62,127 @@ describe("BraiApp shell", () => {
     expect(cmdPlugin.ensureAccess).not.toHaveBeenCalled();
   });
 
+  it("does not rotate a healthy device token on ordinary network recovery", async () => {
+    stubAndroidCapacitor();
+
+    render(<BraiApp />);
+
+    await waitFor(() => expect(cmdPlugin.setAccessKey).toHaveBeenCalledTimes(1));
+    expect(deviceTokenRequestCount()).toBe(1);
+
+    await act(async () => {
+      window.dispatchEvent(new Event("online"));
+      document.dispatchEvent(new Event("visibilitychange"));
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+
+    expect(deviceTokenRequestCount()).toBe(1);
+    expect(cmdPlugin.setAccessKey).toHaveBeenCalledTimes(1);
+  });
+
+  it("replaces the device token when native transport rejects its credential", async () => {
+    stubAndroidCapacitor();
+
+    render(<BraiApp />);
+
+    await waitFor(() => expect(cmdPlugin.setAccessKey).toHaveBeenCalledTimes(1));
+    const refreshListener = cmdPlugin.addListener.mock.calls.find(([eventName]) => eventName === "credentialRefreshRequired")?.[1];
+    expect(refreshListener).toEqual(expect.any(Function));
+
+    act(() => refreshListener());
+
+    await waitFor(() => expect(cmdPlugin.setAccessKey).toHaveBeenCalledTimes(2));
+    expect(deviceTokenRequestCount()).toBe(2);
+  });
+
+  it("keeps full mode active and retries a failed device-token bootstrap", async () => {
+    stubAndroidCapacitor();
+    const defaultFetch = vi.mocked(fetch).getMockImplementation();
+    let tokenAttempts = 0;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (requestUrl(input).endsWith("/v1/brai-cmd/device-token") && tokenAttempts++ === 0) {
+        throw new Error("offline");
+      }
+      if (!defaultFetch) throw new Error("missing_default_fetch");
+      return await defaultFetch(input, init);
+    });
+
+    render(<BraiApp />);
+
+    await waitFor(() => expect(deviceTokenRequestCount()).toBe(1));
+    expect(cmdPlugin.setOverlayEnabled).toHaveBeenCalledWith({ enabled: true });
+    expect(cmdPlugin.setVoiceOnlyMode).toHaveBeenCalledWith({ enabled: false });
+    expect(cmdPlugin.setAccessKey).not.toHaveBeenCalled();
+
+    await waitFor(() => expect(cmdPlugin.setAccessKey).toHaveBeenCalledTimes(1), { timeout: 2_500 });
+    expect(deviceTokenRequestCount()).toBe(2);
+    expect(cmdPlugin.retryQueue).toHaveBeenCalled();
+  });
+
+  it("retries an unfinished bootstrap immediately when the network returns", async () => {
+    stubAndroidCapacitor();
+    const defaultFetch = vi.mocked(fetch).getMockImplementation();
+    let offline = true;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (requestUrl(input).endsWith("/v1/brai-cmd/device-token") && offline) throw new Error("offline");
+      if (!defaultFetch) throw new Error("missing_default_fetch");
+      return await defaultFetch(input, init);
+    });
+
+    render(<BraiApp />);
+
+    await waitFor(() => expect(deviceTokenRequestCount()).toBe(1));
+    offline = false;
+    act(() => window.dispatchEvent(new Event("online")));
+
+    await waitFor(() => expect(cmdPlugin.setAccessKey).toHaveBeenCalledTimes(1));
+    expect(deviceTokenRequestCount()).toBe(2);
+  });
+
+  it("returns to signed-out native mode when device-token bootstrap reports an expired app session", async () => {
+    stubAndroidCapacitor();
+    const defaultFetch = vi.mocked(fetch).getMockImplementation();
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (requestUrl(input).endsWith("/v1/brai-cmd/device-token")) {
+        return new Response(JSON.stringify({ error: "unauthorized" }), {
+          status: 401,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (!defaultFetch) throw new Error("missing_default_fetch");
+      return await defaultFetch(input, init);
+    });
+
+    render(<BraiApp />);
+
+    await waitFor(() => expect(deviceTokenRequestCount()).toBe(1));
+    await waitFor(() => expect(cmdPlugin.setAccessKey).toHaveBeenLastCalledWith({ token: "", displayName: "" }));
+    expect(cmdPlugin.setOverlayEnabled).toHaveBeenLastCalledWith({ enabled: false });
+  });
+
+  it("clears the technical credential and overlays after logout", async () => {
+    stubAndroidCapacitor();
+    const defaultFetch = vi.mocked(fetch).getMockImplementation();
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (requestUrl(input).endsWith("/auth/logout")) {
+        return new Response(JSON.stringify({ success: true }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (!defaultFetch) throw new Error("missing_default_fetch");
+      return await defaultFetch(input, init);
+    });
+
+    render(<BraiApp />);
+
+    await waitFor(() => expect(cmdPlugin.setAccessKey).toHaveBeenCalledWith({ token: "authenticated-device-token", displayName: "Test" }));
+    await openProfileMenuItem("Выход");
+
+    await waitFor(() => expect(cmdPlugin.setAccessKey).toHaveBeenLastCalledWith({ token: "", displayName: "" }));
+    expect(cmdPlugin.setOverlayEnabled).toHaveBeenLastCalledWith({ enabled: false });
+  });
+
   it("uses explicit email-only login on Preview web", async () => {
     const auth = authPanelProps();
     auth.onEmailLogin.mockRejectedValue(new Error("invalid_email"));
@@ -1240,6 +1361,10 @@ function requestUrl(input: RequestInfo | URL): string {
   if (typeof input === "string") return input;
   if (input instanceof URL) return input.toString();
   return input.url;
+}
+
+function deviceTokenRequestCount(): number {
+  return vi.mocked(fetch).mock.calls.filter(([input]) => requestUrl(input).endsWith("/v1/brai-cmd/device-token")).length;
 }
 
 function authPanelProps() {
