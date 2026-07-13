@@ -485,6 +485,11 @@ class RecordingService : Service() {
             val retryStore = QueueRetryStore(context)
             if (ConfigStore(context).onboardingQueuePaused ||
                 uploadInProgress.get() ||
+                (retryStore.isBlocked && trigger in setOf(
+                    QueueRetryTrigger.Resume,
+                    QueueRetryTrigger.Scheduled,
+                    QueueRetryTrigger.Network
+                )) ||
                 state is RecorderState.Recording ||
                 (state is RecorderState.Uploading && trigger != QueueRetryTrigger.Enqueue) ||
                 !hasPendingRecordings(context)
