@@ -36,7 +36,7 @@ import { ProfileSection } from "./sections/profile/ProfileSection";
 import { SettingsSection } from "./sections/settings/SettingsSection";
 import type { MobileCreateDraft } from "./sections/MobileCreateComposer";
 
-const SECTION_PAGE_INSET_CLASS = "grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] pb-11 pl-7 pr-0 pt-3.5 max-[860px]:px-3.5 max-[860px]:pb-7 max-[860px]:pt-[var(--mobile-top-padding)]";
+const SECTION_PAGE_INSET_CLASS = "grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] pb-11 pl-7 pr-0 pt-3.5 max-[860px]:pb-7 max-[860px]:pl-3.5 max-[860px]:pr-0 max-[860px]:pt-[var(--mobile-top-padding)] max-[860px]:[&>.topbar]:pr-3.5";
 const FULLSCREEN_SECTION_PAGE_CLASS = "grid h-full min-h-0 grid-rows-[minmax(0,1fr)] p-0";
 const EMPTY_MOBILE_CREATE_DRAFT: MobileCreateDraft = { title: "", descriptionMd: "" };
 const ACTIONS_MOBILE_CREATE_DRAFT_STORAGE_KEY = "brai_actions_mobile_create_draft";

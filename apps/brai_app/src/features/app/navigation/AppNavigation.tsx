@@ -315,51 +315,53 @@ export function MobileDockOverflowSheet({
         style={backdropStyle}
         aria-hidden="true"
       />
-      <aside
-        ref={sheetRef}
-        className={cx(
-          "mobile-dock-overflow-sheet pointer-events-auto relative z-[1] grid min-w-0 overflow-hidden shadow-xl animate-[mobile-detail-sheet-in_180ms_ease-out] will-change-transform",
-          side === "left"
-            ? "h-[min(24rem,58dvh)] w-full grid-rows-[auto_minmax(0,1fr)] rounded-t-2xl border-t border-border bg-card pb-[env(safe-area-inset-bottom)] pt-2"
-            : "h-16 w-full items-center justify-center border-y border-border/40 bg-background/95 px-8 py-1 shadow-none backdrop-blur-[14px] dark:bg-background/95",
-        )}
-        style={sheetStyle}
-        aria-label={side === "left" ? "Левое меню" : "Правое меню"}
-        {...sheetDragHandlers}
-        onClick={(event) => event.stopPropagation()}
-      >
-        {side === "left" ? (
-          <>
-            <header className="relative min-h-6 px-6 pt-2">
-              <button type="button" className="sr-only" aria-label="Закрыть панель: Левое меню" onClick={() => closeSheet()}>
-                Закрыть
-              </button>
-              <div className="mobile-dock-overflow-drag-zone absolute left-1/2 top-0 flex h-6 w-32 -translate-x-1/2 touch-none cursor-grab items-start justify-center pt-1.5 active:cursor-grabbing">
-                <span className="mobile-dock-overflow-grabber h-1 w-11 rounded-full bg-muted-foreground/30" aria-hidden="true" />
+      <div className="mobile-dock-overflow-motion relative z-[1] w-full animate-[mobile-detail-sheet-in_180ms_ease-out] will-change-transform">
+        <aside
+          ref={sheetRef}
+          className={cx(
+            "mobile-dock-overflow-sheet pointer-events-auto grid min-w-0 overflow-hidden shadow-xl will-change-transform",
+            side === "left"
+              ? "max-h-[60dvh] w-full grid-rows-[auto_minmax(0,1fr)] rounded-t-2xl border-t border-border bg-card pb-[env(safe-area-inset-bottom)] pt-2"
+              : "h-16 w-full items-center justify-center border-y border-border/40 bg-background/95 px-8 py-1 shadow-none backdrop-blur-[14px] dark:bg-background/95",
+          )}
+          style={sheetStyle}
+          aria-label={side === "left" ? "Левое меню" : "Правое меню"}
+          {...sheetDragHandlers}
+          onClick={(event) => event.stopPropagation()}
+        >
+          {side === "left" ? (
+            <>
+              <header className="relative min-h-6 px-6 pt-2">
+                <button type="button" className="sr-only" aria-label="Закрыть панель: Левое меню" onClick={() => closeSheet()}>
+                  Закрыть
+                </button>
+                <div className="mobile-dock-overflow-drag-zone absolute left-1/2 top-0 flex h-6 w-32 -translate-x-1/2 touch-none cursor-grab items-start justify-center pt-1.5 active:cursor-grabbing">
+                  <span className="mobile-dock-overflow-grabber h-1 w-11 rounded-full bg-muted-foreground/30" aria-hidden="true" />
+                </div>
+              </header>
+              <div className="min-h-0 px-3 pb-4">
+                <BraiUserMenuPanel
+                  activeSection={section}
+                  user={authUser}
+                  onArchive={() => closeThen(onArchive)}
+                  onBraiCmd={() => closeThen(onBraiCmd)}
+                  onEngine={() => closeThen(onEngine)}
+                  onLogout={() => closeThenAsync(onLogout)}
+                  onProfile={() => closeThen(onProfile)}
+                  onSettings={() => closeThen(onSettings)}
+                />
               </div>
-            </header>
-            <div className="min-h-0 overflow-y-auto px-3 pb-4">
-              <BraiUserMenuPanel
-                activeSection={section}
-                user={authUser}
-                onArchive={() => closeThen(onArchive)}
-                onBraiCmd={() => closeThen(onBraiCmd)}
-                onEngine={() => closeThen(onEngine)}
-                onLogout={() => closeThenAsync(onLogout)}
-                onProfile={() => closeThen(onProfile)}
-                onSettings={() => closeThen(onSettings)}
-              />
+            </>
+          ) : (
+            <div className="mobile-dock-overflow-icons flex min-h-0 w-full items-center justify-around gap-2">
+              <MobileDockOverflowActionButton icon={Pencil} label="Draws" active={section === "draws"} onClick={() => closeThen(onDraws)} />
+              {MOBILE_DOCK_PLACEHOLDER_ITEMS.map(({ icon: Icon, label }) => (
+                <MobileDockOverflowActionButton key={label} icon={Icon} label={`Заглушка: ${label}`} disabled />
+              ))}
             </div>
-          </>
-        ) : (
-          <div className="mobile-dock-overflow-icons flex min-h-0 w-full items-center justify-around gap-2">
-            <MobileDockOverflowActionButton icon={Pencil} label="Draws" active={section === "draws"} onClick={() => closeThen(onDraws)} />
-            {MOBILE_DOCK_PLACEHOLDER_ITEMS.map(({ icon: Icon, label }) => (
-              <MobileDockOverflowActionButton key={label} icon={Icon} label={`Заглушка: ${label}`} disabled />
-            ))}
-          </div>
-        )}
-      </aside>
+          )}
+        </aside>
+      </div>
     </div>
   );
 }

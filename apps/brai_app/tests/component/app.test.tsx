@@ -703,6 +703,8 @@ describe("BraiApp shell", () => {
     expect(contextScrollArea).toHaveClass(
       "[--scroll-area-thumb-size:10px]",
       "[--scroll-area-gap:calc(var(--scroll-area-thumb-size)/2)]",
+      "max-[860px]:[--scroll-area-content-gutter:var(--scroll-area-thumb-size)]",
+      "max-[860px]:[--scroll-area-gap:0px]",
       "[&>[data-slot=scroll-area-viewport]]:pr-[var(--scroll-area-content-gutter)]",
     );
     expect(contextScrollArea).not.toHaveClass("[&>[data-slot=scroll-area-scrollbar]]:right-1", "[&>[data-slot=scroll-area-viewport]>div]:pr-5");
