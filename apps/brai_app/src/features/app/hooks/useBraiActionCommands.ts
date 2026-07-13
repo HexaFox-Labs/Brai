@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import { cleanTitle, normalizeDescription } from "@/shared/activities/text";
 import { clearActivityEditDraft, enqueueActivityEvent, pendingActivityEvents, projectActivitiesState } from "@/shared/storage/activityStore";
+import { enqueueActivityDeleteWithRelationEnds } from "@/shared/storage/activityRelationStore";
 import type { ActivityItem, ActivitiesState, ActivityStatus } from "@/shared/types/activities";
 import type { SyncStatus } from "@/shared/types/timer";
 import { ACTION_DELETE_COLLAPSE_MS } from "../sections/actions/constants";
@@ -16,6 +17,9 @@ export function createBraiActionCommands({
   setActionPendingCount,
   setActions,
   setSyncStatus,
+  getRelationServerRevision,
+  onRelationLifecycleQueued,
+  beforeGoalStatusChange,
 }: {
   actions: ActivitiesState;
   flushActionPending: () => Promise<void>;
@@ -24,6 +28,9 @@ export function createBraiActionCommands({
   setActionPendingCount: Dispatch<SetStateAction<number>>;
   setActions: Dispatch<SetStateAction<ActivitiesState>>;
   setSyncStatus: Dispatch<SetStateAction<SyncStatus>>;
+  getRelationServerRevision?: () => number;
+  onRelationLifecycleQueued?: () => Promise<void>;
+  beforeGoalStatusChange?: (goal: ActivityItem, status: ActivityStatus) => Promise<void>;
 }) {
   function currentActions(): ActivitiesState {
     return getActions?.() ?? actions;
@@ -51,10 +58,20 @@ export function createBraiActionCommands({
     });
   }
 
+  async function onCreateGoal(title: string, descriptionMd = "") {
+    const trimmed = cleanTitle(title);
+    if (!trimmed) return;
+    await queueActionEvent({
+      type: "create",
+      payload: { title: trimmed, description_md: normalizeDescription(descriptionMd), activity_type_id: "goal" },
+      baseServerRevision: currentActions().server_revision,
+    });
+  }
+
   async function onUpdateActionTitle(action: ActivityItem, title: string) {
     const trimmed = cleanTitle(title);
     const current = currentActions();
-    const currentAction = current.actions.find((item) => item.id === action.id) ?? action;
+    const currentAction = findActivity(current, action.id) ?? action;
     if (!trimmed || trimmed === currentAction.title) return;
     await queueActionEvent({
       type: "update_title",
@@ -67,7 +84,7 @@ export function createBraiActionCommands({
   async function onAutosaveActionDetails(action: ActivityItem, title: string, descriptionMd: string) {
     const trimmed = cleanTitle(title);
     const current = currentActions();
-    const currentAction = current.actions.find((item) => item.id === action.id) ?? action;
+    const currentAction = findActivity(current, action.id) ?? action;
     const nextDescription = normalizeDescription(descriptionMd);
     let changed = false;
 
@@ -104,7 +121,7 @@ export function createBraiActionCommands({
 
   async function onSetActionStatus(action: ActivityItem, status: ActivityStatus) {
     const current = currentActions();
-    const currentAction = current.actions.find((item) => item.id === action.id) ?? action;
+    const currentAction = findActivity(current, action.id) ?? action;
     if (currentAction.status === status) return;
     await queueActionEvent({
       type: "set_status",
@@ -116,12 +133,12 @@ export function createBraiActionCommands({
 
   async function onDeleteAction(action: ActivityItem) {
     const current = currentActions();
-    await enqueueActivityEvent({
-      type: "delete",
-      actionId: action.id,
-      payload: {},
-      baseServerRevision: current.server_revision,
+    await enqueueActivityDeleteWithRelationEnds({
+      activityId: action.id,
+      activityBaseServerRevision: current.server_revision,
+      relationBaseServerRevision: getRelationServerRevision?.() ?? 0,
     });
+    await onRelationLifecycleQueued?.();
     await delayActionProjection();
   }
 
@@ -165,13 +182,30 @@ export function createBraiActionCommands({
     });
   }
 
+  async function onSetGoalStatus(goal: ActivityItem, status: ActivityStatus) {
+    await beforeGoalStatusChange?.(goal, status);
+    await onSetActionStatus(goal, status);
+  }
+
   return {
     onAutosaveActionDetails,
+    onAutosaveGoalDetails: onAutosaveActionDetails,
     onCreateAction,
+    onCreateGoal,
     onDeleteAction,
+    onDeleteGoal: onDeleteAction,
     onReorderActions,
     onRestoreAction,
+    onRestoreGoal: onRestoreAction,
     onSetActionStatus,
+    onSetGoalStatus,
     onUpdateActionTitle,
+    onUpdateGoalTitle: onUpdateActionTitle,
   };
+}
+
+function findActivity(state: ActivitiesState, id: string): ActivityItem | undefined {
+  return [state.actions, state.goals ?? [], state.legacy_operations ?? [], state.archived_actions, state.archived_goals ?? []]
+    .flat()
+    .find((item) => item.id === id);
 }

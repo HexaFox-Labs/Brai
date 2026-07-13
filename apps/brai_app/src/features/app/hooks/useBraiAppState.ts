@@ -13,9 +13,10 @@ import {
 } from "@/shared/platform/androidActionsWidget";
 import { consumeAndroidTimerStopRequest, startAndroidTimerNotification, stopAndroidTimerNotification } from "@/shared/platform/androidTimerNotification";
 import { isNativeShell, platformName } from "@/shared/platform/platform";
-import { acknowledgeActionEvents, enqueueActivityEvent, loadActionsState, markActionAttempt, markActionFailure, pendingActionEvents, projectActionsState, saveActionsState } from "@/shared/storage/activityStore";
-import { ensureClientMeta, ensureClientUser } from "@/shared/storage/db";
-import { acknowledgeInboxEvents, loadInboxState, markInboxAttempt, markInboxFailure, pendingInboxEvents, projectInboxState, saveInboxState } from "@/shared/storage/inboxStore";
+import { enqueueActivityEvent, loadActionsState, markActionAttempt, markActionFailure, pendingActionEvents, projectActionsState, saveActionsState } from "@/shared/storage/activityStore";
+import { acknowledgeActivitySyncEvents } from "@/shared/storage/activityRelationStore";
+import { ensureClientMeta, ensureClientUser, LocalDatabaseUnavailableError, openClientDbWithRetry } from "@/shared/storage/db";
+import { acknowledgeInboxSyncEvents, loadInboxState, markInboxAttempt, markInboxFailure, pendingInboxEvents, projectInboxState, saveInboxState } from "@/shared/storage/inboxStore";
 import { getBraiLocalStorageItem, setBraiLocalStorageItem } from "@/shared/storage/localStorageKeys";
 import { projectHistoryData, projectTimerState } from "@/shared/storage/projection";
 import { acknowledgeEvents, enqueueFocusIntervalEdit, enqueueFocusSessionDelete, enqueueFocusSessionEdit, enqueueStartActionFocus, enqueueStopActionFocus, enqueueSwitchActionFocus, enqueueTimerEvent, loadCanonicalState, loadGoalCache, loadHistoryCache, markAttempt, markFailure, pendingEvents, saveCanonicalState, saveGoalCache, saveHistoryCache, saveIgnoredEvents } from "@/shared/storage/syncStore";
@@ -33,7 +34,9 @@ import { isMobileNavigationViewport, useMobileNavigationViewport, useSectionSwip
 import { createBraiActionCommands } from "./useBraiActionCommands";
 import { createBraiInboxCommands } from "./useBraiInboxCommands";
 import { useBraiLiveUpdates } from "./useBraiLiveUpdates";
+import { useBraiContextReviews } from "./useBraiContextReviews";
 import { useBraiOta } from "./useBraiOta";
+import { useBraiRelations } from "./useBraiRelations";
 import { useBraiTheme } from "./useBraiTheme";
 import { useBraiVersion } from "./useBraiVersion";
 
@@ -65,6 +68,7 @@ export function useBraiAppState(initialSection: SectionId) {
   const actionsRevisionRef = useRef(0);
   const inboxRevisionRef = useRef(0);
   const historyGoalRevisionRef = useRef(0);
+  const historyGoalRequestRef = useRef(0);
   const activeRef = useRef(false);
   const androidStopInFlightRef = useRef(false);
   const androidWidgetStatusInFlightRef = useRef(false);
@@ -82,6 +86,7 @@ export function useBraiAppState(initialSection: SectionId) {
   const [history, setHistory] = useState<HistoryData>(() => emptyHistory());
   const [goal, setGoal] = useState<GoalData>(() => emptyGoal());
   const [localSnapshotReady, setLocalSnapshotReady] = useState(false);
+  const [localDatabaseBlocked, setLocalDatabaseBlocked] = useState(false);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("connecting");
   const [pendingCount, setPendingCount] = useState(0);
   const [actionPendingCount, setActionPendingCount] = useState(0);
@@ -97,6 +102,15 @@ export function useBraiAppState(initialSection: SectionId) {
   const [mobileContextPanelClosing, setMobileContextPanelClosing] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const mobileViewport = useMobileNavigationViewport();
+  const relationWorkspace = useBraiRelations({
+    api,
+    flushActionPending,
+    getActions: () => actionsRef.current,
+    setActions: setActionsAndRef,
+    setActionPendingCount,
+    setSyncStatus,
+  });
+  const contextReviewWorkspace = useBraiContextReviews(api);
 
   function applyAppSettings(settings: AppSettings) {
     setDisplayTimeZone(settings.display_timezone);
@@ -134,6 +148,7 @@ export function useBraiAppState(initialSection: SectionId) {
   }
 
   async function applyServerState(state: TimerState) {
+    const historyWasUninitialized = historyGoalRevisionRef.current === 0;
     const queued = await pendingEvents();
     if (queued.length > 0) {
       await flushPending();
@@ -148,6 +163,8 @@ export function useBraiAppState(initialSection: SectionId) {
     if (state.server_revision > historyGoalRevisionRef.current) {
       try {
         await refreshHistoryAndGoal(apiRef.current, state.server_revision);
+        // A live event can beat the boot snapshot; one follow-up read closes that startup race.
+        if (historyWasUninitialized) await refreshHistoryAndGoal(apiRef.current, state.server_revision);
       } catch (error) {
         handleError(error);
       }
@@ -167,6 +184,7 @@ export function useBraiAppState(initialSection: SectionId) {
     const latestQueuedActions = await setProjectedActionsSnapshot(state);
     const [timerQueued, inboxQueued] = await Promise.all([pendingEvents(), pendingInboxEvents()]);
     setSyncStatus(latestQueuedActions.length + timerQueued.length + inboxQueued.length > 0 ? "pending_sync" : "synced");
+    void relationWorkspace.flushRelationPending();
   }
 
   async function applyInboxState(state: InboxState) {
@@ -191,6 +209,10 @@ export function useBraiAppState(initialSection: SectionId) {
       await flushPending();
       await refreshActionsAndFlush();
       await refreshInboxAndFlush();
+      await Promise.all([
+        relationWorkspace.refreshRelationsAndFlush().catch(() => undefined),
+        contextReviewWorkspace.refreshContextReviews().catch(() => undefined),
+      ]);
     } catch (error) {
       handleError(error);
     }
@@ -199,6 +221,7 @@ export function useBraiAppState(initialSection: SectionId) {
   async function refreshAll(sourceApi = apiRef.current) {
     setBusy(true);
     try {
+      const historyGoalRequestId = ++historyGoalRequestRef.current;
       const [nextSettings, nextState, nextHistory, nextGoal, nextActions, nextInbox] = await Promise.all([
         sourceApi.settings(),
         sourceApi.state(),
@@ -213,16 +236,20 @@ export function useBraiAppState(initialSection: SectionId) {
       const accepted =
         nextState.server_revision >= timerRevisionRef.current && (await saveCanonicalState(nextState));
       if (accepted) {
-        const normalizedHistory = normalizeHistory(nextHistory);
-        await Promise.all([
-          saveHistoryCache(normalizedHistory),
-          saveGoalCache(nextGoal, nextState.server_revision),
-        ]);
         timerRevisionRef.current = nextState.server_revision;
-        historyGoalRevisionRef.current = nextState.server_revision;
         setTimerSnapshot(projectTimerState(nextState, queued));
-        setHistory(projectHistoryData(normalizedHistory, queued));
-        setGoal(nextGoal);
+        if (historyGoalRequestId === historyGoalRequestRef.current) {
+          const normalizedHistory = normalizeHistory(nextHistory);
+          await Promise.all([
+            saveHistoryCache(normalizedHistory),
+            saveGoalCache(nextGoal, nextState.server_revision),
+          ]);
+          historyGoalRevisionRef.current = nextState.server_revision;
+          setHistory(projectHistoryData(normalizedHistory, queued));
+          setGoal(nextGoal);
+        }
+      } else if (nextState.server_revision < timerRevisionRef.current) {
+        await refreshHistoryAndGoal(sourceApi, timerRevisionRef.current);
       }
       const actionsAccepted =
         nextActions.server_revision >= actionsRevisionRef.current && (await saveActionsState(nextActions));
@@ -243,6 +270,10 @@ export function useBraiAppState(initialSection: SectionId) {
       await flushPending(sourceApi);
       await flushActionPending(sourceApi);
       await flushInboxPending(sourceApi);
+      await Promise.all([
+        relationWorkspace.refreshRelationsAndFlush(sourceApi).catch(() => undefined),
+        contextReviewWorkspace.refreshContextReviews(sourceApi).catch(() => undefined),
+      ]);
     } catch (error) {
       handleError(error);
     } finally {
@@ -302,8 +333,9 @@ export function useBraiAppState(initialSection: SectionId) {
 
   async function refreshHistoryAndGoal(sourceApi = apiRef.current, serverRevision = timer.server_revision) {
     if (serverRevision < historyGoalRevisionRef.current) return;
+    const requestId = ++historyGoalRequestRef.current;
     const [nextHistory, nextGoal] = await Promise.all([sourceApi.history(), sourceApi.goal()]);
-    if (serverRevision < historyGoalRevisionRef.current) return;
+    if (requestId !== historyGoalRequestRef.current || serverRevision < historyGoalRevisionRef.current) return;
     const normalizedHistory = normalizeHistory(nextHistory);
     await Promise.all([
       saveHistoryCache(normalizedHistory),
@@ -380,11 +412,11 @@ export function useBraiAppState(initialSection: SectionId) {
         events: queued,
         lastKnownServerTimeUtc: actionsRef.current.server_time_utc,
       });
-      const ignoredIds = response.ignored_events.map((event) => event.event_id);
-      await acknowledgeActionEvents([...response.acknowledged_event_ids, ...ignoredIds]);
-      await saveIgnoredEvents(response.ignored_events);
-      const accepted =
-        response.state.server_revision >= actionsRevisionRef.current && (await saveActionsState(response.state));
+      const accepted = await acknowledgeActivitySyncEvents({
+        acknowledgedEventIds: response.acknowledged_event_ids,
+        ignoredEvents: response.ignored_events,
+        state: response.state,
+      });
       const remaining = await pendingActionEvents();
       let projected: ActionsState | null = null;
       if (accepted) {
@@ -406,6 +438,7 @@ export function useBraiAppState(initialSection: SectionId) {
       setActionPendingCount(remaining.length);
       const [timerQueued, inboxQueued] = await Promise.all([pendingEvents(), pendingInboxEvents()]);
       setSyncStatus(remaining.length + timerQueued.length + inboxQueued.length > 0 ? "pending_sync" : "synced");
+      void relationWorkspace.flushRelationPending(sourceApi);
     } catch (error) {
       await markActionFailure(queued, error instanceof Error ? error.message : "sync_failed");
       handleError(error);
@@ -491,11 +524,11 @@ export function useBraiAppState(initialSection: SectionId) {
         events: queued,
         lastKnownServerTimeUtc: inbox.server_time_utc,
       });
-      const ignoredIds = response.ignored_events.map((event) => event.event_id);
-      await acknowledgeInboxEvents([...response.acknowledged_event_ids, ...ignoredIds]);
-      await saveIgnoredEvents(response.ignored_events);
-      const accepted =
-        response.state.server_revision >= inboxRevisionRef.current && (await saveInboxState(response.state));
+      const accepted = await acknowledgeInboxSyncEvents({
+        acknowledgedEventIds: response.acknowledged_event_ids,
+        ignoredEvents: response.ignored_events,
+        state: response.state,
+      });
       const remaining = await pendingInboxEvents();
       const currentState = accepted ? response.state : (await loadInboxState()) ?? response.state;
       if (currentState.server_revision >= inboxRevisionRef.current) {
@@ -627,6 +660,8 @@ export function useBraiAppState(initialSection: SectionId) {
     setTimer(emptyTimerState());
     setActionsAndRef(emptyActionsState());
     setInbox(emptyInboxState());
+    relationWorkspace.resetRelations();
+    contextReviewWorkspace.resetContextReviews();
     setHistory(emptyHistory());
     setGoal(emptyGoal());
     setPendingCount(0);
@@ -755,6 +790,8 @@ export function useBraiAppState(initialSection: SectionId) {
     let cancelled = false;
 
     async function boot() {
+      await openClientDbWithRetry();
+      setLocalDatabaseBlocked(false);
       await ensureClientMeta();
       const resolvedApiBase = defaultApiBase();
       const bootApi = new BraiApi(resolvedApiBase);
@@ -782,6 +819,8 @@ export function useBraiAppState(initialSection: SectionId) {
         pendingEvents(),
         pendingActionEvents(),
         pendingInboxEvents(),
+        relationWorkspace.loadLocalRelations(),
+        contextReviewWorkspace.loadLocalContextReviews(),
       ]);
 
       if (cancelled) return;
@@ -802,7 +841,10 @@ export function useBraiAppState(initialSection: SectionId) {
       await refreshAllRef.current(bootApi);
     }
 
-    void boot().catch(handleError);
+    void boot().catch((error) => {
+      if (error instanceof LocalDatabaseUnavailableError) setLocalDatabaseBlocked(true);
+      handleError(error);
+    });
     return () => {
       cancelled = true;
     };
@@ -888,7 +930,7 @@ export function useBraiAppState(initialSection: SectionId) {
 
   const active = timer.active_session != null;
   const activeStartedAtUtc = timer.active_session?.started_at_utc ?? null;
-  const totalPendingCount = pendingCount + actionPendingCount + inboxPendingCount;
+  const totalPendingCount = pendingCount + actionPendingCount + inboxPendingCount + relationWorkspace.relationPendingCount;
   const displaySyncStatus =
     totalPendingCount > 0 && syncStatus === "synced" ? "pending_sync" : syncStatus;
 
@@ -1026,6 +1068,11 @@ export function useBraiAppState(initialSection: SectionId) {
     setActionPendingCount,
     setActions: setActionsAndRef,
     setSyncStatus,
+    getRelationServerRevision: () => relationWorkspace.relations.server_revision,
+    onRelationLifecycleQueued: relationWorkspace.reprojectRelationOutbox,
+    beforeGoalStatusChange: async (goal, status) => {
+      if (status === "Done") await relationWorkspace.ensureGoalRelationsSynced(goal.id);
+    },
   });
   const inboxCommands = createBraiInboxCommands({
     flushInboxPending,
@@ -1035,7 +1082,7 @@ export function useBraiAppState(initialSection: SectionId) {
     setSyncStatus,
   });
 
-  return { actionOverlayOpen, actions, actionsInfoActive, active, appSettings, authDisplayName: authUser?.name ?? "", authMode, authUser, bundlePublishedAt, busy, displaySyncStatus, focusBackground, focusContextPanel, focusGoalActive, focusHistoryActive, goal, history, inbox, inboxInfoActive, localSnapshotReady, markMobileContextPanelClosing, mobileContextPanel, mobileMenuOpen, ...actionCommands, ...inboxCommands, onDeleteFocusSession, onEditFocusInterval, onEditFocusSession, onEmailLogin, onLogout, onRequestOtp, onStart, onStartActionFocus, onStop, onStopActionFocus, onSwitchActionFocus, onUpdateAppSettings: updateAppSettings, onVerifyOtp, openSettingsPage, otaCheckedAt, otaRefreshing, otaState, refreshEngineOnce, refreshOtaStateOnce, section, selectSection, setActionOverlayOpen, setFocusBackground, setMobileContextPanel: setMobileContextPanelState, setMobileMenuOpen, setTheme, swipeNavigation, theme, timer, timerBusy, todayKey, toggleActionsInfoPanel, toggleFocusContextPanel, toggleInboxInfoPanel, totalPendingCount, versionCheckedAt, versionError, versionRefreshing, versionState };
+  return { actionOverlayOpen, actions, actionsInfoActive, active, appSettings, authDisplayName: authUser?.name ?? "", authMode, authUser, bundlePublishedAt, busy, displaySyncStatus, focusBackground, focusContextPanel, focusGoalActive, focusHistoryActive, goal, history, inbox, inboxInfoActive, localDatabaseBlocked, localSnapshotReady, markMobileContextPanelClosing, mobileContextPanel, mobileMenuOpen, ...actionCommands, ...inboxCommands, ...relationWorkspace, ...contextReviewWorkspace, onDeleteFocusSession, onEditFocusInterval, onEditFocusSession, onEmailLogin, onLogout, onRequestOtp, onStart, onStartActionFocus, onStop, onStopActionFocus, onSwitchActionFocus, onUpdateAppSettings: updateAppSettings, onVerifyOtp, openSettingsPage, otaCheckedAt, otaRefreshing, otaState, refreshEngineOnce, refreshOtaStateOnce, section, selectSection, setActionOverlayOpen, setFocusBackground, setMobileContextPanel: setMobileContextPanelState, setMobileMenuOpen, setTheme, swipeNavigation, theme, timer, timerBusy, todayKey, toggleActionsInfoPanel, toggleFocusContextPanel, toggleInboxInfoPanel, totalPendingCount, versionCheckedAt, versionError, versionRefreshing, versionState };
 }
 
 function loadAppSettingsPreference(): AppSettings {

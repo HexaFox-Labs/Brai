@@ -144,66 +144,6 @@ export function MobileDockOverflowButton({
   );
 }
 
-export function MobileProfileDrawer({
-  onClose,
-}: {
-  onClose: () => void;
-}) {
-  const suppressPopRef = useRef(false);
-  const { backdropRef, backdropStyle, closeWithAnimation, resetOpen, sheetDragHandlers, sheetRef, sheetStyle } = useMobileSheetDrag({
-    axis: "x",
-    excludeControls: true,
-    onClose,
-  });
-
-  const closeMenu = useCallback(() => {
-    if (window.history.state?.braiMobileMenu) {
-      suppressPopRef.current = true;
-      window.history.back();
-    }
-    closeWithAnimation();
-  }, [closeWithAnimation]);
-
-  useEffect(() => {
-    resetOpen();
-    if (window.history.state?.braiMobileMenu) {
-      window.history.replaceState({ ...window.history.state, braiMobileMenu: true }, "", window.location.href);
-    } else {
-      window.history.pushState({ ...window.history.state, braiMobileMenu: true }, "", window.location.href);
-    }
-
-    function onPopState() {
-      if (suppressPopRef.current) {
-        suppressPopRef.current = false;
-        return;
-      }
-      closeWithAnimation();
-    }
-
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
-  }, [closeWithAnimation, resetOpen]);
-
-  useEffect(() => installAndroidBackHandler(() => {
-    closeMenu();
-    return true;
-  }), [closeMenu]);
-
-  return (
-    <div className="mobile-menu-backdrop fixed inset-0 z-[90]" data-nav-swipe-exclusion onClick={() => closeMenu()}>
-      <div ref={backdropRef} className="absolute inset-0 bg-foreground/15 dark:bg-background/80" style={backdropStyle} aria-hidden="true" />
-      <aside
-        ref={sheetRef}
-        className="mobile-profile-drawer flex h-full w-16 flex-col border-r border-border bg-card px-2 pt-[calc(12px+env(safe-area-inset-top))] pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-xl animate-[mobile-drawer-in_180ms_ease-out] [touch-action:pan-y] will-change-transform"
-        style={sheetStyle}
-        aria-label="Пустое меню"
-        {...sheetDragHandlers}
-        onClick={(event) => event.stopPropagation()}
-      />
-    </div>
-  );
-}
-
 const MOBILE_DOCK_PLACEHOLDER_ITEMS = [
   { label: "Флаг", icon: Flag },
   { label: "Тег", icon: Tag },

@@ -1163,17 +1163,19 @@ describe("BraiApp shell", () => {
     });
   });
 
-  it("keeps the burger drawer empty and opens mobile overflow navigation from primary screens", async () => {
+  it("shows Actions lists in the burger drawer and keeps account commands in mobile overflow", async () => {
     render(<BraiApp />);
 
     fireEvent.click(screen.getByRole("button", { name: "Открыть меню" }));
     expect(document.querySelector(".mobile-menu-backdrop")).toBeInTheDocument();
-    expect(document.querySelector(".mobile-menu-backdrop > div")).toHaveClass("bg-foreground/15", "dark:bg-background/80");
+    expect(document.querySelector(".mobile-menu-backdrop")).toHaveClass("bg-foreground/15", "dark:bg-background/80");
     expect(document.querySelector(".mobile-profile-drawer")).not.toHaveTextContent("Workspace");
     expect(document.querySelector(".mobile-profile-drawer")).not.toHaveTextContent("Настройки");
     expect(document.querySelector(".mobile-profile-drawer")).not.toHaveTextContent("Архив");
+    expect(within(document.querySelector(".mobile-profile-drawer") as HTMLElement).getByRole("navigation", { name: "Списки действий" })).toBeInTheDocument();
+    expect(within(document.querySelector(".mobile-profile-drawer") as HTMLElement).getByRole("button", { name: /^Все\d*$/ })).toBeInTheDocument();
 
-    fireEvent.click(document.querySelector(".mobile-menu-backdrop") as HTMLElement);
+    fireEvent.click(within(document.querySelector(".mobile-profile-drawer") as HTMLElement).getByRole("button", { name: "Закрыть меню" }));
     await waitFor(() => expect(document.querySelector(".mobile-menu-backdrop")).not.toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: "Открыть левое меню" }));

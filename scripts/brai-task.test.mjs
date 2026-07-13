@@ -25,6 +25,7 @@ import {
   isWriteLikeCommand,
   linkDependencyDirs,
   parseHookInput,
+  readPreviewSlot,
   taskStartGuidance,
   taskWorktreeParent,
   validateTaskMarker,
@@ -353,7 +354,12 @@ test("local main sync preserves runtime dirs and hard resets to origin main", ()
   assert.match(script, /chmod 0770 "\$task_state"/);
   assert.match(ciScript, /sudo -n \/srv\/opt\/brai-main-sync\.sh "\$BRAI_COMMIT"/);
   assert.match(playbook, /Create production source checkout path/);
-  assert.doesNotMatch(playbook, /state: link/);
+  const productionCheckoutTask = playbook.match(
+    /- name: Create production source checkout path[\s\S]*?(?=\n\s+- name:)/,
+  )?.[0];
+  assert.ok(productionCheckoutTask);
+  assert.match(productionCheckoutTask, /state: directory/);
+  assert.doesNotMatch(productionCheckoutTask, /state: link/);
   assert.doesNotMatch(ciScript, /DEPLOY_REPO/);
   assert.doesNotMatch(ciScript, /sudo BRAI_DEPLOY_REPO=/);
   assert.match(playbook, /brai_repo }}\/deploy\/releases/);
@@ -890,12 +896,14 @@ test("remote deploy installs dependencies before replacing the active source tre
 
 test("preview deploy requires Postgres and preserves artifact setgid", () => {
   const script = fs.readFileSync(new URL("../deploy/scripts/deploy-branch.sh", import.meta.url), "utf8");
+  const goalAgentGate = fs.readFileSync(new URL("../deploy/scripts/deploy-goal-agents.sh", import.meta.url), "utf8");
   const ciDeploy = fs.readFileSync(new URL("../deploy/scripts/ci-ssh-deploy.sh", import.meta.url), "utf8");
   const playbook = fs.readFileSync(new URL("../deploy/ansible/brai.yml", import.meta.url), "utf8");
   const unit = fs.readFileSync(new URL("../deploy/ansible/templates/brai-api.service.j2", import.meta.url), "utf8");
   assert.match(script, /umask 0002/);
   assert.match(script, /BRAI_DATABASE_URL is required/);
-  assert.match(ciDeploy, /postgres-smoke\.mjs "\$BRAI_DATABASE_URL"/);
+  assert.match(ciDeploy, /postgres-smoke\.mjs "\$CURRENT_DATABASE_URL"/);
+  assert.match(ciDeploy, /postgres-smoke\.mjs "\$TARGET_DATABASE_URL"/);
   assert.match(script, /check_api_service_contract/);
   assert.match(script, /BRAI_INBOUND_STORAGE_ROOT/);
   assert.match(script, /BRAI_INBOX_STORAGE_ROOT/);
@@ -903,10 +911,15 @@ test("preview deploy requires Postgres and preserves artifact setgid", () => {
   assert.match(script, /Preview API health check failed/);
   const recordIndex = script.indexOf("record-deployment.mjs");
   const restartIndex = script.indexOf("systemctl restart");
-  const readyIndex = script.indexOf("preview-slots.sh\" ready");
+  const goalRestartIndex = goalAgentGate.indexOf("systemctl restart");
+  const contextSmokeIndex = goalAgentGate.indexOf("context-smoke-cli.mjs");
+  const readyIndex = goalAgentGate.indexOf("preview-slots.sh\" ready");
   assert.ok(recordIndex > 0);
   assert.ok(restartIndex > recordIndex);
-  assert.ok(readyIndex > restartIndex);
+  assert.doesNotMatch(script, /preview-slots\.sh\" ready/);
+  assert.ok(goalRestartIndex > 0);
+  assert.ok(contextSmokeIndex > goalRestartIndex);
+  assert.ok(readyIndex > contextSmokeIndex);
   assert.ok(script.includes('normalize_public_tree "$WEB_TARGET"'));
   assert.ok(script.includes('normalize_public_tree "$MOBILE_TARGET"'));
   assert.doesNotMatch(script, /normalize_public_tree "\$TARGET_ROOT"/);
@@ -1422,6 +1435,36 @@ test("preview slot status is shared-lock read-only", () => {
   assert.equal(fs.existsSync(path.join(envRoot, "preview-slots.lock")), false);
   assert.equal(fs.existsSync(path.join(envRoot, "preview-status")), false);
   assert.match(fs.readFileSync(new URL("../deploy/scripts/preview-slots.sh", import.meta.url), "utf8"), /flock -s 9/);
+});
+
+test("preview handoff refuses a slot or queue lease owned by another commit", () => {
+  const root = tempRoot("brai-preview-exact-head-");
+  const registry = path.join(root, "preview-slots.json");
+  const previous = process.env.BRAI_PREVIEW_REGISTRY;
+  try {
+    process.env.BRAI_PREVIEW_REGISTRY = registry;
+    fs.writeFileSync(registry, `${JSON.stringify({ A: { branch: "codex/race", commit: "commit-b", status: "ready" } })}\n`);
+    assert.throws(() => readPreviewSlot("codex/race", "commit-a"), /belongs to commit-b, not commit-a/);
+
+    fs.writeFileSync(registry, `${JSON.stringify({ queue: [{ branch: "codex/race", commit: "commit-b" }] })}\n`);
+    assert.throws(() => readPreviewSlot("codex/race", "commit-a"), /queue entry belongs to commit-b, not commit-a/);
+  } finally {
+    if (previous == null) delete process.env.BRAI_PREVIEW_REGISTRY;
+    else process.env.BRAI_PREVIEW_REGISTRY = previous;
+  }
+});
+
+test("preview handoff Temporal fallback queries and validates the exact deploy SHA", () => {
+  const source = fs.readFileSync(new URL("./brai-task.mjs", import.meta.url), "utf8");
+  const start = source.indexOf("function readPreviewSlot");
+  const body = source.slice(start, source.indexOf("function previewUrlForSlot", start));
+
+  assert.match(body, /query-preview-deploy/);
+  assert.match(body, /"--sha", sha/);
+  assert.match(body, /temporal\.lastSha !== sha/);
+  assert.match(body, /temporal\.tasks\?\.\[task\]\?\.status !== "passed" \|\| temporal\.tasks\[task\]\.sha !== sha/);
+  assert.match(body, /registrySlot = slot/);
+  assert.match(body, /registry slot \$\{registrySlot\} does not match Temporal slot \$\{slot\}/);
 });
 
 test("task starter can enable checked-in git hooks", () => {
@@ -2425,11 +2468,29 @@ function setupPreviewHandoffFixture() {
   fs.writeFileSync(path.join(repo, ".gitignore"), ".brai-task/\n");
   fs.writeFileSync(path.join(repo, "base.txt"), "base\n");
   fs.mkdirSync(path.join(repo, "deploy"), { recursive: true });
+  fs.mkdirSync(path.join(repo, "deploy", "scripts"), { recursive: true });
   fs.writeFileSync(
     path.join(repo, "deploy", "environments.json"),
     `${JSON.stringify({ environments: { "preview-c": { domain: "c.test.example" } } }, null, 2)}\n`,
   );
-  git(["add", ".gitignore", "base.txt", "deploy/environments.json"], repo);
+  const temporalSignal = path.join(repo, "deploy", "scripts", "ci-temporal-signal.sh");
+  fs.writeFileSync(temporalSignal, `#!/usr/bin/env bash
+set -euo pipefail
+sha="$(git rev-parse HEAD)"
+node --input-type=module - "$sha" <<'NODE'
+const sha = process.argv[2];
+const names = ["checks", "supabase_preview", "goal_agents_deploy", "preview_deploy"];
+console.log(JSON.stringify({
+  status: "ready_for_review",
+  lastSha: sha,
+  slot: "C",
+  blocker: null,
+  tasks: Object.fromEntries(names.map((name) => [name, { status: "passed", sha }]))
+}));
+NODE
+`);
+  fs.chmodSync(temporalSignal, 0o755);
+  git(["add", ".gitignore", "base.txt", "deploy/environments.json", "deploy/scripts/ci-temporal-signal.sh"], repo);
   git(["commit", "-m", "base"], repo);
   const base = git(["rev-parse", "HEAD"], repo).stdout.trim();
   git(["remote", "add", "origin", remote], repo);
@@ -2489,7 +2550,6 @@ function setupPreviewHandoffFixture() {
   const jobs = {
     jobs: ["public-guard", "checks", "temporal-worker-check", "deploy-preview"].map((name) => ({ name, conclusion: "success" })),
   };
-
   fs.mkdirSync(bin);
   const gh = path.join(bin, "gh");
   fs.writeFileSync(
@@ -2553,12 +2613,16 @@ function runDeliveryHandoffFixture({ repo, bin }) {
 function runPreviewHandoffFixture({ repo, bin, registry }) {
   const previousCwd = process.cwd();
   const previousPath = process.env.PATH;
+  const previousGitDir = process.env.GIT_DIR;
+  const previousGitWorkTree = process.env.GIT_WORK_TREE;
   const previousRegistry = process.env.BRAI_PREVIEW_REGISTRY;
   const previousWait = process.env.BRAI_PREVIEW_HANDOFF_WAIT_MS;
   const previousPoll = process.env.BRAI_PREVIEW_HANDOFF_POLL_MS;
   const previousLog = console.log;
   const logs = [];
   try {
+    process.env.GIT_DIR = git(["rev-parse", "--git-dir"], previousCwd).stdout.trim();
+    process.env.GIT_WORK_TREE = previousCwd;
     process.chdir(repo);
     process.env.PATH = `${bin}${path.delimiter}${process.env.PATH}`;
     process.env.BRAI_PREVIEW_REGISTRY = registry;
@@ -2574,6 +2638,10 @@ function runPreviewHandoffFixture({ repo, bin, registry }) {
     process.chdir(previousCwd);
     if (previousPath == null) delete process.env.PATH;
     else process.env.PATH = previousPath;
+    if (previousGitDir == null) delete process.env.GIT_DIR;
+    else process.env.GIT_DIR = previousGitDir;
+    if (previousGitWorkTree == null) delete process.env.GIT_WORK_TREE;
+    else process.env.GIT_WORK_TREE = previousGitWorkTree;
     if (previousRegistry == null) delete process.env.BRAI_PREVIEW_REGISTRY;
     else process.env.BRAI_PREVIEW_REGISTRY = previousRegistry;
     if (previousWait == null) delete process.env.BRAI_PREVIEW_HANDOFF_WAIT_MS;

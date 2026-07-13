@@ -5,6 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  assertSameDatabaseTarget,
   inspectOwnedSequences,
   isTransientPostgresConnectionError,
   migrationFileEntries,
@@ -15,6 +16,17 @@ import {
 } from "./supabase-branch.mjs";
 
 const repoRoot = path.resolve(import.meta.dirname, "../..");
+
+test("preserve-existing accepts only the exact current database target", () => {
+  const current = "postgres://branch_user:old-secret@127.0.0.1:5432/postgres?options=-c%20search_path%3Dbrai_preview_branch%2Cpublic";
+  const rotatedPassword = "postgres://branch_user:new-secret@127.0.0.1:5432/postgres?options=-c%20search_path%3Dbrai_preview_branch%2Cpublic";
+  assert.doesNotThrow(() => assertSameDatabaseTarget(current, rotatedPassword));
+  assert.throws(() => assertSameDatabaseTarget(
+    current,
+    "postgres://branch_user:new-secret@127.0.0.1:5432/postgres?options=-c%20search_path%3Dbrai_preview_other%2Cpublic"
+  ), /preserve-existing target does not match/);
+  assert.throws(() => assertSameDatabaseTarget("", rotatedPassword), /requires the current BRAI_DATABASE_URL/);
+});
 
 test("Supabase migration versions are unique and duplicate prefixes fail closed", () => {
   const migrationsDir = path.join(repoRoot, "supabase/migrations");
@@ -366,6 +378,8 @@ test("preview env setup rewrites existing shell-unsafe values safely", () => {
     "preview-env",
     "--branch",
     "codex/supabase-only-runtime",
+    "--commit",
+    "test-commit",
     "--runtime-env",
     envFile
   ], {
@@ -433,6 +447,8 @@ test("branch database URL override requires explicit preview marker", () => {
     "preview-env",
     "--branch",
     "codex/supabase-only-runtime",
+    "--commit",
+    "test-commit",
     "--runtime-env",
     envFile
   ], {
@@ -448,6 +464,8 @@ test("branch database URL override requires explicit preview marker", () => {
     "preview-env",
     "--branch",
     "codex/supabase-only-runtime",
+    "--commit",
+    "test-commit",
     "--runtime-env",
     envFile
   ], {
@@ -474,6 +492,8 @@ test("branch database URL override requires explicit preview marker", () => {
     "preview-env",
     "--branch",
     "codex/supabase-only-runtime",
+    "--commit",
+    "test-commit",
     "--runtime-env",
     envFile
   ], {

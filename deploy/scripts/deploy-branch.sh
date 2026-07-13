@@ -227,8 +227,12 @@ fi
 
 if command -v systemctl >/dev/null 2>&1 && [[ "${BRAI_RESTART_SERVICE:-true}" != "false" ]]; then
   check_api_service_contract
-  echo "Restarting $SERVICE_NAME..."
-  "${BRAI_SUDO:-sudo}" systemctl restart "$SERVICE_NAME"
+  if [[ "${BRAI_API_ALREADY_RESTARTED:-false}" == "true" ]]; then
+    echo "Using the already provisionally verified $SERVICE_NAME."
+  else
+    echo "Restarting $SERVICE_NAME..."
+    "${BRAI_SUDO:-sudo}" systemctl restart "$SERVICE_NAME"
+  fi
   wait_for_preview_api
   if [[ "$ENVIRONMENT" == "prod" ]]; then
     echo "Running Codex CLI service smoke as brai..."
@@ -245,8 +249,6 @@ if [[ "$ENVIRONMENT" == preview-* ]]; then
   if [[ "$BRANCH" == codex/* && "${BRAI_NATIVE_APK_CHANGE:-false}" != "true" ]]; then
     "$SCRIPT_DIR/preview-slots.sh" clear-apk "$BRANCH" "$COMMIT" >/dev/null
   fi
-  echo "Marking preview slot ready..."
-  "$SCRIPT_DIR/preview-slots.sh" ready "$BRANCH" "$COMMIT" >/dev/null
 fi
 
-echo "Deployed $BRANCH@$COMMIT to $ENVIRONMENT ($DOMAIN) with bundle $BUNDLE_VERSION."
+echo "Deployed application $BRANCH@$COMMIT to $ENVIRONMENT ($DOMAIN) with bundle $BUNDLE_VERSION; Goal-agent gate remains pending."

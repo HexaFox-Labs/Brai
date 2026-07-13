@@ -367,16 +367,20 @@ describe("mobile OTA publish scripts", () => {
     expect(ansible).toContain("- e.test.brightos.world");
   });
 
-  it("marks preview ready only after the service restart succeeds", async () => {
+  it("keeps generic deploy pending and marks Preview ready only after the independent Goal-agent gate", async () => {
     const deployBranch = await readFile(path.join(workspaceRoot, "deploy/scripts/deploy-branch.sh"), "utf8");
+    const goalAgentGate = await readFile(path.join(workspaceRoot, "deploy/scripts/deploy-goal-agents.sh"), "utf8");
     const restartIndex = deployBranch.indexOf('"${BRAI_SUDO:-sudo}" systemctl restart "$SERVICE_NAME"');
     const adminRestartIndex = deployBranch.indexOf('"${BRAI_SUDO:-sudo}" systemctl restart "$ADMIN_SERVICE_NAME"');
-    const readyIndex = deployBranch.indexOf('"$SCRIPT_DIR/preview-slots.sh" ready "$BRANCH" "$COMMIT"');
+    const smokeIndex = goalAgentGate.indexOf("context-smoke-cli.mjs");
+    const readyIndex = goalAgentGate.indexOf('"$SCRIPT_DIR/preview-slots.sh" ready "$BRANCH" "$COMMIT"');
 
     expect(restartIndex).toBeGreaterThan(0);
     expect(adminRestartIndex).toBeGreaterThan(restartIndex);
-    expect(readyIndex).toBeGreaterThan(restartIndex);
-    expect(readyIndex).toBeGreaterThan(adminRestartIndex);
+    expect(deployBranch).not.toContain('preview-slots.sh" ready');
+    expect(deployBranch).toContain("Goal-agent gate remains pending");
+    expect(smokeIndex).toBeGreaterThan(0);
+    expect(readyIndex).toBeGreaterThan(smokeIndex);
   });
 
   it("resolves OTA app versions from the build ledger before deployed files", async () => {
@@ -396,7 +400,8 @@ describe("mobile OTA publish scripts", () => {
     expect(buildApk).toContain('MOBILE_TARGET="${BRAI_MOBILE_TARGET:-}"');
     expect(buildApk).toContain('if [[ -z "$MOBILE_TARGET" && -n "$ENV_PATH" ]]; then');
     expect(buildApk).toContain('--mobile-target "$MOBILE_TARGET"');
-    expect(ciDeploy).toContain(': "${BRAI_DATABASE_URL:?BRAI_DATABASE_URL is required for production deploy}"');
+    expect(ciDeploy).toContain('[[ -r "/etc/brai/brai-api.env" ]]');
+    expect(ciDeploy).toContain('BRAI_PROD_DATABASE_URL="$(env_database_url /etc/brai/brai-api.env)"');
     expect(ciDeploy).not.toContain("BRAI_PROD_DB");
     expect(ciDeploy).toContain('export BRAI_PUBLIC_SITE_TARGET="$DEPLOY_REPO/deploy/site"');
   });

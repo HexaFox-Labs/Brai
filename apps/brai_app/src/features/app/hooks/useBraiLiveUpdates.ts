@@ -73,8 +73,13 @@ export function useBraiLiveUpdates({
             server_revision: number;
             activities: ActionsState["actions"];
             archived_activities?: ActionsState["archived_actions"];
+            legacy_operations?: NonNullable<ActionsState["legacy_operations"]>;
+            goals?: NonNullable<ActionsState["goals"]>;
+            archived_goals?: NonNullable<ActionsState["archived_goals"]>;
           };
           inbox_state?: InboxState;
+          relations_state?: { server_revision?: number };
+          context_decisions_state?: { server_revision?: number };
         };
         if (payload.state) void applyServerStateRef.current(payload.state);
         if (payload.activities_state) {
@@ -83,9 +88,13 @@ export function useBraiLiveUpdates({
             server_revision: payload.activities_state.server_revision,
             actions: payload.activities_state.activities,
             archived_actions: payload.activities_state.archived_activities ?? [],
+            legacy_operations: payload.activities_state.legacy_operations ?? [],
+            goals: payload.activities_state.goals ?? [],
+            archived_goals: payload.activities_state.archived_goals ?? [],
           });
         }
         if (payload.inbox_state) void applyInboxStateRef.current(payload.inbox_state);
+        if (payload.relations_state || payload.context_decisions_state) void refreshStateAndFlushRef.current();
       };
       websocket.onerror = () => websocket?.close();
       websocket.onclose = () => {

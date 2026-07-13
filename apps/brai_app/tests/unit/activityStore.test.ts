@@ -44,11 +44,50 @@ describe("action store", () => {
       description_md: "",
       status: "Done",
       sort_order: null,
-      item_roles_id: null,
-      workflow_status: "queued",
-      ai_processing_status: "running",
       pending: true,
     });
+  });
+
+  it("stores semantic Goals separately from Actions", async () => {
+    await enqueueActivityEvent({
+      type: "create",
+      payload: { title: "Построить базу", activity_type_id: "goal" },
+      baseServerRevision: 0,
+    });
+
+    const projected = projectActivitiesState(null, await pendingActivityEvents());
+
+    expect(projected.actions).toEqual([]);
+    expect(projected.goals).toMatchObject([
+      { title: "Построить базу", activity_type_id: "goal", status: "New", pending: true },
+    ]);
+  });
+
+  it("projects explicit type changes without changing Item identity", async () => {
+    await saveActivitiesState(state(5, "Большая задача"));
+    await enqueueActivityEvent({
+      type: "set_type",
+      actionId: "action-1",
+      payload: { from_activity_type_id: "action", to_activity_type_id: "goal" },
+      baseServerRevision: 5,
+    });
+
+    const projected = projectActivitiesState(await loadActivitiesState(), await pendingActivityEvents());
+
+    expect(projected.actions).toEqual([]);
+    expect(projected.goals?.[0]).toMatchObject({ id: "action-1", activity_type_id: "goal", status: "New" });
+  });
+
+  it("preserves legacy Operations in their own compatibility projection", async () => {
+    expect(await saveActivitiesState({
+      ...state(5, "Действие"),
+      legacy_operations: [{ ...action("operation-1", "Операция", "2026-06-16T09:00:00.000Z"), activity_type_id: "operation" }],
+    })).toBe(true);
+
+    const cached = await loadActivitiesState();
+
+    expect(cached?.actions.map((item) => item.id)).toEqual(["action-1"]);
+    expect(cached?.legacy_operations?.map((item) => item.id)).toEqual(["operation-1"]);
   });
 
   it("projects pending deletes by moving the action to archive", async () => {

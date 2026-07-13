@@ -88,18 +88,51 @@ export async function acknowledgeInboxEvents(ids: string[]): Promise<void> {
   await clientDb().inbox_outbox_events.bulkDelete(ids);
 }
 
-export async function saveInboxState(state: InboxState): Promise<boolean> {
-  const currentRevision = await lastInboxServerRevision();
-  if (state.server_revision < currentRevision) return false;
-
-  await clientDb().transaction("rw", clientDb().inbox_cache, clientDb().meta, async () => {
-    await clientDb().inbox_cache.clear();
-    const allItems = state.inbox.map(normalizeInboxItem);
-    if (allItems.length > 0) await clientDb().inbox_cache.bulkPut(allItems);
-    await setMeta("lastInboxServerRevision", state.server_revision);
-    await setMeta("lastInboxServerTimeUtc", state.server_time_utc);
-    await setMeta("lastSuccessfulInboxSyncAtUtc", new Date().toISOString());
+/** Atomically accepts an Inbox sync snapshot, ignored rows, and outbox acknowledgements. */
+export async function acknowledgeInboxSyncEvents(params: {
+  acknowledgedEventIds: string[];
+  ignoredEvents: Array<{ event_id: string; reason: string }>;
+  state: InboxState;
+}): Promise<boolean> {
+  const acknowledged = [...new Set([
+    ...params.acknowledgedEventIds,
+    ...params.ignoredEvents.map((event) => event.event_id),
+  ])];
+  const db = clientDb();
+  return db.transaction("rw", db.inbox_cache, db.inbox_outbox_events, db.ignored_events, db.meta, async () => {
+    if (params.ignoredEvents.length > 0) {
+      const acknowledgedAtUtc = new Date().toISOString();
+      await db.ignored_events.bulkPut(params.ignoredEvents.map((event) => ({
+        eventId: event.event_id,
+        reason: event.reason,
+        acknowledgedAtUtc,
+      })));
+    }
+    const accepted = await saveInboxSnapshotInCurrentTransaction(params.state);
+    await db.inbox_outbox_events.bulkDelete(acknowledged);
+    return accepted;
   });
+}
+
+export async function saveInboxState(state: InboxState): Promise<boolean> {
+  const db = clientDb();
+  return db.transaction("rw", db.inbox_cache, db.meta, () => saveInboxSnapshotInCurrentTransaction(state));
+}
+
+/** Writes an Inbox snapshot inside the caller's Dexie transaction. */
+export async function saveInboxSnapshotInCurrentTransaction(state: InboxState): Promise<boolean> {
+  const db = clientDb();
+  const currentRevision = Number((await db.meta.get("lastInboxServerRevision"))?.value ?? 0);
+  if (state.server_revision < currentRevision || (currentRevision > 0 && state.server_revision === currentRevision)) return false;
+
+  await db.inbox_cache.clear();
+  const allItems = state.inbox.map(normalizeInboxItem);
+  if (allItems.length > 0) await db.inbox_cache.bulkPut(allItems);
+  await db.meta.bulkPut([
+    { key: "lastInboxServerRevision", value: state.server_revision },
+    { key: "lastInboxServerTimeUtc", value: state.server_time_utc },
+    { key: "lastSuccessfulInboxSyncAtUtc", value: new Date().toISOString() },
+  ]);
   return true;
 }
 
@@ -153,6 +186,7 @@ export function projectInboxState(
       if (!title) continue;
       items.set(event.inboxId, {
         id: event.inboxId,
+        items_id: null,
         title,
         description_md: normalizeDescription(event.payload.description_md),
         source: event.payload.source ?? "",
@@ -243,6 +277,7 @@ function normalizedPayload(payload: InboxEventPayload, type: InboxEventType, dev
 function normalizeInboxItem(item: InboxItem): InboxItem {
   return {
     ...item,
+    items_id: typeof item.items_id === "string" && item.items_id ? item.items_id : (item.item_roles_id ? item.id : null),
     description_md: normalizeDescription(item.description_md),
     source_key: item.source_key ?? "",
     response_required: Boolean(item.response_required),
