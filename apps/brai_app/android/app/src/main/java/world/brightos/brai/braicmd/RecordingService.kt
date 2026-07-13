@@ -317,7 +317,7 @@ class RecordingService : Service() {
 
     private fun recordingsDir(): File = File(filesDir, RECORDINGS_DIR)
 
-    private fun pendingStatusFor(error: Throwable): Pair<String, PendingReason> =
+    internal fun pendingStatusFor(error: Throwable): Pair<String, PendingReason> =
         when (error) {
             is QueueAuthBlockedException ->
                 Pair("Данные сохранены. Обновите доступ и повторите отправку.", PendingReason.Server)
@@ -327,6 +327,16 @@ class RecordingService : Service() {
                 Pair("Данные сохранены. Нет интернета; отправлю, когда связь вернется.", PendingReason.Network)
             is SocketTimeoutException ->
                 Pair("Данные сохранены. Сервер долго не отвечает; повторю автоматически.", PendingReason.Server)
+            is ProviderResponseException -> when {
+                error.statusCode == 401 || error.statusCode == 403 ->
+                    Pair("Данные сохранены. Проверьте API-ключ поставщика в настройках.", PendingReason.Transcription)
+                error.statusCode in 400..499 && error.statusCode !in setOf(408, 425, 429) ->
+                    Pair("Данные сохранены. Проверьте выбранную модель и настройки поставщика.", PendingReason.Transcription)
+                error.statusCode == 429 ->
+                    Pair("Данные сохранены. Поставщик временно ограничил запросы; повторю автоматически.", PendingReason.Transcription)
+                else ->
+                    Pair("Данные сохранены. Поставщик сейчас не отвечает; повторю автоматически.", PendingReason.Transcription)
+            }
             is ServerResponseException ->
                 if (error.statusCode == 401 || error.statusCode == 403) {
                     Pair("Данные сохранены. Обновите доступ и повторите отправку.", PendingReason.Server)
