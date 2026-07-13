@@ -57,8 +57,8 @@ function sectionCard(section, releaseKey, downloadBase) {
 }
 
 function formatFileSize(value) {
-  const megabytes = Number(value) / (1024 * 1024);
-  return `${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 }).format(megabytes)} МБ`;
+  const megabytes = Number(value) / 1_000_000;
+  return `${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(megabytes)} МБ`;
 }
 
 function formatPublishedAt(value) {

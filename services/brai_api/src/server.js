@@ -1041,6 +1041,25 @@ export function createBraiServer({
         return;
       }
 
+      if (url.pathname === '/v1/preferences') {
+        if (req.method === 'GET') {
+          sendJson(req, res, 200, store.userPreferences());
+          return;
+        }
+        if (req.method === 'PATCH') {
+          const body = await readJson(req, { limit: 4096 });
+          sendJson(req, res, 200, store.setUserPreferences(body, now().toISOString()));
+          return;
+        }
+        sendJson(req, res, 405, { error: 'method_not_allowed' });
+        return;
+      }
+
+      if (req.method === 'GET' && url.pathname === '/v1/archive') {
+        sendJson(req, res, 200, store.listArchive(url.searchParams.get('role') ?? 'activity'));
+        return;
+      }
+
       if (req.method === 'GET' && url.pathname === '/v1/draws') {
         sendJson(req, res, 200, { draws: listDrawScenes(resolvedVaultRoot) });
         return;
@@ -1098,6 +1117,14 @@ export function createBraiServer({
 
       if (req.method === 'GET' && url.pathname === '/v1/events') {
         sendJson(req, res, 200, { events: store.listEvents({ limit: url.searchParams.get('limit') }) });
+        return;
+      }
+
+      const itemEventsMatch = req.method === 'GET' ? url.pathname.match(/^\/v1\/items\/([^/]+)\/events$/) : null;
+      if (itemEventsMatch) {
+        sendJson(req, res, 200, {
+          events: store.listItemEvents(decodeURIComponent(itemEventsMatch[1]), { limit: url.searchParams.get('limit') })
+        });
         return;
       }
 
@@ -2054,13 +2081,15 @@ export function createUserVaultPreparer({
         `--id=${folderId}`,
         `--label=${label}`,
         `--path=${folderPath}`,
-        '--type=sendreceive'
+        '--type=sendreceive',
+        '--ignore-perms'
       ]);
       return;
     }
 
     await runSyncthingCli([...baseArgs, 'config', 'folders', folderId, 'label', 'set', label]);
     await runSyncthingCli([...baseArgs, 'config', 'folders', folderId, 'path', 'set', folderPath]);
+    await runSyncthingCli([...baseArgs, 'config', 'folders', folderId, 'ignore-perms', 'set', 'true']);
   };
 }
 

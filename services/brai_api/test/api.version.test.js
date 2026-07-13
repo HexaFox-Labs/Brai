@@ -168,7 +168,7 @@ test('public releases show Production while developer releases require their own
             apkVersion: 7,
             apkBuildKind: 'stable',
             publishedAt: '2026-06-29T12:00:00.000Z',
-            sizeBytes: 10 * 1024 * 1024
+            sizeBytes: 10_000_000
           },
           dev: {
             title: 'Brai Dev',
