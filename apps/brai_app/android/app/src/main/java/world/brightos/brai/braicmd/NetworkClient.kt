@@ -22,6 +22,7 @@ data class DictationResponse(
     val provider: String,
     val model: String,
     val fallbackUsed: Boolean,
+    val notice: BraiCmdNotice?,
     val audioDurationMs: Long,
     val postProcessed: Boolean,
     val postProcessingProvider: String,
@@ -165,7 +166,8 @@ class NetworkClient(context: Context) {
     fun uploadAudio(
         file: File,
         conversationContext: VisibleConversationContext? = null,
-        screenshotFile: File? = null
+        screenshotFile: File? = null,
+        braiCmdFunction: String = AudioQueueAction.MainDictation.functionKey
     ): DictationResponse {
         val boundary = "BraiCmd-${UUID.randomUUID()}"
         val connection = openAuthenticatedConnection("/v1/dictate", "POST").apply {
@@ -184,6 +186,7 @@ class NetworkClient(context: Context) {
             writeField(out, boundary, "deviceId", config.installId)
             writeField(out, boundary, "clientVersion", BuildConfig.VERSION_NAME)
             writeField(out, boundary, "appPackage", appContext.packageName)
+            writeField(out, boundary, "braiCmdFunction", braiCmdFunction)
             writeField(out, boundary, "audioDurationMs", durationMs.toString())
             if (shouldSendHeaderContext) {
                 writeField(out, boundary, "headerContextEnabled", "true")
@@ -211,6 +214,7 @@ class NetworkClient(context: Context) {
             provider = json.optString("provider"),
             model = json.optString("model"),
             fallbackUsed = json.optBoolean("fallbackUsed", false),
+            notice = noticeFromJson(json.optJSONObject("notice")),
             audioDurationMs = durationMs,
             postProcessed = json.optBoolean("postProcessed", false),
             postProcessingProvider = if (json.optBoolean("postProcessed", false)) "brai-cloud" else "",
@@ -224,8 +228,9 @@ class NetworkClient(context: Context) {
         transcript: String,
         conversationContext: VisibleConversationContext?,
         screenshotFile: File?,
-        idempotencyKey: String
-    ) {
+        idempotencyKey: String,
+        braiCmdFunction: String = AudioQueueAction.IdeaVoiceInbox.functionKey
+    ): BraiCmdNotice? {
         val connection = openAuthenticatedConnection("/v1/brai-cmd/inbox", "POST").apply {
             doOutput = true
             readTimeout = DEFAULT_READ_TIMEOUT_MS
@@ -251,12 +256,24 @@ class NetworkClient(context: Context) {
             .put("source", "brai-cmd")
             .put("source_key", config.installId)
             .put("record_type_id", 1)
+            .put("brai_cmd_function", braiCmdFunction)
             .put("idempotency_key", idempotencyKey)
         if (conversationContext?.isReliable() == true) body.put("description_json", conversationContext.toJson())
         if (attachments.length() > 0) body.put("attachments", attachments)
         val bytes = body.toString().toByteArray(Charsets.UTF_8)
         connection.outputStream.use { it.write(bytes) }
-        readJson(connection)
+        return noticeFromJson(readJson(connection).optJSONObject("notice"))
+    }
+
+    private fun noticeFromJson(json: JSONObject?): BraiCmdNotice? {
+        json ?: return null
+        val text = braiCmdNoticeText(json.optString("text"))
+        if (text.isBlank()) return null
+        return BraiCmdNotice(
+            key = json.optString("key"),
+            text = text,
+            tone = serverNoticeTone(json.optString("tone"))
+        )
     }
 
     fun postProcessText(text: String, prompt: String): CloudPostProcessingResponse {

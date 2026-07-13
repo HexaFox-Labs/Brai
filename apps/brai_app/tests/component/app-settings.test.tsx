@@ -72,6 +72,7 @@ describe("BraiApp settings", () => {
 
     await openProfileMenuItem("Brai Cmd");
     await screen.findByText("Главная кнопка диктовки");
+    await waitFor(() => expect(cmdPlugin.setAccessKey).toHaveBeenCalledWith({ token: "authenticated-device-token", displayName: "Test" }));
 
     cmdPlugin.setOverlayEnabled.mockClear();
     fireEvent.click(screen.getByRole("switch", { name: "Главная кнопка включена" }));

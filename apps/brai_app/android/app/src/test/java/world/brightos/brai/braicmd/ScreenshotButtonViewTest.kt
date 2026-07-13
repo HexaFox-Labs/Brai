@@ -8,6 +8,15 @@ import org.junit.Test
 
 class ScreenshotButtonViewTest {
     @Test
+    fun floatingButtonMarkerUsesOnlyFirstVisibleLetter() {
+        assertEquals("", normalizeFloatingButtonMarker(null))
+        assertEquals("", normalizeFloatingButtonMarker("   "))
+        assertEquals("V", normalizeFloatingButtonMarker(" v"))
+        assertEquals("D", normalizeFloatingButtonMarker(" dev"))
+        assertEquals("A", normalizeFloatingButtonMarker("abc"))
+    }
+
+    @Test
     fun actionGlyphIsAlwaysPartOfTheRecordingAndUploadingLayers() {
         listOf(
             ContextButtonGlyph.Idea,
@@ -26,7 +35,7 @@ class ScreenshotButtonViewTest {
 
     @Test
     fun successfulActionReplacesItsGlyphWithTheCleanCheckState() {
-        assertFalse(shouldDrawContextActionGlyph(ContextButtonGlyph.Image, RecorderState.InboxDelivered))
+        assertFalse(shouldDrawContextActionGlyph(ContextButtonGlyph.Image, RecorderState.InboxDelivered()))
     }
 
     @Test

@@ -22,6 +22,7 @@ internal object TranscriptionCheckpointStore {
                 provider = json.optString("provider"),
                 model = json.optString("model"),
                 fallbackUsed = json.optBoolean("fallbackUsed"),
+                notice = null,
                 audioDurationMs = json.optLong("audioDurationMs"),
                 postProcessed = json.optBoolean("postProcessed"),
                 postProcessingProvider = json.optString("postProcessingProvider"),

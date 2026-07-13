@@ -236,6 +236,7 @@ export async function createTestDatabase(migrations = [
   '0017_repair_workflow_observability_history.sql',
   '0018_entity_role_data_repair.sql',
   '0019_preliminary_brai_cmd_users.sql',
+  '0024_authenticated_brai_cmd_tokens.sql',
   '0020_inbox_operation_status.sql',
   '0021_activity_raw_normalization_workflows.sql',
   '0022_activity_image_describer_workflow_step.sql'

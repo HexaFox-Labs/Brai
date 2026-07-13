@@ -5,9 +5,32 @@ import type { PendingInboxEvent } from "@/shared/types/inbox";
 import type { PendingTimerEvent } from "@/shared/types/timer";
 
 describe("BraiApi", () => {
+  it("provisions an authenticated Brai CMD device token", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ token: "device-token", status: "active" }), {
+      status: 201,
+      headers: { "content-type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(new BraiApi("https://api.example.test").braiCmdDeviceToken({
+      deviceId: "install-1",
+      clientVersion: "60006",
+      appPackage: "world.brightos.brai",
+    })).resolves.toEqual({ token: "device-token", status: "active" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.example.test/v1/brai-cmd/device-token",
+      expect.objectContaining({
+        method: "POST",
+        credentials: "include",
+        body: JSON.stringify({ deviceId: "install-1", clientVersion: "60006", appPackage: "world.brightos.brai" }),
+      }),
+    );
+  });
+
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("aborts hung API requests", async () => {

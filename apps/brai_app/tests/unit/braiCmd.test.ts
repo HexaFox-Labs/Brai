@@ -37,12 +37,13 @@ describe("Brai CMD bridge", () => {
 
   it("does nothing outside Android native shell", async () => {
     vi.stubGlobal("Capacitor", undefined);
-    const { ensureBraiCmdAccess, getBraiCmdState, listenBraiCmdOnboardingEvents, prepareBraiCmdPreliminaryProfile, retryBraiCmdQueue, setBraiCmdAccessKey, setBraiCmdOverlayEnabled, setBraiCmdQueuePausedMode, setBraiCmdVoiceOnlyMode, vibrateBraiCmdPress } = await import("@/shared/platform/braiCmd");
+    const { ensureBraiCmdAccess, getBraiCmdState, listenBraiCmdCredentialRefreshRequired, listenBraiCmdOnboardingEvents, prepareBraiCmdPreliminaryProfile, retryBraiCmdQueue, setBraiCmdAccessKey, setBraiCmdOverlayEnabled, setBraiCmdQueuePausedMode, setBraiCmdVoiceOnlyMode, vibrateBraiCmdPress } = await import("@/shared/platform/braiCmd");
 
     await expect(getBraiCmdState()).resolves.toBeNull();
     await expect(ensureBraiCmdAccess("Test")).resolves.toBeNull();
     await expect(prepareBraiCmdPreliminaryProfile("Test")).resolves.toBeNull();
     await expect(listenBraiCmdOnboardingEvents(vi.fn())).resolves.toBeNull();
+    await expect(listenBraiCmdCredentialRefreshRequired(vi.fn())).resolves.toBeNull();
     await expect(setBraiCmdAccessKey("token", "Test")).resolves.toBeNull();
     await expect(setBraiCmdOverlayEnabled(true)).resolves.toBeNull();
     await expect(setBraiCmdVoiceOnlyMode(true)).resolves.toBeNull();
@@ -147,5 +148,19 @@ describe("Brai CMD bridge", () => {
 
     await expect(listenBraiCmdOnboardingEvents(listener)).resolves.toEqual({ remove });
     expect(plugin.addListener).toHaveBeenCalledWith("onboardingEvent", listener);
+  });
+
+  it("listens for internal credential refresh requests", async () => {
+    vi.stubGlobal("Capacitor", {
+      isNativePlatform: () => true,
+      getPlatform: () => "android",
+    });
+    const remove = vi.fn();
+    plugin.addListener.mockResolvedValue({ remove });
+    const listener = vi.fn();
+    const { listenBraiCmdCredentialRefreshRequired } = await import("@/shared/platform/braiCmd");
+
+    await expect(listenBraiCmdCredentialRefreshRequired(listener)).resolves.toEqual({ remove });
+    expect(plugin.addListener).toHaveBeenCalledWith("credentialRefreshRequired", listener);
   });
 });

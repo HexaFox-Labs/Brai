@@ -20,6 +20,7 @@ internal data class QueueTransportResult(
     val provider: String = "",
     val model: String = "",
     val inboxDelivered: Boolean = false,
+    val serverNotice: BraiCmdNotice? = null,
     val permanentFailureMessage: String? = null
 )
 
@@ -36,6 +37,7 @@ internal class QueueTransportWorker(
     private var provider = ""
     private var model = ""
     private var inboxDelivered = false
+    private var serverNotice: BraiCmdNotice? = null
     private var permanentFailureMessage: String? = null
 
     fun run(autoInsertAudioFileName: String?): QueueTransportResult {
@@ -43,6 +45,7 @@ internal class QueueTransportWorker(
             AudioQueueStore.list(appContext).map { PendingItem.Audio(it) } +
                 ScreenshotInboxStore.list(appContext).map { PendingItem.Screenshot(it) }
             ).sortedBy { it.file.lastModified() }
+
         for (item in items) {
             if (!item.file.exists()) continue
             try {
@@ -51,6 +54,10 @@ internal class QueueTransportWorker(
                     is PendingItem.Screenshot -> processScreenshot(item.file)
                 }
             } catch (error: Throwable) {
+                if (error is ServerResponseException && error.statusCode == 401) {
+                    ConfigStore(appContext).authToken = ""
+                    BraiCmdPlugin.notifyCredentialRefreshRequired()
+                }
                 when (classifyQueueFailure(error)) {
                     QueueFailureDisposition.Transient ->
                         return result(QueueTransportStatus.TransientFailure, error, setOf(item.transportId))
@@ -79,9 +86,9 @@ internal class QueueTransportWorker(
     private fun processAudio(file: File, autoInsertAudioFileName: String?) {
         when {
             file.length() < MIN_AUDIO_BYTES ->
-                throw QueueCorruptItemException("Запись повреждена и перемещена в карантин.")
+                throw QueueCorruptItemException("Данные повреждены")
             file.length() > NetworkClient.MAX_AUDIO_BYTES ->
-                throw QueueCorruptItemException("Запись слишком большая и перемещена в карантин.")
+                throw QueueCorruptItemException("Файл слишком большой")
         }
 
         val action = AudioQueueStore.action(file)
@@ -94,7 +101,12 @@ internal class QueueTransportWorker(
     }
 
     private fun processMainDictation(file: File, autoInsertAudioFileName: String?) {
-        val response = transcribeAudio(file, ConversationContextStore.read(file), ScreenshotContextStore.read(file))
+        val response = transcribeAudio(
+            file,
+            ConversationContextStore.read(file),
+            ScreenshotContextStore.read(file),
+            AudioQueueAction.MainDictation.functionKey
+        )
         val text = response.text.trim()
         if (text.isBlank()) throw QueueEmptyModelException()
         val transcriptFile = PendingTranscriptStore.addForAudio(
@@ -116,30 +128,32 @@ internal class QueueTransportWorker(
     private fun processInboxAudio(file: File, action: AudioQueueAction) {
         var transcript = InboxPayloadStore.readTranscript(file)
         if (transcript == null) {
-            val response = transcribeAudio(file, null, null)
+            val response = transcribeAudio(file, null, null, action.functionKey)
             transcript = response.text.trim()
             if (transcript.isBlank()) throw QueueEmptyModelException()
             recordStatsOnce(file, response)
             // Persist before Inbox delivery so retries never retranscribe a completed upload.
             InboxPayloadStore.saveTranscript(file, transcript)
         }
-        client.uploadInboxCommand(
+        serverNotice = client.uploadInboxCommand(
             transcript = inboxDeliveryText(action, InboxPayloadStore.readTextPrefix(file), transcript),
             conversationContext = ConversationContextStore.read(file),
             screenshotFile = ScreenshotContextStore.read(file),
-            idempotencyKey = file.name
+            idempotencyKey = file.name,
+            braiCmdFunction = action.functionKey
         )
         completeAudio(file)
         inboxDelivered = true
     }
 
     private fun processScreenshot(file: File) {
-        if (file.length() <= 0L) throw QueueCorruptItemException("Скриншот поврежден и перемещен в карантин.")
-        client.uploadInboxCommand(
+        if (file.length() <= 0L) throw QueueCorruptItemException("Данные повреждены")
+        serverNotice = client.uploadInboxCommand(
             transcript = SCREENSHOT_INBOX_TEXT,
             conversationContext = null,
             screenshotFile = file,
-            idempotencyKey = file.name
+            idempotencyKey = file.name,
+            braiCmdFunction = BRAI_CMD_FUNCTION_SCREENSHOT_INBOX
         )
         if (!ScreenshotInboxStore.delete(file)) throw IOException("Не удалось удалить отправленный скриншот")
         inboxDelivered = true
@@ -154,7 +168,8 @@ internal class QueueTransportWorker(
     private fun transcribeAudio(
         file: File,
         conversationContext: VisibleConversationContext?,
-        screenshotFile: File?
+        screenshotFile: File?,
+        braiCmdFunction: String
     ): DictationResponse {
         val config = ConfigStore(appContext)
         val checkpoint = TranscriptionCheckpointStore.read(file)
@@ -165,6 +180,7 @@ internal class QueueTransportWorker(
                 provider = speech.provider,
                 model = speech.model,
                 fallbackUsed = false,
+                notice = null,
                 audioDurationMs = audioDurationMs(file),
                 postProcessed = false,
                 postProcessingProvider = "",
@@ -173,7 +189,7 @@ internal class QueueTransportWorker(
                 postProcessingOutputChars = 0
             )
         } else {
-            client.uploadAudio(file, conversationContext, screenshotFile)
+            client.uploadAudio(file, conversationContext, screenshotFile, braiCmdFunction)
         }
         if (checkpoint == null && raw.text.isNotBlank()) TranscriptionCheckpointStore.save(file, raw)
         if (!config.postProcessingEnabled || raw.postProcessed || raw.text.isBlank()) return raw
@@ -246,6 +262,7 @@ internal class QueueTransportWorker(
             provider = provider,
             model = model,
             inboxDelivered = inboxDelivered,
+            serverNotice = serverNotice,
             permanentFailureMessage = permanentFailureMessage
         )
 
@@ -253,12 +270,12 @@ internal class QueueTransportWorker(
         when (error) {
             is QueueCorruptItemException -> error.message.orEmpty()
             is ServerResponseException -> when (error.statusCode) {
-                413 -> "Данные слишком большие и перемещены в карантин."
-                415 -> "Формат данных не поддерживается; элемент перемещен в карантин."
-                422 -> "Данные повреждены; элемент перемещен в карантин."
-                else -> "Сервер отклонил данные; элемент перемещен в карантин."
+                413 -> "Файл слишком большой"
+                415 -> "Формат не поддержан"
+                422 -> "Данные повреждены"
+                else -> "Запрос отклонён"
             }
-            else -> "Элемент очереди поврежден и перемещен в карантин."
+            else -> "Данные повреждены"
         }
 
     private sealed class PendingItem(open val file: File) {

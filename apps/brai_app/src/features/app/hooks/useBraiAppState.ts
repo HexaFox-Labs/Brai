@@ -90,6 +90,7 @@ export function useBraiAppState(initialSection: SectionId) {
   const [inboxPendingCount, setInboxPendingCount] = useState(0);
   const [busy, setBusy] = useState(false);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const authTransitionRef = useRef(0);
   const bootPromiseRef = useRef<Promise<void> | null>(null);
   const authMode = resolveAuthMode(isProductionEnvironment());
   const [timerBusy, setTimerBusy] = useState(false);
@@ -252,6 +253,24 @@ export function useBraiAppState(initialSection: SectionId) {
       setBusy(false);
     }
   }
+
+  const provisionBraiCmdDeviceToken = useCallback(
+    async (device: { deviceId: string; clientVersion?: string; appPackage?: string }) => {
+      try {
+        return await apiRef.current.braiCmdDeviceToken(device);
+      } catch (error) {
+        if (error instanceof Error && error.name === "UnauthorizedError") {
+          authTransitionRef.current += 1;
+          setAuthUser(null);
+          await ensureClientUser(null);
+          setLocalSnapshotReady(true);
+          setSyncStatus("auth_required");
+        }
+        throw error;
+      }
+    },
+    [],
+  );
 
   async function flushPending(sourceApi = apiRef.current) {
     const queued = await pendingEvents();
@@ -670,44 +689,48 @@ export function useBraiAppState(initialSection: SectionId) {
     return preliminaryUserId ? `preliminary:${preliminaryUserId}` : null;
   }
   async function onVerifyOtp(email: string, otp: string, context?: AuthOnboardingContext) {
+    const authTransition = ++authTransitionRef.current;
     setBusy(true);
     try {
       const result = await api.verifyOtp(email, otp, context);
-      if (result.authenticated) {
-        setAuthUser(result.user ?? null);
-        await ensureClientUser(result.user?.id ?? null);
-        resetUserSnapshots();
-        setSyncStatus("connecting");
-        await refreshAll();
-      }
+      if (!result.authenticated || !result.user) throw new Error("authentication_failed");
+      if (authTransitionRef.current !== authTransition) throw new Error("authentication_superseded");
+      setAuthUser(result.user);
+      await ensureClientUser(result.user.id);
+      resetUserSnapshots();
+      setSyncStatus("connecting");
+      await refreshAll();
     } catch (error) {
-      setSyncStatus("auth_required");
+      if (authTransitionRef.current === authTransition) setSyncStatus("auth_required");
       throw error;
     } finally {
-      setBusy(false);
+      if (authTransitionRef.current === authTransition) setBusy(false);
     }
   }
 
   async function onEmailLogin(email: string, context?: AuthOnboardingContext) {
+    const authTransition = ++authTransitionRef.current;
     setBusy(true);
     try {
       const result = await api.testEmailLogin(email, context);
-      if (result.authenticated) {
-        setAuthUser(result.user ?? null);
-        await ensureClientUser(result.user?.id ?? null);
-        resetUserSnapshots();
-        setSyncStatus("connecting");
-        await refreshAll();
-      }
+      if (!result.authenticated || !result.user) throw new Error("authentication_failed");
+      if (authTransitionRef.current !== authTransition) throw new Error("authentication_superseded");
+      setAuthUser(result.user);
+      await ensureClientUser(result.user.id);
+      resetUserSnapshots();
+      setSyncStatus("connecting");
+      await refreshAll();
     } catch (error) {
-      setSyncStatus("auth_required");
+      if (authTransitionRef.current === authTransition) setSyncStatus("auth_required");
       throw error;
     } finally {
-      setBusy(false);
+      if (authTransitionRef.current === authTransition) setBusy(false);
     }
   }
 
   async function onLogout() {
+    await bootPromiseRef.current;
+    authTransitionRef.current += 1;
     await bootPromiseRef.current;
     const onboarding = loadOnboardingState();
     const preliminaryDisplayName = onboarding.name.trim() || authUser?.name || "Brai";
@@ -731,6 +754,10 @@ export function useBraiAppState(initialSection: SectionId) {
 
   function handleError(error: unknown) {
     if (error instanceof Error && error.name === "UnauthorizedError") {
+      authTransitionRef.current += 1;
+      setAuthUser(null);
+      void ensureClientUser(null);
+      setLocalSnapshotReady(true);
       setSyncStatus("auth_required");
       return;
     }
@@ -785,6 +812,7 @@ export function useBraiAppState(initialSection: SectionId) {
 
   useEffect(() => {
     let cancelled = false;
+    const bootAuthTransition = authTransitionRef.current;
 
     async function boot() {
       await ensureClientMeta();
@@ -794,7 +822,7 @@ export function useBraiAppState(initialSection: SectionId) {
       setApiBase(resolvedApiBase);
 
       const session = await bootApi.session();
-      if (cancelled) return;
+      if (cancelled || authTransitionRef.current !== bootAuthTransition) return;
       if (!session.authenticated) {
         setAuthUser(null);
         resetUserSnapshots();
@@ -816,7 +844,7 @@ export function useBraiAppState(initialSection: SectionId) {
         pendingInboxEvents(),
       ]);
 
-      if (cancelled) return;
+      if (cancelled || authTransitionRef.current !== bootAuthTransition) return;
       setPendingCount(queued.length);
       setActionPendingCount(queuedActions.length);
       setInboxPendingCount(queuedInbox.length);
@@ -1068,7 +1096,7 @@ export function useBraiAppState(initialSection: SectionId) {
     setSyncStatus,
   });
 
-  return { actionOverlayOpen, actions, actionsInfoActive, active, appSettings, authDisplayName: authUser?.name ?? "", authMode, authUser, bundlePublishedAt, busy, displaySyncStatus, focusBackground, focusContextPanel, focusGoalActive, focusHistoryActive, goal, history, inbox, inboxInfoActive, localSnapshotReady, markMobileContextPanelClosing, mobileContextPanel, mobileMenuOpen, ...actionCommands, ...inboxCommands, onDeleteFocusSession, onEditFocusInterval, onEditFocusSession, onEmailLogin, onLogout, onRequestOtp, onStart, onStartActionFocus, onStop, onStopActionFocus, onSwitchActionFocus, onUpdateAppSettings: updateAppSettings, onVerifyOtp, openSettingsPage, otaCheckedAt, otaRefreshing, otaState, refreshEngineOnce, refreshOtaStateOnce, section, selectSection, setActionOverlayOpen, setFocusBackground, setMobileContextPanel: setMobileContextPanelState, setMobileMenuOpen, setTheme, swipeNavigation, theme, timer, timerBusy, todayKey, toggleActionsInfoPanel, toggleFocusContextPanel, toggleInboxInfoPanel, totalPendingCount, versionCheckedAt, versionError, versionRefreshing, versionState };
+  return { actionOverlayOpen, actions, actionsInfoActive, active, appSettings, authDisplayName: authUser?.name ?? "", authMode, authUser, bundlePublishedAt, busy, displaySyncStatus, focusBackground, focusContextPanel, focusGoalActive, focusHistoryActive, goal, history, inbox, inboxInfoActive, localSnapshotReady, markMobileContextPanelClosing, mobileContextPanel, mobileMenuOpen, ...actionCommands, ...inboxCommands, onDeleteFocusSession, onEditFocusInterval, onEditFocusSession, onEmailLogin, onLogout, onRequestOtp, onStart, onStartActionFocus, onStop, onStopActionFocus, onSwitchActionFocus, onUpdateAppSettings: updateAppSettings, onVerifyOtp, openSettingsPage, otaCheckedAt, otaRefreshing, otaState, provisionBraiCmdDeviceToken, refreshEngineOnce, refreshOtaStateOnce, section, selectSection, setActionOverlayOpen, setFocusBackground, setMobileContextPanel: setMobileContextPanelState, setMobileMenuOpen, setTheme, swipeNavigation, theme, timer, timerBusy, todayKey, toggleActionsInfoPanel, toggleFocusContextPanel, toggleInboxInfoPanel, totalPendingCount, versionCheckedAt, versionError, versionRefreshing, versionState };
 }
 
 function loadAppSettingsPreference(): AppSettings {

@@ -19,7 +19,11 @@ describe("Brai CMD native snapshot race", () => {
     stubAndroidCapacitor();
     const listenerReady = deferred<{ remove: () => Promise<void> }>();
     const initialRead = deferred<ReturnType<typeof braiCmdSettingsSnapshot>>();
-    cmdPlugin.addListener.mockReturnValueOnce(listenerReady.promise);
+    cmdPlugin.addListener.mockImplementation((eventName) =>
+      eventName === "stateChanged"
+        ? listenerReady.promise
+        : Promise.resolve({ remove: vi.fn(async () => undefined) }),
+    );
     cmdPlugin.getSettings.mockReturnValueOnce(initialRead.promise);
     render(<BraiApp />);
 
@@ -36,7 +40,7 @@ describe("Brai CMD native snapshot race", () => {
 
     const fresh = braiCmdSettingsSnapshot();
     fresh.settings.mainDictationEnabled = false;
-    const listener = cmdPlugin.addListener.mock.calls[0]?.[1] as ((value: typeof fresh) => void);
+    const listener = cmdPlugin.addListener.mock.calls.find(([eventName]) => eventName === "stateChanged")?.[1] as ((value: typeof fresh) => void);
     act(() => listener(fresh));
     expect(await screen.findByRole("switch", { name: "Главная кнопка включена" })).not.toBeChecked();
 

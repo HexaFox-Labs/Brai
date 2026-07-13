@@ -24,6 +24,7 @@ type BraiCmdPlugin = {
   setQueuePausedMode(options: { enabled: boolean }): Promise<BraiCmdState>;
   retryQueue(): Promise<BraiCmdState>;
   addListener(eventName: "onboardingEvent", listenerFunc: (event: BraiCmdOnboardingEvent) => void): Promise<PluginListenerHandle>;
+  addListener(eventName: "credentialRefreshRequired", listenerFunc: () => void): Promise<PluginListenerHandle>;
   addListener(eventName: "stateChanged", listenerFunc: (snapshot: BraiCmdSnapshot) => void): Promise<PluginListenerHandle>;
 };
 
@@ -35,6 +36,9 @@ export type BraiCmdState = {
   voiceOnlyMode?: boolean;
   queuePausedMode?: boolean;
   overlayEnabled?: boolean;
+  deviceId?: string;
+  clientVersion?: string;
+  appPackage?: string;
 };
 
 export type BraiCmdPreliminaryProfile = BraiCmdState & {
@@ -363,6 +367,15 @@ export async function listenBraiCmdOnboardingEvents(
   if (!isNativeAndroid()) return null;
   try {
     return await BraiCmd.addListener("onboardingEvent", onEvent);
+  } catch {
+    return null;
+  }
+}
+
+export async function listenBraiCmdCredentialRefreshRequired(onRefresh: () => void): Promise<PluginListenerHandle | null> {
+  if (!isNativeAndroid()) return null;
+  try {
+    return await BraiCmd.addListener("credentialRefreshRequired", onRefresh);
   } catch {
     return null;
   }

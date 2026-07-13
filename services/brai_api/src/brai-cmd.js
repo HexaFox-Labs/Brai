@@ -4,6 +4,8 @@ const GROQ_TRANSCRIPTIONS_URL = 'https://api.groq.com/openai/v1/audio/transcript
 const GROQ_CHAT_COMPLETIONS_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const OPENAI_TRANSCRIPTIONS_URL = 'https://api.openai.com/v1/audio/transcriptions';
 const MAX_POST_PROCESSING_PROMPT_CHARS = 4000;
+const BRAI_CMD_FUNCTION_DISABLED_MESSAGE_KEY = 'message.function.disabled.default';
+const BRAI_CMD_FUNCTION_DISABLED_CODE = 'function_disabled';
 
 export function braiCmdConfigFromEnv(env = process.env) {
   return {
@@ -196,7 +198,11 @@ export async function handleBraiCmdAdminRoute({ req, res, url, store, sendJson }
       url.pathname === '/v1/airwhisper/admin/settings'
     )) {
       const body = await readJsonBody(req, 64 * 1024);
-      const settings = store.setBraiCmdRegistrationEnabled(Boolean(body.registrationEnabled));
+      const settings = store.setBraiCmdSettings({
+        ...(Object.hasOwn(body, 'registrationEnabled') ? { registrationEnabled: Boolean(body.registrationEnabled) } : {}),
+        ...(Object.hasOwn(body, 'messages') ? { messages: body.messages } : {}),
+        ...(Object.hasOwn(body, 'functions') ? { functions: body.functions } : {})
+      });
       sendJson(req, res, 200, { settings });
       return;
     }
@@ -385,6 +391,10 @@ async function handleDictate({ req, res, store, runtime, access, sendJson, route
 
     const body = await readBody(req, maxRequestBytes);
     const multipart = parseMultipart(body, parseBoundary(contentType));
+    requireBraiCmdFunctionEnabled(
+      store,
+      braiCmdFunctionField(multipart.fields, 'main_dictation')
+    );
     audioDurationMs = parseDurationMs(multipart.fields.audioDurationMs ?? multipart.fields.durationMs);
     audio = multipart.files.find((file) => file.fieldName === 'audio' || file.fieldName === 'file');
     if (!audio) throw new BraiCmdHttpError(400, 'Missing audio file field', 'missing_audio');
@@ -458,6 +468,7 @@ async function handleDictate({ req, res, store, runtime, access, sendJson, route
       },
       postProcessed,
       postProcessingModel,
+      notice: store.braiCmdNotice('message.dictate.success.main'),
       postProcessingInputChars,
       postProcessingOutputChars
     });
@@ -786,6 +797,20 @@ function normalizedContextJsonField(fields) {
   }
 }
 
+function braiCmdFunctionField(fields, fallback) {
+  return firstField(fields, ['braiCmdFunction', 'brai_cmd_function', 'functionKey', 'function_key']) || fallback;
+}
+
+function requireBraiCmdFunctionEnabled(store, key) {
+  if (store.braiCmdFunctionEnabled?.(key)) return;
+  const notice = store.braiCmdNotice?.(BRAI_CMD_FUNCTION_DISABLED_MESSAGE_KEY, 'error') ?? {
+    key: BRAI_CMD_FUNCTION_DISABLED_MESSAGE_KEY,
+    text: 'Функция временно недоступна',
+    tone: 'error'
+  };
+  throw new BraiCmdHttpError(403, notice.text, BRAI_CMD_FUNCTION_DISABLED_CODE, { notice });
+}
+
 function truthyField(value) {
   return ['1', 'true', 'yes', 'on'].includes(String(value ?? '').trim().toLowerCase());
 }
@@ -923,17 +948,22 @@ function parsePositiveInt(value, fallback) {
 
 function writeBraiCmdError(req, res, sendJson, error) {
   if (error instanceof BraiCmdHttpError) {
-    sendJson(req, res, error.status, { error: error.message, code: error.code });
+    sendJson(req, res, error.status, {
+      error: error.message,
+      code: error.code,
+      ...(error.notice ? { notice: error.notice } : {})
+    });
     return;
   }
   sendJson(req, res, 500, { error: 'Internal error', code: 'internal_error' });
 }
 
 class BraiCmdHttpError extends Error {
-  constructor(status, message, code = 'bad_request') {
+  constructor(status, message, code = 'bad_request', options = {}) {
     super(message);
     this.status = status;
     this.code = code;
+    this.notice = options.notice ?? null;
   }
 }
 

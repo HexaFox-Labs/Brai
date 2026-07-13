@@ -165,7 +165,12 @@ export function setupBraiAppTest() {
     cmdPlugin.ensureAccess.mockResolvedValue({ accessGranted: true });
     cmdPlugin.downloadAudio.mockResolvedValue({ ok: true, path: "Downloads/Brai CMD/audio.m4a" });
     cmdPlugin.getSettings.mockResolvedValue(braiCmdSettingsSnapshot());
-    cmdPlugin.getState.mockResolvedValue({ accessGranted: true });
+    cmdPlugin.getState.mockResolvedValue({
+      accessGranted: true,
+      deviceId: "test-install",
+      clientVersion: "60006",
+      appPackage: "world.brightos.brai.preview.b.work",
+    });
     cmdPlugin.openPermission.mockResolvedValue(braiCmdSettingsSnapshot());
     cmdPlugin.preparePreliminaryProfile.mockResolvedValue({
       accessGranted: true,
@@ -180,9 +185,9 @@ export function setupBraiAppTest() {
     cmdPlugin.disconnectProvider.mockResolvedValue(braiCmdSettingsSnapshot());
     cmdPlugin.saveProvider.mockResolvedValue(braiCmdSettingsSnapshot());
     cmdPlugin.setAccessKey.mockResolvedValue({ accessGranted: true });
-    cmdPlugin.setOverlayEnabled.mockResolvedValue({ overlayEnabled: true });
-    cmdPlugin.setQueuePausedMode.mockResolvedValue({ queuePausedMode: true });
-    cmdPlugin.setVoiceOnlyMode.mockResolvedValue({ voiceOnlyMode: true });
+    cmdPlugin.setOverlayEnabled.mockImplementation(async ({ enabled }: { enabled: boolean }) => ({ overlayEnabled: enabled }));
+    cmdPlugin.setQueuePausedMode.mockImplementation(async ({ enabled }: { enabled: boolean }) => ({ queuePausedMode: enabled }));
+    cmdPlugin.setVoiceOnlyMode.mockImplementation(async ({ enabled }: { enabled: boolean }) => ({ voiceOnlyMode: enabled }));
     cmdPlugin.testConnection.mockResolvedValue({ ok: true, message: "ok" });
     cmdPlugin.testProvider.mockResolvedValue({ ok: true, message: "ok", models: ["test-model"], model: "test-model" });
     cmdPlugin.updateSettings.mockResolvedValue(braiCmdSettingsSnapshot());
@@ -232,6 +237,12 @@ export function setupBraiAppTest() {
       if (url.endsWith("/v1/version")) {
         return new Response(JSON.stringify(testVersionState("0.0.10")), {
           status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.endsWith("/v1/brai-cmd/device-token")) {
+        return new Response(JSON.stringify({ token: "authenticated-device-token", status: "active" }), {
+          status: 201,
           headers: { "content-type": "application/json" },
         });
       }

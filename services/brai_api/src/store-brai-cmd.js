@@ -1,25 +1,127 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 
+const DEFAULT_BRAI_CMD_MESSAGES = Object.freeze({
+  'message.inbox.created.default': 'Отправлено во входящие',
+  'message.inbox.duplicate.default': 'Уже во входящих',
+  'message.dictate.success.main': '',
+  'message.function.disabled.default': 'Функция временно недоступна'
+});
+
+const DEFAULT_BRAI_CMD_FUNCTIONS = Object.freeze({
+  main_dictation: { key: 'main_dictation', title: 'Диктовка голос в текст', enabled: true },
+  idea_voice_inbox: { key: 'idea_voice_inbox', title: 'Идея голосом во входящие', enabled: true },
+  screenshot_inbox: { key: 'screenshot_inbox', title: 'Скриншот во входящие', enabled: true },
+  screenshot_voice_inbox: { key: 'screenshot_voice_inbox', title: 'Скриншот и голос во входящие', enabled: true },
+  chat_context_inbox: { key: 'chat_context_inbox', title: 'JSON чата и голос во входящие', enabled: true },
+  save_context_inbox: { key: 'save_context_inbox', title: 'Сохранить JSON и голос во входящие', enabled: true }
+});
+
 export const braiCmdStoreMethods = {
   braiCmdSettings() {
     const row = this.db.prepare("SELECT value FROM brai_cmd_settings WHERE key = 'registration_enabled'").get();
-    return { registrationEnabled: row?.value !== 'false' };
+    return {
+      registrationEnabled: row?.value !== 'false',
+      messages: this.braiCmdMessages(),
+      functions: this.braiCmdFunctions()
+    };
+  },
+
+  braiCmdMessages() {
+    const rows = this.db.prepare("SELECT key, value FROM brai_cmd_settings WHERE key LIKE 'message.%'").all();
+    const saved = Object.fromEntries(rows.map((row) => [row.key, cleanNoticeText(row.value)]));
+    return { ...DEFAULT_BRAI_CMD_MESSAGES, ...saved };
+  },
+
+  braiCmdNotice(key, tone = 'success') {
+    const text = this.braiCmdMessages()[key] ?? DEFAULT_BRAI_CMD_MESSAGES[key] ?? '';
+    const clean = cleanNoticeText(text);
+    return clean ? { key, text: clean, tone: cleanNoticeTone(tone) } : null;
+  },
+
+  braiCmdFunctions() {
+    const rows = this.db.prepare("SELECT key, value FROM brai_cmd_settings WHERE key LIKE 'function.%.enabled'").all();
+    const saved = new Map();
+    for (const row of rows) {
+      const key = functionKeyFromSettingKey(row.key);
+      if (key && Object.hasOwn(DEFAULT_BRAI_CMD_FUNCTIONS, key)) {
+        saved.set(key, row.value !== 'false');
+      }
+    }
+    return Object.fromEntries(Object.entries(DEFAULT_BRAI_CMD_FUNCTIONS).map(([key, value]) => [
+      key,
+      { ...value, enabled: saved.has(key) ? saved.get(key) : value.enabled }
+    ]));
+  },
+
+  braiCmdFunctionEnabled(key) {
+    const normalized = cleanFunctionKey(key);
+    if (!Object.hasOwn(DEFAULT_BRAI_CMD_FUNCTIONS, normalized)) return false;
+    return this.braiCmdFunctions()[normalized]?.enabled !== false;
   },
 
   setBraiCmdRegistrationEnabled(registrationEnabled) {
+    return this.setBraiCmdSettings({ registrationEnabled });
+  },
+
+  setBraiCmdSettings({ registrationEnabled, messages, functions } = {}) {
+    const now = new Date().toISOString();
+    const touched = {};
+    if (registrationEnabled !== undefined) {
+      this.db.prepare(`
+        INSERT INTO brai_cmd_settings (key, value, updated_at_utc)
+        VALUES ('registration_enabled', ?, ?)
+        ON CONFLICT(key) DO UPDATE SET
+          value = excluded.value,
+          updated_at_utc = excluded.updated_at_utc
+      `).run(registrationEnabled ? 'true' : 'false', now);
+      touched.registration_enabled = Boolean(registrationEnabled);
+    }
+    if (messages && typeof messages === 'object' && !Array.isArray(messages)) {
+      const upsert = this.db.prepare(`
+        INSERT INTO brai_cmd_settings (key, value, updated_at_utc)
+        VALUES (?, ?, ?)
+        ON CONFLICT(key) DO UPDATE SET
+          value = excluded.value,
+          updated_at_utc = excluded.updated_at_utc
+      `);
+      for (const [key, value] of Object.entries(messages)) {
+        if (!Object.hasOwn(DEFAULT_BRAI_CMD_MESSAGES, key)) continue;
+        upsert.run(key, cleanNoticeText(value), now);
+        touched[key] = true;
+      }
+    }
+    if (functions && typeof functions === 'object' && !Array.isArray(functions)) {
+      const upsert = this.db.prepare(`
+        INSERT INTO brai_cmd_settings (key, value, updated_at_utc)
+        VALUES (?, ?, ?)
+        ON CONFLICT(key) DO UPDATE SET
+          value = excluded.value,
+          updated_at_utc = excluded.updated_at_utc
+      `);
+      for (const [key, value] of Object.entries(functions)) {
+        const normalized = cleanFunctionKey(key);
+        if (!Object.hasOwn(DEFAULT_BRAI_CMD_FUNCTIONS, normalized)) continue;
+        const enabled = cleanFunctionEnabled(value);
+        if (enabled === null) continue;
+        const settingKey = `function.${normalized}.enabled`;
+        upsert.run(settingKey, enabled ? 'true' : 'false', now);
+        touched[settingKey] = enabled;
+      }
+    }
+    if (Object.keys(touched).length === 0) return this.braiCmdSettings();
     this.db.prepare(`
       INSERT INTO brai_cmd_settings (key, value, updated_at_utc)
-      VALUES ('registration_enabled', ?, ?)
+      VALUES ('messages_revision', ?, ?)
       ON CONFLICT(key) DO UPDATE SET
         value = excluded.value,
         updated_at_utc = excluded.updated_at_utc
-    `).run(registrationEnabled ? 'true' : 'false', new Date().toISOString());
+    `).run(now, now);
     safeRecordLog(this, {
       source: 'brai-cmd',
       operation: 'brai_cmd.admin_settings_update',
       status: 'done',
       message: 'Brai Cmd admin settings updated',
-      jsonData: { registration_enabled: Boolean(registrationEnabled) }
+      jsonData: touched
     });
     return this.braiCmdSettings();
   },
@@ -239,13 +341,16 @@ export const braiCmdStoreMethods = {
   issueBraiCmdAccess(input) {
     const token = `aw_${randomBytes(32).toString('base64url')}`;
     const now = new Date().toISOString();
+    const userId = cleanMetadata(input.userId) || null;
+    const deviceIdHash = input.deviceId ? hashSecret(input.deviceId.trim()) : null;
     const record = {
       id: randomUUID(),
       displayName: normalizeDisplayName(input.displayName),
       tokenHash: hashSecret(token),
-      deviceIdHash: input.deviceId ? hashSecret(input.deviceId.trim()) : null,
+      deviceIdHash,
+      userId,
       status: 'active',
-      source: input.source === 'admin' ? 'admin' : 'self_service',
+      source: input.source === 'admin' ? 'admin' : input.source === 'authenticated' ? 'authenticated' : 'self_service',
       createdAt: now,
       activatedAt: input.deviceId ? now : null,
       lastUsedAt: null,
@@ -253,26 +358,36 @@ export const braiCmdStoreMethods = {
       appPackage: cleanMetadata(input.appPackage),
       preliminaryUsersId: cleanMetadata(input.preliminaryUsersId)
     };
-    this.db.prepare(`
-      INSERT INTO brai_cmd_access_tokens (
-        id, display_name, token_hash, device_id_hash, status, source,
-        created_at_utc, activated_at_utc, last_used_at_utc, client_version, app_package,
-        preliminary_users_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      record.id,
-      record.displayName,
-      record.tokenHash,
-      record.deviceIdHash,
-      record.status,
-      record.source,
-      record.createdAt,
-      record.activatedAt,
-      record.lastUsedAt,
-      record.clientVersion,
-      record.appPackage,
-      record.preliminaryUsersId || null
-    );
+    this.db.transaction(() => {
+      if (record.userId && record.deviceIdHash) {
+        this.db.prepare(`
+          UPDATE brai_cmd_access_tokens
+          SET status = 'revoked'
+          WHERE user_id = ? AND device_id_hash = ? AND status = 'active'
+        `).run(record.userId, record.deviceIdHash);
+      }
+      this.db.prepare(`
+        INSERT INTO brai_cmd_access_tokens (
+          id, display_name, token_hash, device_id_hash, user_id, status, source,
+          created_at_utc, activated_at_utc, last_used_at_utc, client_version, app_package,
+          preliminary_users_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        record.id,
+        record.displayName,
+        record.tokenHash,
+        record.deviceIdHash,
+        record.userId,
+        record.status,
+        record.source,
+        record.createdAt,
+        record.activatedAt,
+        record.lastUsedAt,
+        record.clientVersion,
+        record.appPackage,
+        record.preliminaryUsersId || null
+      );
+    })();
     safeRecordLog(this, {
       dt: record.createdAt,
       source: 'brai-cmd',
@@ -284,6 +399,7 @@ export const braiCmdStoreMethods = {
         source: record.source,
         device_bound: Boolean(record.deviceIdHash),
         preliminary_users_id: record.preliminaryUsersId || null,
+        user_id: record.userId,
         client_version_present: Boolean(record.clientVersion),
         app_package_present: Boolean(record.appPackage)
       }
@@ -439,7 +555,7 @@ export const braiCmdStoreMethods = {
       FROM brai_cmd_access_tokens t
       LEFT JOIN brai_cmd_usage_events u ON u.access_token_id = t.id
       LEFT JOIN preliminary_users p ON p.id = t.preliminary_users_id
-      LEFT JOIN "user" au ON au.id = p.user_id
+      LEFT JOIN "user" au ON au.id = COALESCE(t.user_id, p.user_id)
       GROUP BY t.id, p.id, au.id
       ORDER BY t.created_at_utc DESC
     `).all().map((row) => formatAdminToken(row));
@@ -474,12 +590,13 @@ export const braiCmdStoreMethods = {
                p.status AS preliminary_status,
                p.user_id AS preliminary_user_id,
                p.display_name AS preliminary_display_name,
+               t.user_id,
                au.email AS auth_user_email,
                au.name AS auth_user_name
         FROM brai_cmd_usage_events u
         LEFT JOIN brai_cmd_access_tokens t ON t.id = u.access_token_id
         LEFT JOIN preliminary_users p ON p.id = t.preliminary_users_id
-        LEFT JOIN "user" au ON au.id = p.user_id
+        LEFT JOIN "user" au ON au.id = COALESCE(t.user_id, p.user_id)
         ORDER BY u.created_at_utc DESC
         LIMIT 50
       `).all().map((row) => ({
@@ -512,6 +629,7 @@ function formatBraiCmdToken(row) {
     tokenHash: row.token_hash,
     deviceIdHash: row.device_id_hash,
     preliminaryUsersId: row.preliminary_users_id,
+    userId: row.user_id,
     status: row.status,
     source: row.source,
     createdAt: row.created_at_utc,
@@ -550,6 +668,15 @@ function formatAdminToken(row) {
 }
 
 function adminOwner(row) {
+  if (row.user_id) {
+    return {
+      type: 'registered',
+      userId: row.user_id,
+      label: row.auth_user_email || row.auth_user_name || row.display_name || 'Registered user',
+      email: row.auth_user_email || null,
+      name: row.auth_user_name || null
+    };
+  }
   if (!row.preliminary_users_id) return { type: 'legacy', label: 'Legacy access token' };
   if (row.preliminary_status === 'converted' && row.preliminary_user_id) {
     return {
@@ -613,9 +740,40 @@ function cleanMetadata(value) {
   return String(value ?? '').trim().slice(0, 120);
 }
 
+function functionKeyFromSettingKey(key) {
+  const value = String(key ?? '');
+  if (!value.startsWith('function.') || !value.endsWith('.enabled')) return '';
+  return cleanFunctionKey(value.slice('function.'.length, -'.enabled'.length));
+}
+
+function cleanFunctionKey(value) {
+  return String(value ?? '').trim().toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 80);
+}
+
+function cleanFunctionEnabled(value) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const clean = value.trim().toLowerCase();
+    if (clean === 'true') return true;
+    if (clean === 'false') return false;
+  }
+  if (value && typeof value === 'object' && !Array.isArray(value) && typeof value.enabled === 'boolean') {
+    return value.enabled;
+  }
+  return null;
+}
+
 function safeNumber(value) {
   const number = Number(value ?? 0);
   return Number.isFinite(number) ? Math.max(0, Math.round(number)) : 0;
+}
+
+function cleanNoticeText(value) {
+  return String(value ?? '').trim().replace(/[.。．]+$/u, '').trim().slice(0, 120);
+}
+
+function cleanNoticeTone(value) {
+  return ['success', 'warning', 'error', 'info'].includes(value) ? value : 'success';
 }
 
 function safeRecordLog(store, input) {

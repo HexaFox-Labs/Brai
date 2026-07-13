@@ -177,7 +177,10 @@ describe("BraiApp actions", () => {
       expect(await pendingActivityEvents()).toEqual(expect.arrayContaining([
         expect.objectContaining({
           actionId: "action-widget",
+          attemptCount: 1,
+          lastError: "offline",
           payload: { status: "Done" },
+          status: "failed",
           type: "set_status",
         }),
       ]));
@@ -222,7 +225,10 @@ describe("BraiApp actions", () => {
       expect(await pendingActivityEvents()).toEqual(expect.arrayContaining([
         expect.objectContaining({
           actionId: "action-widget-done",
+          attemptCount: 1,
+          lastError: "offline",
           payload: { status: "New" },
+          status: "failed",
           type: "set_status",
         }),
       ]));
@@ -247,6 +253,13 @@ describe("BraiApp actions", () => {
   });
 
   it("creates a mobile action with a description from the composer", async () => {
+    const defaultFetch = vi.mocked(fetch).getMockImplementation();
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url.endsWith("/v1/activities/sync")) throw new Error("offline");
+      if (!defaultFetch) throw new Error("missing_default_fetch");
+      return await defaultFetch(input, init);
+    });
     render(<BraiApp />);
 
     fireEvent.click(document.querySelector(".actions-fab") as HTMLElement);

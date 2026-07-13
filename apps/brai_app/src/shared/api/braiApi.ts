@@ -25,6 +25,11 @@ export type AuthSession = {
   user?: AuthUser | null;
 };
 
+export type BraiCmdDeviceToken = {
+  token: string;
+  status: "active";
+};
+
 export type AuthOnboardingContext = {
   name?: string;
   preliminaryUserId?: string;
@@ -242,6 +247,13 @@ export class BraiApi {
 
   async settings(): Promise<AppSettings> {
     return this.request("/v1/settings");
+  }
+
+  async braiCmdDeviceToken(device: { deviceId: string; clientVersion?: string; appPackage?: string }): Promise<BraiCmdDeviceToken> {
+    return this.request("/v1/brai-cmd/device-token", {
+      method: "POST",
+      json: device,
+    });
   }
 
   async updateSettings(patch: Partial<Pick<AppSettings, "display_timezone" | "model_provider_mode" | "inbox_text_model" | "inbox_image_model">>): Promise<AppSettings> {
