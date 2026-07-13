@@ -196,7 +196,7 @@ export function validateTemporalDrainState({ rows, temporal, catalog }) {
     if (row.status === "queued") {
       throw new GoalAgentDrainError("goal_agent_drain_queued_temporal_inconsistent");
     }
-    validateTemporalExecution(execution, row, catalog);
+    validateTemporalInventoryExecution(execution, row, catalog);
   }
 }
 
@@ -358,12 +358,18 @@ export async function runGoalAgentTemporalEmptyCheck({
 }
 
 function validateTemporalExecution(execution, row, catalog) {
+  validateTemporalInventoryExecution(execution, row, catalog);
+  if (!temporalVersionMatches(execution.raw, catalog.agents[row.agent_id])) {
+    throw new GoalAgentDrainError("goal_agent_drain_temporal_contract_mismatch");
+  }
+}
+
+function validateTemporalInventoryExecution(execution, row, catalog) {
   const expected = catalog.agents[row.agent_id];
   if (execution.status !== "RUNNING"
     || execution.workflowId !== row.workflow_id
     || (row.run_id && execution.runId !== row.run_id)
-    || execution.type !== expected.workflowType
-    || !temporalVersionMatches(execution.raw, expected)) {
+    || execution.type !== expected.workflowType) {
     throw new GoalAgentDrainError("goal_agent_drain_temporal_contract_mismatch");
   }
 }

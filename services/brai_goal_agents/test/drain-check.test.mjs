@@ -176,6 +176,30 @@ test("exact running workflow matches DB run, workflow type, and pinned deploymen
   assert.equal(temporalVersionMatches(execution.raw, { ...expected, buildId: "wrong" }), false);
 });
 
+test("list inventory may omit version metadata when exact describe pins the deployment", () => {
+  const running = row({ status: "running", run_id: "run-exact" });
+  const rows = validateFrozenDrainRows([running], catalog);
+  const inventory = temporal(running, { raw: {} });
+  assert.doesNotThrow(() => validateTemporalDrainState({
+    rows,
+    temporal: { described: [temporal(running)], visible: [inventory] },
+    catalog
+  }));
+  assert.throws(() => validateTemporalDrainState({
+    rows,
+    temporal: { described: [inventory], visible: [inventory] },
+    catalog
+  }), errorCode("goal_agent_drain_temporal_contract_mismatch"));
+  assert.throws(() => validateTemporalDrainState({
+    rows,
+    temporal: {
+      described: [temporal(running)],
+      visible: [temporal(running, { runId: "run-other", raw: {} })]
+    },
+    catalog
+  }), errorCode("goal_agent_drain_temporal_contract_mismatch"));
+});
+
 test("running mismatch, Temporal orphan, and queued bound run fail closed", () => {
   const running = row({ status: "running", run_id: "run-exact" });
   const rows = validateFrozenDrainRows([running], catalog);
