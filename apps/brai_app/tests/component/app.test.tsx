@@ -5,7 +5,6 @@ import { BraiApp } from "@/features/app/BraiApp";
 import { AuthPanel } from "@/features/app/chrome/AppChrome";
 import { FocusSection } from "@/features/app/sections/focus/FocusSection";
 import { BraiApi } from "@/shared/api/braiApi";
-import { setMeta } from "@/shared/storage/db";
 import { pendingEvents, saveGoalCache, saveHistoryCache } from "@/shared/storage/syncStore";
 import { emptyGoal, emptyHistory } from "@/shared/types/timer";
 import { shouldSnapSlidingNumber } from "@/shared/ui/sliding-number";
@@ -76,7 +75,7 @@ describe("BraiApp shell", () => {
     expect(auth.onVerifyOtp).not.toHaveBeenCalled();
   });
 
-  it("uses the OTP form on Preview Android", async () => {
+  it("uses explicit email-only login on Preview Android", async () => {
     stubAndroidCapacitor();
     window.__BRAI_RUNTIME_CONFIG__ = {
       environment: "preview-a",
@@ -96,8 +95,20 @@ describe("BraiApp shell", () => {
     render(<BraiApp />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Войти" }));
-    expect(await screen.findByRole("textbox", { name: "Email" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Получить код" })).toBeInTheDocument();
+    const email = await screen.findByRole("textbox", { name: "Email" });
+    fireEvent.change(email, { target: { value: "random@example.test" } });
+    fireEvent.click(screen.getByRole("button", { name: "Войти" }));
+
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith(
+      "https://a.test.brai.one/api/auth/test-email-login",
+      expect.objectContaining({ method: "POST" }),
+    ));
+    expect(globalThis.fetch).not.toHaveBeenCalledWith(
+      "https://a.test.brai.one/api/auth/otp/send",
+      expect.anything(),
+    );
+    expect(await screen.findByText("Email не подошёл")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Получить код" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Пароль")).not.toBeInTheDocument();
   });
 
@@ -136,12 +147,17 @@ describe("BraiApp shell", () => {
   });
 
   it("redirects anonymous web users to the standalone auth page without rendering the cabinet shell", async () => {
-    await setMeta("currentUserId", null);
     vi.spyOn(BraiApi.prototype, "session").mockResolvedValue({ authenticated: false, user: null });
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = requestUrl(input);
       if (url.includes("/auth/session")) {
         return new Response(JSON.stringify({ authenticated: false, user: null }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.endsWith("/v1/version")) {
+        return new Response(JSON.stringify(testVersionState("0.0.10")), {
           status: 200,
           headers: { "content-type": "application/json" },
         });
@@ -1266,6 +1282,7 @@ function requestUrl(input: RequestInfo | URL): string {
 function authPanelProps() {
   return {
     busy: false,
+    onEmailLogin: vi.fn(async () => undefined),
     onRequestOtp: vi.fn(async () => ({
       success: true,
       expires_in_seconds: 300,
