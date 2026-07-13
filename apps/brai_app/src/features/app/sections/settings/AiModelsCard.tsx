@@ -317,6 +317,7 @@ function ProviderKeyForm(props: {
         <div className="grid gap-2">
           <Label htmlFor="settings-provider">Поставщик</Label>
           <Select
+            name="provider"
             value={form.providerId}
             disabled={locked || form.replacing}
             onValueChange={(value) => onProviderChange(value as AiProviderId)}
@@ -331,6 +332,7 @@ function ProviderKeyForm(props: {
           <Label htmlFor="settings-provider-key">API-ключ</Label>
           <Input
             id="settings-provider-key"
+            name="api_key"
             type="password"
             autoComplete="new-password"
             value={apiKey}

@@ -29,6 +29,8 @@ describe("account AI settings", () => {
     await screen.findByText("Пока нет подключённых поставщиков.");
     expect(screen.getByRole("switch", { name: "Внешние модели по ключам" })).toHaveAttribute("aria-disabled", "true");
     fireEvent.click(screen.getByRole("button", { name: "Добавить ключ" }));
+    expect(document.querySelector('select[name="provider"]')).toBeInTheDocument();
+    expect(screen.getByLabelText("API-ключ")).toHaveAttribute("name", "api_key");
     fireEvent.change(screen.getByLabelText("API-ключ"), { target: { value: "sk-user-secret" } });
     fireEvent.click(screen.getByRole("button", { name: "Проверить и сохранить" }));
 

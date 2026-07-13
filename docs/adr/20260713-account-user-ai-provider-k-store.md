@@ -53,7 +53,7 @@ Opt-in live test загружает серверные тестовые OpenAI/G
 
 ## Ссылки
 
-- `openspec/changes/account-user-ai-providers/`
+- `openspec/specs/user-ai-providers/spec.md`
 - `docs/adr/20260712-preliminary-brai-cmd-device-identity.md`
 
 ## Заменяет
