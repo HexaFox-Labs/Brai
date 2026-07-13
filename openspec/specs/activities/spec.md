@@ -9,7 +9,9 @@ Brai SHALL provide an Activities module for task records synchronized between We
 Activity records SHALL reference `activity_types` through `activity_type_id`.
 Product-created user task records SHALL use `activity_type_id = action`.
 Future product-created user operation records MAY use `activity_type_id = operation`.
-Agent service logs SHALL NOT use raw `activities` as their ingest sink.
+New agent-created operation records SHALL be routed through Inbox rather than
+Activities; legacy `activity_type_id = operation` rows MAY remain for historical
+compatibility. Agent service logs SHALL NOT use raw `activities` as their ingest sink.
 
 #### Scenario: Activity is deleted
 - **WHEN** the user deletes an activity
@@ -22,6 +24,11 @@ Agent service logs SHALL NOT use raw `activities` as their ingest sink.
 - **THEN** the activity is removed from the archived list
 - **AND** the activity returns to the active Activities list as `New`
 - **AND** it appears above older active activities without manual order
+
+#### Scenario: Agent operation is recorded
+- **WHEN** the agent decides that a follow-up task or procedural blocker must be tracked
+- **THEN** new records are created as Inbox operation records
+- **AND** legacy `activities` operation rows are not required for the new flow
 
 #### Scenario: User activity is recorded
 - **WHEN** a user creates an activity from the product interface

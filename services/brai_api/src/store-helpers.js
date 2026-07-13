@@ -30,6 +30,7 @@ export const ACTIVITY_STATUSES = new Set(['New', 'Done']);
 export const ACTIVITY_TYPES = new Set(['action', 'operation']);
 export const POSTGRES_INTEGER_MIN = -2_147_483_648;
 export const POSTGRES_INTEGER_MAX = 2_147_483_647;
+export const INBOX_STATUSES = new Set(['New', 'Done']);
 
 export function isPostgresInteger(value) {
   return Number.isInteger(value) && value >= POSTGRES_INTEGER_MIN && value <= POSTGRES_INTEGER_MAX;
@@ -136,6 +137,8 @@ export function formatInboxItem(item) {
     explanation_text: item.explanation_text ?? '',
     normalization_text: item.normalization_text ?? '',
     is_normalized: item.is_normalized === 1,
+    status: INBOX_STATUSES.has(item.status) ? item.status : 'New',
+    completed_at_utc: item.completed_at_utc ?? null,
     item_roles_id: Number.isInteger(item.item_roles_id) ? item.item_roles_id : null,
     initial_event_id: item.initial_event_id ?? null,
     workflow_execution_id: Number.isInteger(item.workflow_execution_id) ? item.workflow_execution_id : null,
