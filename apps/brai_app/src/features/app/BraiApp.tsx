@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, BookOpen, Crown, Info, Settings } from "lucide-react";
+import { ArrowLeft, BookOpen, Crown, Info, PanelLeftClose, PanelLeftOpen, Settings } from "lucide-react";
 import type { AuthOnboardingContext } from "@/shared/api/braiApi";
 import { getBraiCmdState, listenBraiCmdCredentialRefreshRequired, retryBraiCmdQueue, setBraiCmdAccessKey, setBraiCmdOverlayEnabled, setBraiCmdQueuePausedMode, setBraiCmdVoiceOnlyMode } from "@/shared/platform/braiCmd";
 import { installAndroidBackHandler, isNativeShell, platformName } from "@/shared/platform/platform";
@@ -20,6 +20,7 @@ import { cx } from "./appUtils";
 import { IconButton, MobileContextSheet, ScreenHeader, ThemeButton } from "./chrome/AppChrome";
 import { useBraiAppState } from "./hooks/useBraiAppState";
 import { DesktopRail, MainDock, MobileDockOverflowButton, MobileDockOverflowSheet, MobileMenuButton, MobileProfileDrawer } from "./navigation/AppNavigation";
+import { ContextualRail, isContextualRailSection, useContextualRail } from "./navigation/ContextualRail";
 import { isMobileNavigationViewport, sectionSwipePageStyle, useLeftEdgeMenuSwipe } from "./navigation/useSectionSwipeNavigation";
 import { ActionsSection } from "./sections/actions/ActionsSection";
 import { ActionsInfoPanel } from "./sections/actions/ActionsInfoPanel";
@@ -59,6 +60,16 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
   const storedLockedOnboarding = nativeAndroid && app.displaySyncStatus === "connecting" && shouldKeepStoredLockedOnboarding();
   const onboardingActive = nativeAndroid && (onboardingVisible || onboardingAuthRequired || storedLockedOnboarding) && !unauthEngineActive && !unauthBraiCmdActive;
   const visibleSection = unauthEngineActive ? "engine" : app.section;
+  const contextualRail = useContextualRail(visibleSection, app.authUser?.id);
+  const [contextualContent, setContextualContent] = useState<{ section: SectionId; content: ReactNode } | null>(null);
+  const registerContextualContent = useCallback((section: SectionId, content: ReactNode | null) => {
+    setContextualContent((current) => content == null
+      ? current?.section === section ? null : current
+      : { section, content });
+  }, []);
+  const registerDrawsRail = useCallback((content: ReactNode | null) => registerContextualContent("draws", content), [registerContextualContent]);
+  const registerArchiveRail = useCallback((content: ReactNode | null) => registerContextualContent("archive", content), [registerContextualContent]);
+  const activeContextualContent = contextualContent?.section === visibleSection ? contextualContent.content : null;
   const dockOverflowOpen = mobileDockMenu != null;
   const [actionsMobileCreateDraft, setActionsMobileCreateDraft] = useStoredMobileCreateDraft(ACTIONS_MOBILE_CREATE_DRAFT_STORAGE_KEY);
   const [inboxMobileCreateDraft, setInboxMobileCreateDraft] = useStoredMobileCreateDraft(INBOX_MOBILE_CREATE_DRAFT_STORAGE_KEY);
@@ -264,7 +275,19 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
             icon={sectionIcon(screenSection)}
             syncStatus={app.displaySyncStatus}
             pendingCount={app.totalPendingCount}
-            leading={isPrimarySection(screenSection) ? <MobileMenuButton onClick={openMobileMenu} /> : null}
+            leading={isPrimarySection(screenSection) || isContextualRailSection(screenSection) ? <MobileMenuButton onClick={openMobileMenu} /> : null}
+            desktopLeading={isContextualRailSection(screenSection) ? (
+              <button
+                type="button"
+                className="grid size-7 place-items-center rounded-md border-0 bg-transparent text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label={contextualRail.open ? "Закрыть контекстную панель" : "Открыть контекстную панель"}
+                title={contextualRail.open ? "Закрыть контекстную панель" : "Открыть контекстную панель"}
+                aria-pressed={contextualRail.open}
+                onClick={() => contextualRail.setOpen(!contextualRail.open)}
+              >
+                {contextualRail.open ? <PanelLeftClose className="size-5" aria-hidden="true" /> : <PanelLeftOpen className="size-5" aria-hidden="true" />}
+              </button>
+            ) : undefined}
             trailing={
               screenSection === "actions" && mobileViewport ? (
                 <IconButton icon={Info} label="Информация о действиях" active={app.actionsInfoActive} onClick={app.toggleActionsInfoPanel} />
@@ -321,13 +344,20 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
             onUpdateTitle={app.onUpdateInboxTitle}
             onAutosaveDetails={app.onAutosaveInboxDetails}
             onDelete={app.onDeleteInboxItem}
+            onReorder={app.onReorderInbox}
             mobileCreateDraft={inboxMobileCreateDraft}
             onMobileCreateDraftChange={setInboxMobileCreateDraft}
             dockOverflowOpen={dockOverflowOpen}
             onMobileOverlayChange={app.setActionOverlayOpen}
           />
         ) : screenSection === "archive" ? (
-          <ArchiveSection state={app.actions} localSnapshotReady={app.localSnapshotReady} onRestore={app.onRestoreAction} />
+          <ArchiveSection
+            activityState={app.actions}
+            localSnapshotReady={app.localSnapshotReady}
+            onRestoreAction={app.onRestoreAction}
+            onRestoreInbox={app.onRestoreInboxItem}
+            onRailContent={isActivePage ? registerArchiveRail : undefined}
+          />
         ) : screenSection === "profile" ? (
           <ProfileSection />
         ) : screenSection === "factory" ? (
@@ -352,7 +382,11 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
         ) : screenSection === "evil-eye" ? (
           <EvilEyeSection />
         ) : screenSection === "draws" ? (
-          <DrawsSection theme={app.theme} onFullscreenChange={isActivePage ? handleDrawsFullscreenChange : undefined} />
+          <DrawsSection
+            theme={app.theme}
+            onFullscreenChange={isActivePage ? handleDrawsFullscreenChange : undefined}
+            onRailContent={isActivePage ? registerDrawsRail : undefined}
+          />
         ) : screenSection === "engine" ? (
           <EngineSection
             appVersionState={app.versionState}
@@ -455,6 +489,11 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
           onLogout={app.onLogout}
         />
       ) : null}
+      {!drawsFullscreenActive && contextualRail.supported ? (
+        <ContextualRail open={contextualRail.open} width={contextualRail.width} onWidth={contextualRail.setWidth}>
+          {activeContextualContent}
+        </ContextualRail>
+      ) : null}
       <SidebarInset className={cx("main-view m-0 h-full min-h-0 w-full min-w-0 overflow-hidden max-[860px]:overscroll-contain max-[860px]:[touch-action:pan-y]", app.swipeNavigation.visual && "is-section-swiping")} {...mobileMenuSwipe.handlers}>
         {visibleSection === "focus" ? <FocusBackground active={app.active} mode={app.focusBackground} /> : null}
         <ScrollArea scrollbar={false} className="main-scroll relative z-[1] h-full [&>[data-slot=scroll-area-viewport]>div]:h-full max-[860px]:[&>[data-slot=scroll-area-viewport]]:overscroll-contain max-[860px]:[&>[data-slot=scroll-area-viewport]]:[touch-action:pan-y]">
@@ -507,7 +546,7 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
       {app.mobileMenuOpen && !drawsFullscreenActive ? (
         <MobileProfileDrawer
           onClose={() => app.setMobileMenuOpen(false)}
-        />
+        >{activeContextualContent}</MobileProfileDrawer>
       ) : null}
       {mobileDockMenu && !drawsFullscreenActive ? (
         <MobileDockOverflowSheet

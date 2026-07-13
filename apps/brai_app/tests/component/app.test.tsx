@@ -1241,7 +1241,7 @@ describe("BraiApp shell", () => {
     await waitFor(() => expect(document.documentElement).toHaveAttribute("data-platform", "android"));
   });
 
-  it("keeps the desktop rail compact and static", async () => {
+  it("keeps the desktop rail compact and opens a separate contextual rail", async () => {
     Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 1200 });
     render(<BraiApp />);
     const shell = document.querySelector(".app-shell");
@@ -1250,7 +1250,8 @@ describe("BraiApp shell", () => {
 
     expect(shell).toBeInstanceOf(HTMLElement);
     expect(rail).toBeInstanceOf(HTMLElement);
-    expect(topbar?.querySelector("[data-screen-icon]")).toBeInTheDocument();
+    expect(topbar?.querySelector("[data-screen-icon]")).not.toBeInTheDocument();
+    expect(topbar?.querySelector('[aria-label="Закрыть контекстную панель"]')).toBeInTheDocument();
     expect(topbar?.querySelector('[aria-label="Свернуть меню"]')).not.toBeInTheDocument();
     expect(shell).not.toHaveClass("is-rail-expanded");
     expect(rail).not.toHaveClass("expanded");
@@ -1267,6 +1268,7 @@ describe("BraiApp shell", () => {
     expect(rail).toContainElement(screen.getByRole("button", { name: "Открыть меню профиля" }));
     expect(rail).not.toContainElement(screen.queryByRole("button", { name: "Настройки" }));
     expect(rail).not.toContainElement(screen.queryByRole("button", { name: "Архив" }));
+    expect(document.querySelector(".contextual-rail")).toBeInTheDocument();
 
     fireEvent.click(screen.getAllByRole("button", { name: "Фокус" }).at(-1) as HTMLElement);
     await waitFor(() => expect(screen.getByRole("heading", { name: "Фокус" })).toBeInTheDocument());

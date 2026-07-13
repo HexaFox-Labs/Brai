@@ -53,5 +53,6 @@ class ScreenshotButtonViewTest {
             resolveQueueBadgeState(pendingCount = 2, readyCount = 3)
         )
         assertNull(resolveQueueBadgeState(pendingCount = 0, readyCount = 0))
+        assertNull(resolveQueueBadgeState(pendingCount = -1, readyCount = -1))
     }
 }

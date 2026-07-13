@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, type TouchEventHandler } from "react";
+import { useCallback, useEffect, useRef, type ReactNode, type TouchEventHandler } from "react";
 import { Archive, ChevronDown, ChevronUp, Cpu, Download, Ellipsis, Flag, Menu, Pencil, Tag, type LucideIcon } from "lucide-react";
 import { BraiUserAvatar, BraiUserDropdownMenu, BraiUserMenuPanel } from "@/components/shadcn-space/dropdown-menu/dropdown-menu-01";
 import type { AppVersionState, AuthUser } from "@/shared/api/braiApi";
@@ -58,7 +58,7 @@ export function DesktopRail({
       aria-label="Основная навигация"
     >
       <SidebarContent className="min-h-0" />
-      <SidebarFooter className="items-center gap-2">
+      <SidebarFooter className="items-center gap-3">
         <DesktopRailStatus syncStatus={syncStatus} pendingCount={pendingCount} />
         <EngineRailButton
           active={section === "engine"}
@@ -98,7 +98,7 @@ export function DesktopRail({
 
 function DesktopRailStatus({ syncStatus, pendingCount }: { syncStatus: SyncStatus; pendingCount: number }) {
   return (
-    <div className="desktop-rail-status flex items-center justify-center py-1">
+    <div className="desktop-rail-status flex h-10 items-center justify-center">
       <StatusPill status={syncStatus} pendingCount={pendingCount} />
     </div>
   );
@@ -146,8 +146,10 @@ export function MobileDockOverflowButton({
 
 export function MobileProfileDrawer({
   onClose,
+  children,
 }: {
   onClose: () => void;
+  children?: ReactNode;
 }) {
   const suppressPopRef = useRef(false);
   const { backdropRef, backdropStyle, closeWithAnimation, resetOpen, sheetDragHandlers, sheetRef, sheetStyle } = useMobileSheetDrag({
@@ -194,12 +196,12 @@ export function MobileProfileDrawer({
       <div ref={backdropRef} className="absolute inset-0 bg-foreground/15 dark:bg-background/80" style={backdropStyle} aria-hidden="true" />
       <aside
         ref={sheetRef}
-        className="mobile-profile-drawer flex h-full w-16 flex-col border-r border-border bg-card px-2 pt-[calc(12px+env(safe-area-inset-top))] pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-xl animate-[mobile-drawer-in_180ms_ease-out] [touch-action:pan-y] will-change-transform"
+        className="mobile-profile-drawer flex h-full w-64 max-w-[85vw] flex-col overflow-hidden border-r border-border bg-card pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] shadow-xl animate-[mobile-drawer-in_180ms_ease-out] [touch-action:pan-y] will-change-transform"
         style={sheetStyle}
-        aria-label="Пустое меню"
+        aria-label="Контекстная панель"
         {...sheetDragHandlers}
         onClick={(event) => event.stopPropagation()}
-      />
+      >{children}</aside>
     </div>
   );
 }

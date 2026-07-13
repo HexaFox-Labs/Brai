@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import dynamic from "next/dynamic";
-import { Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, Plus } from "lucide-react";
+import { Maximize2, Minimize2, Plus } from "lucide-react";
 import type { AppState, BinaryFiles } from "@excalidraw/excalidraw/types";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { ThemeMode } from "../../appModel";
@@ -31,13 +31,12 @@ const emptyScene = (): Record<string, unknown> => ({
   files: {},
 });
 
-export function DrawsSection({ theme, onFullscreenChange }: { theme: ThemeMode; onFullscreenChange?: (fullScreen: boolean) => void }) {
+export function DrawsSection({ theme, onFullscreenChange, onRailContent }: { theme: ThemeMode; onFullscreenChange?: (fullScreen: boolean) => void; onRailContent?: (content: ReactNode | null) => void }) {
   const api = useMemo(() => new BraiApi(defaultApiBase()), []);
   const [draws, setDraws] = useState<DrawSceneSummary[]>([]);
   const [activeName, setActiveName] = useState(DEFAULT_DRAW_NAME);
   const [scene, setScene] = useState<Record<string, unknown> | null>(null);
   const [status, setStatus] = useState<SaveStatus>("loading");
-  const [listOpen, setListOpen] = useState(true);
   const [fullScreen, setFullScreen] = useState(false);
   const [editingName, setEditingName] = useState<string | null>(null);
   const saveTimerRef = useRef<number | null>(null);
@@ -162,72 +161,24 @@ export function DrawsSection({ theme, onFullscreenChange }: { theme: ThemeMode; 
     setStatus("saving");
   }, [activeName, saveScene]);
 
-  const showList = listOpen && !fullScreen;
+  useEffect(() => {
+    if (!onRailContent) return;
+    onRailContent(
+      <DrawsRail
+        activeName={activeName}
+        draws={draws}
+        status={status}
+        onCreate={createDraw}
+        onSelect={setActiveName}
+      />,
+    );
+    return () => onRailContent(null);
+  }, [activeName, createDraw, draws, onRailContent, status]);
 
   return (
-    <div
-      className={cx(
-        "grid h-full min-h-0 gap-3",
-        showList ? "grid-cols-[13rem_minmax(0,1fr)] max-[860px]:grid-cols-1 max-[860px]:grid-rows-[auto_minmax(0,1fr)]" : "grid-cols-1",
-        fullScreen && "gap-0",
-      )}
-    >
-      {showList ? (
-        <Card className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden">
-          <div className="flex items-center justify-between gap-3 border-b border-border p-4">
-            <div className="min-w-0">
-              <h2 className="m-0 truncate text-lg font-semibold leading-none">Draws</h2>
-              <p className="m-0 mt-1 truncate text-sm text-muted-foreground">{saveStatusLabel(status)}</p>
-            </div>
-            <div className="flex shrink-0 items-center gap-1">
-              <Button type="button" size="icon-sm" variant="ghost" aria-label="Создать сцену" title="Создать сцену" onClick={createDraw}>
-                <Plus className="size-4" aria-hidden="true" />
-              </Button>
-            </div>
-          </div>
-          <ScrollArea className="min-h-0 [&>[data-slot=scroll-area-scrollbar]]:!right-1" contentInset="none">
-            <div className="grid gap-2 p-4">
-              {draws.length ? draws.map((draw) => (
-                <div
-                  key={draw.name}
-                  role="button"
-                  tabIndex={0}
-                  className={cx(
-                    "group grid min-h-[72px] min-w-0 cursor-pointer content-center rounded-lg border border-transparent px-3 py-2.5 text-left transition-colors hover:bg-accent/60 hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
-                    draw.name === activeName && "border-primary/20 bg-primary/10 text-accent-foreground",
-                  )}
-                  onClick={() => setActiveName(draw.name)}
-                  onKeyDown={(event) => {
-                    if (event.key !== "Enter" && event.key !== " ") return;
-                    event.preventDefault();
-                    setActiveName(draw.name);
-                  }}
-                >
-                  <div className="min-w-0">
-                    <span className="block truncate font-medium">{draw.title}</span>
-                    <span className="block truncate text-xs text-muted-foreground">{formatUpdatedAt(draw.updated_at_utc)}</span>
-                  </div>
-                </div>
-              )) : (
-                <button
-                  type="button"
-                  className="min-h-[72px] rounded-lg px-3 py-2.5 text-left text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                  onClick={() => setActiveName(DEFAULT_DRAW_NAME)}
-                >
-                  Новый рисунок
-                </button>
-              )}
-            </div>
-          </ScrollArea>
-        </Card>
-      ) : null}
+    <div className={cx("grid h-full min-h-0 grid-cols-1", fullScreen && "gap-0")}>
       <Card className={cx("grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden", fullScreen && "rounded-none border-0 shadow-none before:hidden")} data-nav-swipe-exclusion>
         <div className="flex min-h-14 items-center justify-between gap-3 border-b border-border px-3 py-2">
-          {!fullScreen ? (
-            <Button type="button" size="icon-sm" variant="ghost" aria-label={listOpen ? "Скрыть список рисунков" : "Показать список рисунков"} title={listOpen ? "Скрыть список рисунков" : "Показать список рисунков"} onClick={() => setListOpen((open) => !open)}>
-              {listOpen ? <PanelLeftClose className="size-4" aria-hidden="true" /> : <PanelLeftOpen className="size-4" aria-hidden="true" />}
-            </Button>
-          ) : null}
           <div className="min-w-0 flex-1">
             <DrawTitleEditor
               editing={editingName === activeName}
@@ -261,6 +212,50 @@ export function DrawsSection({ theme, onFullscreenChange }: { theme: ThemeMode; 
           </div>
         </CardPanel>
       </Card>
+    </div>
+  );
+}
+
+function DrawsRail({ activeName, draws, status, onCreate, onSelect }: {
+  activeName: string;
+  draws: DrawSceneSummary[];
+  status: SaveStatus;
+  onCreate: () => void;
+  onSelect: (name: string) => void;
+}) {
+  return (
+    <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden">
+      <div className="flex items-center justify-between gap-3 border-b border-border p-4">
+        <div className="min-w-0">
+          <h2 className="m-0 truncate text-lg font-semibold leading-none">Draws</h2>
+          <p className="m-0 mt-1 truncate text-sm text-muted-foreground">{saveStatusLabel(status)}</p>
+        </div>
+        <Button type="button" size="icon-sm" variant="ghost" aria-label="Создать сцену" title="Создать сцену" onClick={onCreate}>
+          <Plus className="size-4" aria-hidden="true" />
+        </Button>
+      </div>
+      <ScrollArea className="min-h-0 [&>[data-slot=scroll-area-scrollbar]]:!right-1" contentInset="none">
+        <div className="grid gap-2 p-4">
+          {draws.length ? draws.map((draw) => (
+            <button
+              key={draw.name}
+              type="button"
+              className={cx(
+                "grid min-h-[72px] min-w-0 content-center rounded-lg border border-transparent px-3 py-2.5 text-left transition-colors hover:bg-accent/60 hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                draw.name === activeName && "border-primary/20 bg-primary/10 text-accent-foreground",
+              )}
+              onClick={() => onSelect(draw.name)}
+            >
+              <span className="block truncate font-medium">{draw.title}</span>
+              <span className="block truncate text-xs text-muted-foreground">{formatUpdatedAt(draw.updated_at_utc)}</span>
+            </button>
+          )) : (
+            <button type="button" className="min-h-[72px] rounded-lg px-3 py-2.5 text-left text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground" onClick={() => onSelect(DEFAULT_DRAW_NAME)}>
+              Новый рисунок
+            </button>
+          )}
+        </div>
+      </ScrollArea>
     </div>
   );
 }

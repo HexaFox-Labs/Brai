@@ -1459,6 +1459,7 @@ test("preview receipts must match exact branch and head", () => {
     short_changes: "Исправлен рабочий процесс версий.",
     detailed_changes: "Release notes передаются через preview handoff и acceptance PR.",
     reason: "Нужно не терять описания принятых сборок.",
+    testing: "Открыть Preview и проверить описанный пользовательский сценарий.",
   };
   const receipt = {
     branch: "codex/foo",
@@ -1558,13 +1559,13 @@ test("task state blocks local implementation work without exact preview receipt"
     const head = git(["rev-parse", "HEAD"], repo).stdout.trim();
     fs.writeFileSync(
       path.join(repo, ".brai-task", "preview-handoff.json"),
-      `${JSON.stringify({ branch: "codex/foo", commit: base, slot: "A", url: "https://a.test.brai.one", runId: 123, releaseNotes: { short_changes: "Исправлен тест.", detailed_changes: "Детали теста.", reason: "Нужно проверить receipt." }, verifiedAt: "2026-06-26T00:00:00.000Z" })}\n`,
+      `${JSON.stringify({ branch: "codex/foo", commit: base, slot: "A", url: "https://a.test.brai.one", runId: 123, releaseNotes: { short_changes: "Исправлен тест.", detailed_changes: "Детали теста.", reason: "Нужно проверить receipt.", testing: "Проверить пользовательский сценарий в Preview." }, verifiedAt: "2026-06-26T00:00:00.000Z" })}\n`,
     );
     assert.equal(deriveTaskState().ok, false);
 
     fs.writeFileSync(
       path.join(repo, ".brai-task", "preview-handoff.json"),
-      `${JSON.stringify({ branch: "codex/foo", commit: head, slot: "A", url: "https://a.test.brai.one", runId: 123, releaseNotes: { short_changes: "Исправлен тест.", detailed_changes: "Детали теста.", reason: "Нужно проверить receipt." }, verifiedAt: "2026-06-26T00:00:00.000Z" })}\n`,
+      `${JSON.stringify({ branch: "codex/foo", commit: head, slot: "A", url: "https://a.test.brai.one", runId: 123, releaseNotes: { short_changes: "Исправлен тест.", detailed_changes: "Детали теста.", reason: "Нужно проверить receipt.", testing: "Проверить пользовательский сценарий в Preview." }, verifiedAt: "2026-06-26T00:00:00.000Z" })}\n`,
     );
     assert.equal(deriveTaskState().ok, true);
 
@@ -2049,6 +2050,7 @@ test("task state rejects same-thread writes after local acceptance marker", () =
           short_changes: "Исправлена остановка агента.",
           detailed_changes: "Stop hook блокирует ответ до завершения принятия preview.",
           reason: "Нельзя завершать задачу во время production delivery.",
+          testing: "Начать принятие Preview и убедиться, что задача остаётся активной.",
         },
         verifiedAt: "2026-06-26T00:00:00.000Z",
       })}\n`,
@@ -2442,11 +2444,14 @@ function setupPreviewHandoffFixture() {
   fs.writeFileSync(path.join(repo, ".gitignore"), ".brai-task/\n");
   fs.writeFileSync(path.join(repo, "base.txt"), "base\n");
   fs.mkdirSync(path.join(repo, "deploy"), { recursive: true });
+  fs.mkdirSync(path.join(repo, "deploy", "scripts"), { recursive: true });
   fs.writeFileSync(
     path.join(repo, "deploy", "environments.json"),
     `${JSON.stringify({ environments: { "preview-c": { domain: "c.test.example" } } }, null, 2)}\n`,
   );
-  git(["add", ".gitignore", "base.txt", "deploy/environments.json"], repo);
+  fs.writeFileSync(path.join(repo, "deploy", "scripts", "preview-slots.sh"), "#!/usr/bin/env bash\nexit 0\n");
+  fs.chmodSync(path.join(repo, "deploy", "scripts", "preview-slots.sh"), 0o755);
+  git(["add", ".gitignore", "base.txt", "deploy/environments.json", "deploy/scripts/preview-slots.sh"], repo);
   git(["commit", "-m", "base"], repo);
   const base = git(["rev-parse", "HEAD"], repo).stdout.trim();
   git(["remote", "add", "origin", remote], repo);
@@ -2478,6 +2483,7 @@ function setupPreviewHandoffFixture() {
       short_changes: "Подготовлен preview handoff.",
       detailed_changes: "Runtime ветка ждёт успешный delivery run и готовый preview slot.",
       reason: "Нужно проверить, что handoff не бросает активную доставку.",
+      testing: "Открыть Preview после завершения run и проверить готовность слота.",
     })}\n`,
   );
   fs.writeFileSync(
