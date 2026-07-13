@@ -15,6 +15,7 @@ import { cx, plainEditableText, setPlainEditableText } from "../../appUtils";
 import { isMobileNavigationViewport } from "../../navigation/useSectionSwipeNavigation";
 
 type SaveStatus = "loading" | "idle" | "saving" | "saved" | "error";
+type LoadedScene = { name: string; data: Record<string, unknown> };
 
 const DEFAULT_DRAW_NAME = "Новый рисунок.excalidraw";
 const DrawsCanvas = dynamic(() => import("./DrawsCanvas").then((module) => module.DrawsCanvas), {
@@ -35,7 +36,7 @@ export function DrawsSection({ theme, onFullscreenChange, onRailContent }: { the
   const api = useMemo(() => new BraiApi(defaultApiBase()), []);
   const [draws, setDraws] = useState<DrawSceneSummary[]>([]);
   const [activeName, setActiveName] = useState(DEFAULT_DRAW_NAME);
-  const [scene, setScene] = useState<Record<string, unknown> | null>(null);
+  const [scene, setScene] = useState<LoadedScene | null>(null);
   const [status, setStatus] = useState<SaveStatus>("loading");
   const [fullScreen, setFullScreen] = useState(false);
   const [editingName, setEditingName] = useState<string | null>(null);
@@ -59,7 +60,7 @@ export function DrawsSection({ theme, onFullscreenChange, onRailContent }: { the
     setStatus("loading");
     try {
       const loaded = await api.draw(name);
-      setScene(sanitizeDrawScene(loaded.scene));
+      setScene({ name, data: sanitizeDrawScene(loaded.scene) });
       setDraws((current) => upsertDraw(current, loaded));
       setStatus("idle");
     } catch (error) {
@@ -69,7 +70,7 @@ export function DrawsSection({ theme, onFullscreenChange, onRailContent }: { the
         return;
       }
       const nextScene = emptyScene();
-      setScene(nextScene);
+      setScene({ name, data: nextScene });
       setStatus("idle");
     } finally {
       loadedRef.current = true;
@@ -126,14 +127,14 @@ export function DrawsSection({ theme, onFullscreenChange, onRailContent }: { the
     setStatus("saving");
     try {
       if (name === activeName) {
-        await api.saveDraw(name, pendingSceneRef.current ?? scene ?? emptyScene());
+        await api.saveDraw(name, pendingSceneRef.current ?? scene?.data ?? emptyScene());
         pendingSceneRef.current = null;
       }
       const renamed = await api.renameDraw(name, nextName);
       setDraws((currentDraws) => upsertDraw(currentDraws.filter((draw) => draw.name !== name), renamed));
       if (name === activeName) {
         setActiveName(renamed.name);
-        setScene(sanitizeDrawScene(renamed.scene));
+        setScene({ name: renamed.name, data: sanitizeDrawScene(renamed.scene) });
       }
       setStatus("saved");
     } catch {
@@ -198,10 +199,10 @@ export function DrawsSection({ theme, onFullscreenChange, onRailContent }: { the
         </div>
         <CardPanel className={cx("min-h-0", fullScreen ? "p-0" : "p-3")}>
           <div className={cx("h-full min-h-0 overflow-hidden bg-background", !fullScreen && "rounded-xl border border-border")}>
-            {scene ? (
+            {scene?.name === activeName ? (
               <DrawsCanvas
                 key={activeName}
-                initialData={scene}
+                initialData={scene.data}
                 name={activeName}
                 onChange={onChange}
                 theme={theme}
