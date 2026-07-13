@@ -17,6 +17,11 @@ internal data class LlmProviderResult(
     val outputChars: Int
 )
 
+internal class ProviderResponseException(
+    val statusCode: Int,
+    message: String
+) : IllegalStateException(message)
+
 internal class LlmProviderClient @JvmOverloads constructor(
     private val context: Context,
     private val endpointOverrides: Map<String, String> = emptyMap()
@@ -205,7 +210,7 @@ internal class LlmProviderClient @JvmOverloads constructor(
             val message = json?.optJSONObject("error")?.optString("message")?.takeIf { it.isNotBlank() }
                 ?: (json?.opt("error") as? String)?.takeIf { it.isNotBlank() }
                 ?: body.ifBlank { "provider_http_$status" }
-            throw IllegalStateException(message)
+            throw ProviderResponseException(status, message)
         }
         return JSONObject(body)
     }

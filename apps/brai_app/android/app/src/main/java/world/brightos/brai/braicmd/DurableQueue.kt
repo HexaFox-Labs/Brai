@@ -310,6 +310,11 @@ internal fun classifyQueueFailure(error: Throwable): QueueFailureDisposition =
     when (error) {
         is QueueCorruptItemException -> QueueFailureDisposition.Permanent
         is QueueAuthBlockedException -> QueueFailureDisposition.Blocked
+        is ProviderResponseException -> when {
+            error.statusCode in setOf(408, 425, 429) || error.statusCode >= 500 -> QueueFailureDisposition.Transient
+            error.statusCode in 400..499 -> QueueFailureDisposition.Blocked
+            else -> QueueFailureDisposition.Transient
+        }
         is QueueEmptyModelException,
         is UnknownHostException,
         is SocketTimeoutException -> QueueFailureDisposition.Transient

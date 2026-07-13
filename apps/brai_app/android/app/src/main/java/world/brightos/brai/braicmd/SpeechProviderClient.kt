@@ -92,7 +92,7 @@ internal class SpeechProviderClient(
             val json = runCatching { JSONObject(body) }.getOrNull()
             val message = json?.optJSONObject("error")?.optString("message")?.takeIf(String::isNotBlank)
                 ?: body.take(240).ifBlank { "Поставщик вернул HTTP $status" }
-            throw IllegalStateException(message)
+            throw ProviderResponseException(status, message)
         }
         return JSONObject(body.ifBlank { "{}" })
     }
