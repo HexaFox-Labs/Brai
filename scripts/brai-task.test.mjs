@@ -927,6 +927,8 @@ test("preview deploy requires Postgres and preserves artifact setgid", () => {
   assert.match(playbook, /Ensure nested non-production data directories keep deploy setgid/);
   assert.match(playbook, /Ensure Syncthing vault root is writable by sync group/);
   assert.match(playbook, /Ensure existing Syncthing vault directories keep sync setgid/);
+  assert.match(playbook, /Ensure Syncthing keeps shared Vault files group-writable/);
+  assert.match(playbook, /UMask=0007/);
   assert.match(playbook, /owner: "{{ brai_syncthing_user }}"/);
   assert.match(playbook, /group: "{{ brai_source_group }}"/);
   assert.doesNotMatch(playbook, /SQLite|sqlite|brai\.sqlite/);

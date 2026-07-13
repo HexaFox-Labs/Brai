@@ -1995,13 +1995,15 @@ export function createUserVaultPreparer({
         `--id=${folderId}`,
         `--label=${label}`,
         `--path=${folderPath}`,
-        '--type=sendreceive'
+        '--type=sendreceive',
+        '--ignore-perms'
       ]);
       return;
     }
 
     await runSyncthingCli([...baseArgs, 'config', 'folders', folderId, 'label', 'set', label]);
     await runSyncthingCli([...baseArgs, 'config', 'folders', folderId, 'path', 'set', folderPath]);
+    await runSyncthingCli([...baseArgs, 'config', 'folders', folderId, 'ignore-perms', 'set', 'true']);
   };
 }
 
