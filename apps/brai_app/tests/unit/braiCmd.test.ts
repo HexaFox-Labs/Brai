@@ -105,6 +105,7 @@ describe("Brai CMD bridge", () => {
     plugin.setOverlayEnabled.mockResolvedValue({ overlayEnabled: true });
     plugin.setQueuePausedMode.mockResolvedValue({ queuePausedMode: true });
     plugin.retryQueue.mockResolvedValue({ queuePausedMode: false });
+    plugin.preparePreliminaryProfile.mockResolvedValue({ preliminaryStatus: "ready", preliminaryUserId: "prelim-1", preliminaryClaimToken: "claim-1" });
     const { ensureBraiCmdAccess, prepareBraiCmdPreliminaryProfile, retryBraiCmdQueue, setBraiCmdAccessKey, setBraiCmdOverlayEnabled, setBraiCmdQueuePausedMode } = await import("@/shared/platform/braiCmd");
 
     await expect(ensureBraiCmdAccess("Fixture User")).resolves.toMatchObject({ accessGranted: true });

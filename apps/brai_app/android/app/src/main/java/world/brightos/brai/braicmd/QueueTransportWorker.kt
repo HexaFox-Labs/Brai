@@ -1,6 +1,7 @@
 package world.brightos.brai.braicmd
 
 import android.content.Context
+import android.media.MediaMetadataRetriever
 import java.io.File
 import java.io.IOException
 
@@ -22,7 +23,12 @@ internal data class QueueTransportResult(
     val permanentFailureMessage: String? = null
 )
 
-internal class QueueTransportWorker(context: Context) {
+internal class QueueTransportWorker(
+    context: Context,
+    private val directTranscriber: ((File) -> SpeechProviderResult)? = null,
+    private val directPostProcessor: ((String, String) -> LlmProviderResult)? = null,
+    private val cloudPostProcessor: ((String, String) -> CloudPostProcessingResponse)? = null
+) {
     private val appContext = context.applicationContext
     private val client = NetworkClient(appContext)
     private var autoInsertTranscriptFile: String? = null
@@ -37,14 +43,6 @@ internal class QueueTransportWorker(context: Context) {
             AudioQueueStore.list(appContext).map { PendingItem.Audio(it) } +
                 ScreenshotInboxStore.list(appContext).map { PendingItem.Screenshot(it) }
             ).sortedBy { it.file.lastModified() }
-        if (ConfigStore(appContext).authToken.isBlank()) {
-            return result(
-                QueueTransportStatus.Blocked,
-                QueueAuthBlockedException(),
-                items.mapTo(mutableSetOf()) { it.transportId }
-            )
-        }
-
         for (item in items) {
             if (!item.file.exists()) continue
             try {
@@ -96,18 +94,16 @@ internal class QueueTransportWorker(context: Context) {
     }
 
     private fun processMainDictation(file: File, autoInsertAudioFileName: String?) {
-        val response = client.uploadAudio(
-            file,
-            ConversationContextStore.read(file),
-            ScreenshotContextStore.read(file)
-        )
+        val response = transcribeAudio(file, ConversationContextStore.read(file), ScreenshotContextStore.read(file))
         val text = response.text.trim()
         if (text.isBlank()) throw QueueEmptyModelException()
-        val transcriptFile = PendingTranscriptStore.add(
+        val transcriptFile = PendingTranscriptStore.addForAudio(
             appContext,
+            file,
             text,
             PendingTranscriptKind.MainDictation
         )
+        recordStatsOnce(file, response)
         if (file.name == autoInsertAudioFileName) autoInsertTranscriptFile = transcriptFile.name
         if (response.fallbackUsed) {
             fallbackUsed = true
@@ -120,9 +116,10 @@ internal class QueueTransportWorker(context: Context) {
     private fun processInboxAudio(file: File, action: AudioQueueAction) {
         var transcript = InboxPayloadStore.readTranscript(file)
         if (transcript == null) {
-            val response = client.uploadAudio(file, null, null)
+            val response = transcribeAudio(file, null, null)
             transcript = response.text.trim()
             if (transcript.isBlank()) throw QueueEmptyModelException()
+            recordStatsOnce(file, response)
             // Persist before Inbox delivery so retries never retranscribe a completed upload.
             InboxPayloadStore.saveTranscript(file, transcript)
         }
@@ -149,9 +146,90 @@ internal class QueueTransportWorker(context: Context) {
     }
 
     private fun completeAudio(file: File) {
-        if (!AudioQueueStore.complete(file)) {
+        if (!AudioQueueStore.complete(appContext, file)) {
             throw IOException("Не удалось исключить отправленную запись из очереди")
         }
+    }
+
+    private fun transcribeAudio(
+        file: File,
+        conversationContext: VisibleConversationContext?,
+        screenshotFile: File?
+    ): DictationResponse {
+        val config = ConfigStore(appContext)
+        val checkpoint = TranscriptionCheckpointStore.read(file)
+        val raw = checkpoint?.response ?: if (config.transcriptionProviderMode == "key") {
+            val speech = directTranscriber?.invoke(file) ?: SpeechProviderClient(appContext).transcribe(file)
+            DictationResponse(
+                text = speech.text,
+                provider = speech.provider,
+                model = speech.model,
+                fallbackUsed = false,
+                audioDurationMs = audioDurationMs(file),
+                postProcessed = false,
+                postProcessingProvider = "",
+                postProcessingModel = "",
+                postProcessingInputChars = 0,
+                postProcessingOutputChars = 0
+            )
+        } else {
+            client.uploadAudio(file, conversationContext, screenshotFile)
+        }
+        if (checkpoint == null && raw.text.isNotBlank()) TranscriptionCheckpointStore.save(file, raw)
+        if (!config.postProcessingEnabled || raw.postProcessed || raw.text.isBlank()) return raw
+
+        return if (config.postProcessingProviderMode == "key") {
+            val result = directPostProcessor?.invoke(raw.text, config.postProcessingPrompt)
+                ?: LlmProviderClient(appContext).postProcess(raw.text, config.postProcessingPrompt)
+            raw.copy(
+                text = result.text,
+                postProcessed = true,
+                postProcessingProvider = result.provider,
+                postProcessingModel = result.model,
+                postProcessingInputChars = result.inputChars,
+                postProcessingOutputChars = result.outputChars
+            )
+        } else {
+            val result = cloudPostProcessor?.invoke(raw.text, config.postProcessingPrompt)
+                ?: client.postProcessText(raw.text, config.postProcessingPrompt)
+            raw.copy(
+                text = result.text,
+                postProcessed = true,
+                postProcessingProvider = result.provider,
+                postProcessingModel = result.model,
+                postProcessingInputChars = result.inputChars,
+                postProcessingOutputChars = result.outputChars
+            )
+        }
+    }
+
+    private fun audioDurationMs(file: File): Long = runCatching {
+        val retriever = MediaMetadataRetriever()
+        try {
+            retriever.setDataSource(file.absolutePath)
+            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+        } finally {
+            retriever.release()
+        }
+    }.getOrDefault(0L)
+
+    private fun recordStats(file: File, response: DictationResponse) {
+        BraiCmdStatsStore(appContext).recordSuccess(
+            BraiCmdStatsInput(
+                audioBytes = file.length(),
+                audioDurationMs = response.audioDurationMs,
+                transcriptChars = response.text.length,
+                cloudInputChars = response.postProcessingInputChars,
+                cloudOutputChars = response.postProcessingOutputChars,
+                cloudRequest = response.postProcessed && response.postProcessingProvider == "brai-cloud"
+            )
+        )
+    }
+
+    private fun recordStatsOnce(file: File, response: DictationResponse) {
+        if (TranscriptionCheckpointStore.read(file)?.statsRecorded == true) return
+        recordStats(file, response)
+        TranscriptionCheckpointStore.markStatsRecorded(file, response)
     }
 
     private fun result(

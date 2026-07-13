@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
 import { BraiApi, DEFAULT_APP_SETTINGS, type AppSettings, type AuthOnboardingContext, type AuthUser, type OtpSendResult } from "@/shared/api/braiApi";
 import { defaultApiBase, isProductionEnvironment } from "@/shared/config/runtime";
+import { prepareBraiCmdPreliminaryProfile, setBraiCmdOverlayEnabled, setBraiCmdQueuePausedMode, setBraiCmdVoiceOnlyMode } from "@/shared/platform/braiCmd";
 import {
   acknowledgeAndroidActionsWidgetStatusChanges,
   clearAndroidActionsWidgetData,
@@ -26,6 +27,7 @@ import type { InboxState } from "@/shared/types/inbox";
 import { emptyInboxState } from "@/shared/types/inbox";
 import type { GoalData, HistoryData, SyncStatus, TimerState } from "@/shared/types/timer";
 import { emptyGoal, emptyHistory, emptyTimerState } from "@/shared/types/timer";
+import { loadOnboardingState, saveOnboardingState } from "@/features/onboarding/onboardingModel";
 import type { FocusBackgroundMode, FocusContextPanel, MobileContextPanel, SectionId } from "../appModel";
 import { FOCUS_BACKGROUND_STORAGE_KEY, FOCUS_CONTEXT_PANEL_STORAGE_KEY, resolveAuthMode, sectionFromLocation, syncSectionUrl } from "../appModel";
 import { moscowTodayKey, normalizeHistory } from "../appUtils";
@@ -88,6 +90,7 @@ export function useBraiAppState(initialSection: SectionId) {
   const [inboxPendingCount, setInboxPendingCount] = useState(0);
   const [busy, setBusy] = useState(false);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const bootPromiseRef = useRef<Promise<void> | null>(null);
   const authMode = resolveAuthMode(isProductionEnvironment());
   const [timerBusy, setTimerBusy] = useState(false);
   const [actionOverlayOpen, setActionOverlayOpen] = useState(false);
@@ -646,6 +649,26 @@ export function useBraiAppState(initialSection: SectionId) {
     }
   }
 
+  async function restorePreliminaryClientUser(displayName: string): Promise<string | null> {
+    const stored = loadOnboardingState();
+    let preliminaryUserId = stored.preliminaryUserId || stored.duplicatePreliminaryUserId;
+    if (!preliminaryUserId) {
+      const profile = await prepareBraiCmdPreliminaryProfile(displayName);
+      const nextPreliminaryUserId = profile?.preliminaryUserId ?? "";
+      if (nextPreliminaryUserId) {
+        const duplicate = Boolean(profile?.duplicateDevice) || profile?.preliminaryStatus === "duplicate";
+        preliminaryUserId = nextPreliminaryUserId;
+        saveOnboardingState({
+          ...stored,
+          name: stored.name || displayName,
+          preliminaryUserId: duplicate ? "" : nextPreliminaryUserId,
+          preliminaryClaimToken: duplicate ? "" : profile?.preliminaryClaimToken ?? "",
+          duplicatePreliminaryUserId: duplicate ? nextPreliminaryUserId : "",
+        });
+      }
+    }
+    return preliminaryUserId ? `preliminary:${preliminaryUserId}` : null;
+  }
   async function onVerifyOtp(email: string, otp: string, context?: AuthOnboardingContext) {
     setBusy(true);
     try {
@@ -685,12 +708,21 @@ export function useBraiAppState(initialSection: SectionId) {
   }
 
   async function onLogout() {
+    await bootPromiseRef.current;
+    const onboarding = loadOnboardingState();
+    const preliminaryDisplayName = onboarding.name.trim() || authUser?.name || "Brai";
     await api.logout();
+    const preliminaryClientUserId = await restorePreliminaryClientUser(preliminaryDisplayName);
     setAuthUser(null);
-    await ensureClientUser(null);
+    await ensureClientUser(preliminaryClientUserId);
     resetUserSnapshots();
     setLocalSnapshotReady(true);
     setSyncStatus("auth_required");
+    void Promise.all([
+      setBraiCmdOverlayEnabled(true),
+      setBraiCmdVoiceOnlyMode(true),
+      setBraiCmdQueuePausedMode(false),
+    ]).catch(() => undefined);
   }
 
   async function refreshEngineOnce() {
@@ -802,7 +834,8 @@ export function useBraiAppState(initialSection: SectionId) {
       await refreshAllRef.current(bootApi);
     }
 
-    void boot().catch(handleError);
+    bootPromiseRef.current = boot().catch(handleError);
+    void bootPromiseRef.current;
     return () => {
       cancelled = true;
     };

@@ -98,6 +98,7 @@ class RecordingService : Service() {
             mediaRecorder.start()
             recorder = mediaRecorder
             outputFile = file
+            RecordingArchiveStore.saveNewMetadata(file)
             ScreenshotContextStore.save(file, screenshotFile)
             if (inboxDelivery) InboxPayloadStore.mark(file, inboxTextPrefix)
             InboxPayloadStore.saveAction(file, audioQueueAction)
@@ -139,6 +140,7 @@ class RecordingService : Service() {
         ConversationContextStore.save(pendingFile, conversationContext)
         ScreenshotContextStore.move(recordingFile, pendingFile)
         InboxPayloadStore.saveAction(pendingFile, audioQueueAction)
+        BraiCmdPlugin.notifyStateChanged()
         if (ConfigStore(this).onboardingQueuePaused) {
             BraiCmdPlugin.notifyOnboardingEvent("queueSaved", null)
             postPendingState(
@@ -228,6 +230,7 @@ class RecordingService : Service() {
                 uploadInProgress.set(false)
                 val result = workerResult ?: QueueWorkerResult(QueueWorkerStatus.TransientFailure, queueSnapshot(this))
                 queueWorkerListeners.forEach { listener -> runCatching { listener(result) } }
+                BraiCmdPlugin.notifyStateChanged()
                 stopRecordingForeground()
                 stopSelf()
                 if (result.status == QueueWorkerStatus.Drained &&
@@ -298,6 +301,7 @@ class RecordingService : Service() {
             ConversationContextStore.move(file, pendingFile)
             ScreenshotContextStore.move(file, pendingFile)
             InboxPayloadStore.move(file, pendingFile)
+            RecordingArchiveStore.moveMetadata(file, pendingFile)
             return pendingFile
         }
         return runCatching {
@@ -306,13 +310,14 @@ class RecordingService : Service() {
             ConversationContextStore.move(file, pendingFile)
             ScreenshotContextStore.move(file, pendingFile)
             InboxPayloadStore.move(file, pendingFile)
+            RecordingArchiveStore.moveMetadata(file, pendingFile)
             pendingFile
         }.getOrDefault(file)
     }
 
     private fun recordingsDir(): File = File(filesDir, RECORDINGS_DIR)
 
-    private fun pendingStatusFor(error: Throwable): Pair<String, PendingReason> =
+    internal fun pendingStatusFor(error: Throwable): Pair<String, PendingReason> =
         when (error) {
             is QueueAuthBlockedException ->
                 Pair("Данные сохранены. Обновите доступ и повторите отправку.", PendingReason.Server)
@@ -322,6 +327,16 @@ class RecordingService : Service() {
                 Pair("Данные сохранены. Нет интернета; отправлю, когда связь вернется.", PendingReason.Network)
             is SocketTimeoutException ->
                 Pair("Данные сохранены. Сервер долго не отвечает; повторю автоматически.", PendingReason.Server)
+            is ProviderResponseException -> when {
+                error.statusCode == 401 || error.statusCode == 403 ->
+                    Pair("Данные сохранены. Проверьте API-ключ поставщика в настройках.", PendingReason.Transcription)
+                error.statusCode in 400..499 && error.statusCode !in setOf(408, 425, 429) ->
+                    Pair("Данные сохранены. Проверьте выбранную модель и настройки поставщика.", PendingReason.Transcription)
+                error.statusCode == 429 ->
+                    Pair("Данные сохранены. Поставщик временно ограничил запросы; повторю автоматически.", PendingReason.Transcription)
+                else ->
+                    Pair("Данные сохранены. Поставщик сейчас не отвечает; повторю автоматически.", PendingReason.Transcription)
+            }
             is ServerResponseException ->
                 if (error.statusCode == 401 || error.statusCode == 403) {
                     Pair("Данные сохранены. Обновите доступ и повторите отправку.", PendingReason.Server)
@@ -480,6 +495,11 @@ class RecordingService : Service() {
             val retryStore = QueueRetryStore(context)
             if (ConfigStore(context).onboardingQueuePaused ||
                 uploadInProgress.get() ||
+                (retryStore.isBlocked && trigger in setOf(
+                    QueueRetryTrigger.Resume,
+                    QueueRetryTrigger.Scheduled,
+                    QueueRetryTrigger.Network
+                )) ||
                 state is RecorderState.Recording ||
                 (state is RecorderState.Uploading && trigger != QueueRetryTrigger.Enqueue) ||
                 !hasPendingRecordings(context)

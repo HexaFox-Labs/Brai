@@ -25,20 +25,20 @@ export type AuthSession = {
   user?: AuthUser | null;
 };
 
-export type OtpSendResult = {
-  sent?: boolean;
-  success?: boolean;
-  expires_in_seconds?: number;
-  resend_after_seconds?: number;
-  resend_strategy?: "rotate" | "reuse";
-};
-
 export type AuthOnboardingContext = {
   name?: string;
   preliminaryUserId?: string;
   duplicatePreliminaryUserId?: string;
   preliminaryClaimToken?: string;
   deviceFingerprint?: string;
+};
+
+export type OtpSendResult = {
+  sent?: boolean;
+  success?: boolean;
+  expires_in_seconds?: number;
+  resend_after_seconds?: number;
+  resend_strategy?: "rotate" | "reuse";
 };
 
 export type AiLogIoRow = {
