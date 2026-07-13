@@ -177,6 +177,10 @@ export function OnboardingFlow({
   const isAndroid = isNativeShell() && platformName() === "android";
 
   useEffect(() => {
+    if (authRequired && state.complete && state.step === "locked") saveOnboardingState(state);
+  }, [authRequired, state]);
+
+  useEffect(() => {
     const initialStep = stepRef.current;
     const loadTimer = window.setTimeout(() => {
       if (stepRef.current !== initialStep) return;
