@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type Re
 import { useRouter } from "next/navigation";
 import { ArrowLeft, BookOpen, Crown, Info, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import type { AuthOnboardingContext } from "@/shared/api/braiApi";
-import { beginBraiCmdAccountCredentialMode, ensureBraiCmdAccess, getBraiCmdState, listenBraiCmdCredentialRefreshRequired, retryBraiCmdPendingAccountRevocation, retryBraiCmdQueue, setBraiCmdAccessKey, setBraiCmdAuthenticatedMode, setBraiCmdOverlayEnabled, syncBraiCmdProviderCredentials } from "@/shared/platform/braiCmd";
+import { beginBraiCmdAccountCredentialMode, getBraiCmdState, listenBraiCmdCredentialRefreshRequired, retryBraiCmdPendingAccountRevocation, retryBraiCmdQueue, setBraiCmdAccessKey, setBraiCmdAuthenticatedMode, setBraiCmdOverlayEnabled, syncBraiCmdProviderCredentials } from "@/shared/platform/braiCmd";
 import { useAppVersion } from "@/shared/config/runtime";
 import { installAndroidBackHandler, isNativeShell, platformName } from "@/shared/platform/platform";
 import { getBraiLocalStorageItem, removeBraiLocalStorageItem, setBraiLocalStorageItem } from "@/shared/storage/localStorageKeys";
@@ -12,6 +12,7 @@ import { SidebarInset, SidebarProvider } from "@/shared/ui/sidebar";
 import { OnboardingFlow, shouldShowOnboarding } from "@/features/onboarding/OnboardingFlow";
 import { loadOnboardingState } from "@/features/onboarding/onboardingModel";
 import { AuthScreen } from "./AuthScreen";
+import { AppStartupSplash } from "./AppStartupSplash";
 import { LocalDatabaseBlockedScreen } from "./LocalDatabaseBlockedScreen";
 import type { SectionId } from "./appModel";
 import { isPrimarySection, sectionIcon, sectionTitle } from "./appModel";
@@ -61,6 +62,8 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
   const router = useRouter();
   const nativeAndroid = useMountedNativeAndroid();
   const [mobileDockMenu, setMobileDockMenu] = useState<"left" | "right" | null>(null);
+  const [startupIntroComplete, setStartupIntroComplete] = useState(false);
+  const [onboardingStartupActive, setOnboardingStartupActive] = useState(true);
   const [onboardingVisible, setOnboardingVisible] = useState(() => shouldShowOnboarding(false) || (isNativeAndroid() && shouldKeepStoredLockedOnboarding()));
   const [unauthEngineOpen, setUnauthEngineOpen] = useState(false);
   const [unauthBraiCmdOpen, setUnauthBraiCmdOpen] = useState(false);
@@ -98,6 +101,7 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
   const unauthEngineActiveRef = useRef(false);
   const unauthBraiCmdActiveRef = useRef(false);
   const adjacentSection = unauthEngineActive ? null : app.swipeNavigation.visual?.to;
+  const handleStartupIntroComplete = useCallback(() => setStartupIntroComplete(true), []);
   const mobileMenuSwipe = useLeftEdgeMenuSwipe(
     () => {
       if (app.section === "actions") app.setMobileMenuOpen(true);
@@ -223,9 +227,6 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
       try {
         const accountMode = await beginBraiCmdAccountCredentialMode(activeAuthUserId);
         if (!accountMode?.accountCredentialsActive && !accountMode?.legacyCredentialMode) throw new Error("brai_cmd_account_mode_missing");
-        const access = await ensureBraiCmdAccess(authDisplayName || "Brai");
-        if (cancelled) return;
-        if (!access?.accessGranted) throw new Error("brai_cmd_device_access_missing");
         const native = await getBraiCmdState();
         if (cancelled) return;
         if (!native?.deviceId) throw new Error("brai_cmd_device_id_missing");
@@ -520,7 +521,9 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
           onOpenEngine={openUnauthEngine}
           onOpenNativeCmdSettings={openNativeBraiCmdSettings}
           onRequestOtp={app.onRequestOtp}
+          onStartupScreenChange={setOnboardingStartupActive}
           onVerifyOtp={onOnboardingVerifyOtp}
+          startupIntroComplete={startupIntroComplete}
         />
       ) : unauthEngineActive || unauthBraiCmdActive ? (
         <main className="grid h-dvh min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-background px-3.5 pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)]" data-standalone-section>
@@ -685,8 +688,12 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
       ) : null}
         </SidebarProvider>
       )}
-      {nativeAndroid !== false && !startupReady ? (
-        <div className="fixed inset-0 z-[10000] bg-black" data-native-startup aria-hidden="true" />
+      {onboardingActive ? (
+        <AppStartupSplash
+          ready={startupReady}
+          persist={onboardingStartupActive}
+          onIntroComplete={handleStartupIntroComplete}
+        />
       ) : null}
     </>
   );

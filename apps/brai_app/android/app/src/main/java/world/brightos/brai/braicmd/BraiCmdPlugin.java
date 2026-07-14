@@ -284,6 +284,10 @@ public final class BraiCmdPlugin extends Plugin {
     public void ensureAccess(PluginCall call) {
         String displayName = cleanDisplayName(call.getString("displayName", ""));
         String expectedUserId = new ConfigStore(getContext()).getAccountUserId();
+        if (!expectedUserId.isBlank()) {
+            call.resolve(stateJson());
+            return;
+        }
         CREDENTIAL_OPERATIONS.enqueue(generation -> {
             ConfigStore config = new ConfigStore(getContext());
             try {

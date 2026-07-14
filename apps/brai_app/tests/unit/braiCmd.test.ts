@@ -136,6 +136,7 @@ describe("Brai CMD bridge", () => {
       getPlatform: () => "android",
     });
     plugin.ensureAccess.mockResolvedValue({ accessGranted: true });
+    plugin.getState.mockResolvedValue({ accessGranted: false, accountCredentialsActive: false });
     plugin.beginAccountCredentialMode.mockResolvedValue({ accountCredentialsActive: true, queuePausedMode: true });
     plugin.preparePreliminaryProfile.mockResolvedValue({ preliminaryStatus: "ready", preliminaryUserId: "prelim-1" });
     plugin.setAccessKey.mockResolvedValue({ accessGranted: true });
@@ -165,6 +166,28 @@ describe("Brai CMD bridge", () => {
     expect(plugin.setQueuePausedMode).toHaveBeenCalledWith({ enabled: true });
     expect(plugin.retryQueue).toHaveBeenCalledWith();
     expect(plugin.retryPendingAccountRevocation).toHaveBeenCalledWith();
+  });
+
+  it("waits for account access instead of requesting a preliminary token", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal("Capacitor", {
+        isNativePlatform: () => true,
+        getPlatform: () => "android",
+      });
+      plugin.getState
+        .mockResolvedValueOnce({ accountCredentialsActive: true, accessGranted: false })
+        .mockResolvedValue({ accountCredentialsActive: true, accessGranted: true });
+      const { ensureBraiCmdAccess } = await import("@/shared/platform/braiCmd");
+
+      const access = ensureBraiCmdAccess("Fixture User");
+      await vi.advanceTimersByTimeAsync(250);
+
+      await expect(access).resolves.toMatchObject({ accessGranted: true });
+      expect(plugin.ensureAccess).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("logs only the safe preliminary failure category", async () => {

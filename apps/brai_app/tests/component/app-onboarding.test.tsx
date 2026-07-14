@@ -62,6 +62,7 @@ describe("BraiApp onboarding", () => {
   afterEach(() => vi.useRealTimers());
 
   it("shows the commissioning start screen before the normal shell on a fresh install", async () => {
+    vi.useFakeTimers();
     stubAndroidCapacitor();
     window.localStorage.removeItem(ONBOARDING_STORAGE_KEY);
     window.localStorage.setItem("brai_theme_mode", "light");
@@ -73,13 +74,23 @@ describe("BraiApp onboarding", () => {
 
     render(<BraiApp />);
 
-    const startButtonContainer = (await screen.findByRole("button", { name: "Приступить" })).parentElement;
-    expect(document.querySelector("[data-startup-splash]")).not.toBeInTheDocument();
-    expect(document.querySelectorAll("[data-startup-logo]")).toHaveLength(0);
-    expect(startButtonContainer).toHaveStyle({ opacity: "1" });
+    const logo = screen.getByRole("img", { name: "Brai" });
+    expect(document.querySelector("[data-startup-splash]")).toBeInTheDocument();
+    expect(document.querySelectorAll("[data-startup-logo]")).toHaveLength(1);
+    expect(document.querySelector("[data-startup-logo]")).toHaveStyle({ animation: "brai-startup-logo-fade 1000ms linear both" });
+    const startButtonContainer = screen.getByRole("button", { name: "Приступить" }).parentElement;
+    expect(startButtonContainer).toHaveStyle({ opacity: "0" });
+
+    act(() => vi.advanceTimersByTime(2999));
+    expect(startButtonContainer).toHaveStyle({ opacity: "0" });
+
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.getByRole("button", { name: "Приступить" })).toBeInTheDocument();
     expect(startButtonContainer).toHaveStyle({
       animation: "brai-onboarding-start-button 300ms ease-out both",
     });
+    expect(document.querySelector("[data-startup-logo]")).toBe(logo.closest("[data-startup-logo]"));
+    vi.useRealTimers();
     expect(screen.queryByText("ВВОД В ЭКСПЛУАТАЦИЮ")).not.toBeInTheDocument();
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Добавить" })).not.toBeInTheDocument();
@@ -445,8 +456,8 @@ describe("BraiApp onboarding", () => {
 
     render(<BraiApp />);
 
-    expect(document.querySelector("[data-startup-splash]")).not.toBeInTheDocument();
-    expect(document.querySelectorAll("[data-startup-logo]")).toHaveLength(0);
+    expect(document.querySelector("[data-startup-splash] img[alt='Brai']")).toBeInTheDocument();
+    expect(document.querySelectorAll("[data-startup-logo]")).toHaveLength(1);
     expect(screen.getByText("Как распознавать голос")).toBeInTheDocument();
   });
 
@@ -732,7 +743,7 @@ describe("BraiApp onboarding", () => {
     expect(await screen.findByText("Голосовое управление настроено")).toBeInTheDocument();
     await waitFor(() => expect(cmdPlugin.setVoiceOnlyMode).toHaveBeenCalledWith({ enabled: false }));
     await waitFor(() => expect(cmdPlugin.setOverlayEnabled).toHaveBeenCalledWith({ enabled: true }));
-    expect(cmdPlugin.ensureAccess).toHaveBeenCalledWith({ displayName: "Test" });
+    expect(cmdPlugin.ensureAccess).not.toHaveBeenCalled();
     await waitFor(() => expect(cmdPlugin.setAccessKey).toHaveBeenCalledWith({ token: "authenticated-device-token", displayName: "Test", userId: "test-user" }));
   });
 

@@ -68,10 +68,12 @@ type OnboardingFlowProps = {
   busy: boolean;
   onEmailLogin: (email: string, context?: AuthOnboardingContext) => Promise<void>;
   onRequestOtp: (email: string) => Promise<OtpSendResult>;
+  onStartupScreenChange: (active: boolean) => void;
   onVerifyOtp: (email: string, otp: string, context?: AuthOnboardingContext) => Promise<void>;
   onDone: () => void;
   onOpenEngine: () => void;
   onOpenNativeCmdSettings: () => Promise<boolean>;
+  startupIntroComplete: boolean;
 };
 
 type CheckStatus = "idle" | "checking" | "ready" | "error";
@@ -213,7 +215,9 @@ export function OnboardingFlow({
   onOpenEngine,
   onOpenNativeCmdSettings,
   onRequestOtp,
+  onStartupScreenChange,
   onVerifyOtp,
+  startupIntroComplete,
 }: OnboardingFlowProps) {
   const [state, setState] = useState<OnboardingState>(() => loadInitialOnboardingState(authRequired));
   const [message, setMessage] = useState("");
@@ -284,6 +288,10 @@ export function OnboardingFlow({
     stateRef.current = state;
     stepRef.current = state.step;
   }, [state]);
+
+  useEffect(() => {
+    onStartupScreenChange(state.step === "start");
+  }, [onStartupScreenChange, state.step]);
 
   useEffect(() => installAndroidBackHandler(() => {
     const current = stateRef.current;
@@ -1071,12 +1079,12 @@ export function OnboardingFlow({
           <div
             className={cx(
               "absolute inset-x-6 z-10 mx-auto max-w-md",
-              "pointer-events-auto",
+              startupIntroComplete ? "pointer-events-auto" : "pointer-events-none",
             )}
             style={{
               bottom: "calc(env(safe-area-inset-bottom) + 1.5rem)",
-              opacity: 1,
-              animation: "brai-onboarding-start-button 300ms ease-out both",
+              opacity: startupIntroComplete ? 1 : 0,
+              animation: startupIntroComplete ? "brai-onboarding-start-button 300ms ease-out both" : undefined,
             }}
           >
             <ShinyButton onClick={() => go("welcome-1")}>Приступить</ShinyButton>

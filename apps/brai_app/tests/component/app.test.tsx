@@ -51,7 +51,7 @@ describe("BraiApp shell", () => {
     await waitFor(() => expect(cmdPlugin.setVoiceOnlyMode).toHaveBeenCalledWith({ enabled: false }));
     expect(cmdPlugin.setQueuePausedMode).toHaveBeenCalledWith({ enabled: false });
     await waitFor(() => expect(cmdPlugin.setAccessKey).toHaveBeenCalledWith({ token: "authenticated-device-token", displayName: "Test", userId: "test-user" }));
-    expect(cmdPlugin.ensureAccess).toHaveBeenCalledWith({ displayName: "Test" });
+    expect(cmdPlugin.ensureAccess).not.toHaveBeenCalled();
     expect(cmdPlugin.syncProviderCredentials.mock.invocationCallOrder[0]).toBeLessThan(
       cmdPlugin.setOverlayEnabled.mock.invocationCallOrder.find((order) => order > cmdPlugin.syncProviderCredentials.mock.invocationCallOrder[0]) ?? 0,
     );
@@ -77,27 +77,19 @@ describe("BraiApp shell", () => {
     expect(cmdPlugin.setQueuePausedMode).toHaveBeenCalledWith({ enabled: false });
   });
 
-  it("keeps the native startup black until the local app state is ready", async () => {
-    stubAndroidCapacitor();
-
-    render(<BraiApp />);
-
-    expect(document.querySelector("[data-native-startup]")).toHaveClass("fixed", "inset-0", "bg-black");
-    expect(document.querySelector("[data-app-shell]")).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Действия" })).toBeInTheDocument());
-  });
-
-  it("keeps account overlays blocked while waiting for device access", async () => {
+  it("provisions account access without requesting a preliminary device token", async () => {
     stubAndroidCapacitor();
     cmdPlugin.ensureAccess.mockResolvedValue({ accessGranted: false });
 
     render(<BraiApp />);
 
-    await waitFor(() => expect(cmdPlugin.ensureAccess).toHaveBeenCalledWith({ displayName: "Test" }));
-    expect(cmdPlugin.setOverlayEnabled).toHaveBeenCalledWith({ enabled: false });
-    expect(cmdPlugin.setOverlayEnabled).not.toHaveBeenCalledWith({ enabled: true });
-    expect(cmdPlugin.setQueuePausedMode).toHaveBeenCalledWith({ enabled: true });
-    expect(cmdPlugin.setAccessKey).not.toHaveBeenCalled();
+    await waitFor(() => expect(cmdPlugin.setAccessKey).toHaveBeenCalledWith({
+      token: "authenticated-device-token",
+      displayName: "Test",
+      userId: "test-user",
+    }));
+    expect(cmdPlugin.ensureAccess).not.toHaveBeenCalled();
+    await waitFor(() => expect(cmdPlugin.setOverlayEnabled).toHaveBeenCalledWith({ enabled: true }));
   });
 
   it("does not enable authenticated capture before canonical provider sync completes", async () => {
