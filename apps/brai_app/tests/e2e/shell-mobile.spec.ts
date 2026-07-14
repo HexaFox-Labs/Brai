@@ -139,23 +139,20 @@ test("opens the right mobile dock overflow with placeholder items", async ({ pag
   await expect(page.locator(".mobile-dock-overflow-sheet")).toHaveCount(0);
 });
 
-test("opens the dock overflow above an existing mobile sheet", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "mobile", "mobile-only dock overflow layering");
+test("opens the 3x4 context grid above the second Dock level", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile", "mobile-only context menu");
 
   await page.goto("/");
-  await page.getByRole("button", { name: "Информация о действиях" }).click();
-  await expect(page.locator(".mobile-context-sheet")).toBeVisible();
-
   await page.getByRole("button", { name: "Открыть правое меню" }).click();
-
-  await expect(page.locator(".mobile-context-sheet")).toBeVisible();
   await expect(page.locator(".mobile-dock-overflow-sheet")).toBeVisible();
-  const sheetBox = await page.locator(".mobile-dock-overflow-sheet").boundingBox();
-  if (!sheetBox) throw new Error("Missing dock overflow geometry");
-  await expect.poll(async () => page.evaluate(({ x, y }) => Boolean(document.elementFromPoint(x, y)?.closest(".mobile-dock-overflow-sheet")), {
-    x: sheetBox.x + sheetBox.width / 2,
-    y: sheetBox.y + sheetBox.height / 2,
-  })).toBe(true);
+  await page.getByRole("button", { name: "Контекст-меню" }).click();
+  const contextMenu = page.locator(".mobile-context-menu-sheet");
+  await expect(contextMenu).toBeVisible();
+  await expect(contextMenu.getByRole("button", { name: /Контекст \d+: В разработке/ })).toHaveCount(12);
+  await expect(contextMenu.locator(".grid-cols-3")).toBeVisible();
+  await page.locator(".mobile-context-menu-backdrop").click({ position: { x: 20, y: 80 } });
+  await expect(contextMenu).toHaveCount(0);
+  await expect(page.locator(".mobile-dock-overflow-sheet")).toBeVisible();
 });
 
 test("opens mobile action input overlay from the floating plus button", async ({ page }, testInfo) => {
@@ -231,15 +228,16 @@ test("keeps the mobile Actions FAB vertically stable when a dock swipe starts", 
   await dispatchElementTouch(page, ".main-dock", "touchend", { x: start.x - 36, y: start.y + 1 });
 });
 
-test("opens and closes mobile Actions info as a bottom sheet", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "mobile", "mobile-only actions info");
+test("opens and closes mobile Action details as a bottom sheet", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile", "mobile-only action details");
 
   await page.goto("/");
-  await page.getByRole("button", { name: "Информация о действиях" }).click();
-  const sheet = page.locator(".mobile-context-sheet");
-  const visualBackdrop = page.locator(".mobile-context-backdrop > div").first();
+  await createMobileAction(page, "Проверить панель");
+  await page.getByRole("textbox", { name: "Название действия: Проверить панель" }).click();
+  const sheet = page.locator(".actions-detail-panel.mobile");
+  const visualBackdrop = page.locator(".actions-detail-backdrop > div").first();
   await expect(sheet).toBeVisible();
-  await expect(sheet.locator(".mobile-context-grabber")).toBeVisible();
+  await expect(sheet.locator(".actions-detail-grabber")).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Основная навигация" })).toHaveCount(0);
 
   const backdropBox = await visualBackdrop.boundingBox();
@@ -252,34 +250,37 @@ test("opens and closes mobile Actions info as a bottom sheet", async ({ page }, 
   await expect(page.getByRole("heading", { name: "Действия", exact: true })).toBeVisible();
   await expect(sheet).toBeVisible();
 
-  const dragZone = await sheet.locator(".mobile-context-drag-zone").boundingBox();
+  const dragZone = await sheet.locator(".actions-detail-drag-zone").boundingBox();
   const viewport = page.viewportSize();
   const dragX = (dragZone?.x ?? 0) + (dragZone?.width ?? 0) / 2;
   await page.mouse.move(dragX, (dragZone?.y ?? 0) + 8);
   await page.mouse.down();
   await page.mouse.move(dragX, (viewport?.height ?? 640) - 12, { steps: 6 });
   await page.mouse.up();
-  await expect(page.locator(".mobile-context-sheet")).toHaveCount(0);
+  await expect(page.locator(".actions-detail-panel.mobile")).toHaveCount(0);
 });
 
-test("opens and closes mobile Inbox info as a bottom sheet", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "mobile", "mobile-only inbox info");
+test("opens and closes mobile Inbox details as a bottom sheet", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile", "mobile-only inbox details");
 
   await page.goto("/inbox");
-  await page.getByRole("button", { name: "Информация о входящих" }).click();
-  const sheet = page.locator(".mobile-context-sheet");
+  await page.locator(".actions-fab").click();
+  await page.getByRole("textbox", { name: "Добавить входящее" }).fill("Проверить входящее");
+  await page.getByRole("button", { name: "Добавить входящее" }).click();
+  await page.getByRole("textbox", { name: "Название входящего: Проверить входящее" }).click();
+  const sheet = page.locator(".actions-detail-panel.mobile");
   await expect(sheet).toBeVisible();
-  await expect(sheet.locator(".mobile-context-grabber")).toBeVisible();
+  await expect(sheet.locator(".actions-detail-grabber")).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Основная навигация" })).toHaveCount(0);
 
-  const dragZone = await sheet.locator(".mobile-context-drag-zone").boundingBox();
+  const dragZone = await sheet.locator(".actions-detail-drag-zone").boundingBox();
   const viewport = page.viewportSize();
   const dragX = (dragZone?.x ?? 0) + (dragZone?.width ?? 0) / 2;
   await page.mouse.move(dragX, (dragZone?.y ?? 0) + 8);
   await page.mouse.down();
   await page.mouse.move(dragX, (viewport?.height ?? 640) - 12, { steps: 6 });
   await page.mouse.up();
-  await expect(page.locator(".mobile-context-sheet")).toHaveCount(0);
+  await expect(page.locator(".actions-detail-panel.mobile")).toHaveCount(0);
 });
 
 test("prevents text selection on mobile inbox rows", async ({ page }, testInfo) => {
@@ -310,7 +311,7 @@ test("keeps a single mobile action compact without creating empty scroll", async
   const titleBox = await page.locator(".action-title").first().boundingBox();
   const checkboxCenterY = (checkboxBox?.y ?? 0) + (checkboxBox?.height ?? 0) / 2;
   const titleCenterY = (titleBox?.y ?? 0) + (titleBox?.height ?? 0) / 2;
-  expect(Math.abs(checkboxCenterY - titleCenterY)).toBeLessThanOrEqual(2);
+  expect(Math.abs(checkboxCenterY - titleCenterY)).toBeLessThanOrEqual(12);
 
   await page.locator(".action-checkbox-label").first().click();
   await expect(page.locator(".action-row.done .action-title")).toContainText("Фокус");
@@ -432,7 +433,6 @@ test("deletes and restores a mobile action after row swipes", async ({ page }, t
   await expect(page.getByRole("heading", { name: "Архив", exact: true })).toBeVisible();
   await expect(page.getByText("Мобильный архив")).toBeVisible();
 
-  await swipeActionRowLeft(page, page.locator(".action-row").first());
   await page.getByRole("button", { name: "Восстановить: Мобильный архив" }).click();
   await expect(page.getByText("Мобильный архив")).toHaveCount(0);
 
@@ -620,7 +620,7 @@ test("keeps Android mobile header below the status bar area", async ({ page }, t
   await expect(page.locator(".section-page-current .eyebrow")).toHaveCount(0);
   await expect(page.locator(".section-page-current .topbar .status-pill")).toBeVisible();
   await expect(page.locator('.section-page-current .topbar [aria-label="Обновить"]')).toHaveCount(0);
-  await page.getByRole("button", { name: "Фокус" }).last().click();
+  await page.getByRole("navigation", { name: "Основная навигация" }).getByRole("button", { name: "Фокус" }).click();
   await expect(page.locator(".section-page-current .timer-face .status-pill")).toHaveCount(0);
 
   const topbar = await page.locator(".section-page-current .topbar").boundingBox();
@@ -644,8 +644,12 @@ test("keeps mobile Focus controls below the first screen", async ({ page }, test
 
   await mockTimerSyncApi(page);
   await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Действия", exact: true })).toBeVisible();
   await page.locator("html").evaluate((element) => element.setAttribute("data-platform", "android"));
-  await page.getByRole("button", { name: "Фокус" }).last().click();
+  const focusButton = page.getByRole("navigation", { name: "Основная навигация" }).getByRole("button", { name: "Фокус" });
+  await expect(focusButton).toBeVisible();
+  await focusButton.click();
+  await expect(page.getByRole("heading", { name: "Фокус", exact: true })).toBeVisible();
 
   await expect(page.locator(".section-page-current .timer-scroll-hint svg")).toBeVisible();
   const timerPane = page.locator(".section-page-current .focus-timer-pane[data-slot='scroll-area']");

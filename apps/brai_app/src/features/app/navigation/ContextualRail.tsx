@@ -6,14 +6,13 @@ import { BraiApi } from "@/shared/api/braiApi";
 import { defaultApiBase } from "@/shared/config/runtime";
 import { getBraiLocalStorageItem, setBraiLocalStorageItem } from "@/shared/storage/localStorageKeys";
 import type { SectionId } from "../appModel";
+import { hasDesktopPageRail } from "../appModel";
 
 const DEFAULT_WIDTH = 256;
 const MIN_WIDTH = 192;
 const MAX_WIDTH = 512;
-const SUPPORTED = new Set<SectionId>(["actions", "inbox", "factory", "draws", "archive"]);
-
 export function isContextualRailSection(section: SectionId): boolean {
-  return SUPPORTED.has(section);
+  return hasDesktopPageRail(section);
 }
 
 export function useContextualRail(section: SectionId, userId?: string | null) {
@@ -118,9 +117,9 @@ export function ContextualRail({ children, open, width, onWidth }: {
       ref={railRef}
       className="contextual-rail relative hidden h-full min-h-0 shrink-0 overflow-hidden border-r border-border bg-card min-[861px]:block"
       style={{ width }}
-      aria-label="Контекстная панель"
+      aria-label="Левый рейл"
     >
-      <div className="h-full min-h-0 overflow-hidden">{children}</div>
+      <div className="h-full min-h-0 overflow-hidden">{children ?? <PageRailPlaceholder />}</div>
       <button
         type="button"
         className="absolute inset-y-0 right-0 z-10 w-2 translate-x-1/2 cursor-ew-resize border-0 bg-transparent outline-none focus-visible:bg-primary/25"
@@ -136,6 +135,14 @@ export function ContextualRail({ children, open, width, onWidth }: {
         onKeyDown={resizeWithKeyboard}
       />
     </aside>
+  );
+}
+
+export function PageRailPlaceholder() {
+  return (
+    <div className="grid h-full min-h-0 place-items-center p-4 text-center text-sm text-muted-foreground">
+      В разработке
+    </div>
   );
 }
 

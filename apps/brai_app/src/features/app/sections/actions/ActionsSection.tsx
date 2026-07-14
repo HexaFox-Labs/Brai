@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties, FormEvent, KeyboardEvent, MouseEvent, PointerEvent } from "react";
+import type { CSSProperties, FormEvent, MouseEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, FilePenLine, Plus } from "lucide-react";
 import { installAndroidBackHandler } from "@/shared/platform/platform";
@@ -9,14 +9,14 @@ import type { ActivityItem, ActivitiesState, ActivityStatus } from "@/shared/typ
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/shared/ui/input-group";
 import { ScrollArea } from "@/shared/ui/scroll-area";
 import { cx } from "../../appUtils";
+import { PageWorkspace } from "../../chrome/PageWorkspace";
 import { MobileCreateComposer, mobileCreateDraftHasText, type MobileCreateDraft } from "../MobileCreateComposer";
 import { useMobileSheetTop } from "../../hooks/useMobileSheetTop";
+import { isMobileNavigationViewport } from "../../navigation/useSectionSwipeNavigation";
 import { ActionRow, type DetailTitleFocus } from "./ActionRow";
 import { SortableActionList } from "./ActionList";
-import { ActionsInfoPanel } from "./ActionsInfoPanel";
 import { ActivityDetailEditor } from "./ActivityDetailEditor";
 import { useRestoreActionEditDrafts } from "./actionsModel";
-import { ACTIONS_SPLIT_DEFAULT_PERCENT, ACTIONS_SPLIT_MIN_PERCENT, clampActionsSplitPercent } from "./constants";
 
 export function ActionsSection({
   state,
@@ -61,13 +61,10 @@ export function ActionsSection({
   const [mobileEditActionId, setMobileEditActionId] = useState<string | null>(null);
   const [doneOpen, setDoneOpen] = useState(true);
   const [openDeleteActionId, setOpenDeleteActionId] = useState<string | null>(null);
-  const [splitPercent, setSplitPercent] = useState(ACTIONS_SPLIT_DEFAULT_PERCENT);
   const [titleDrafts, setTitleDrafts] = useState<Record<string, string>>({});
   const [detailTitleFocusRequest, setDetailTitleFocusRequest] = useState(0);
   const suppressMobileCreatePopRef = useRef(false);
   const mobileCreateSubmitInFlightRef = useRef(false);
-  const workspaceRef = useRef<HTMLDivElement | null>(null);
-  const splitDragStyleRef = useRef<{ cursor: string; userSelect: string } | null>(null);
   const desktopInputRef = useRef<HTMLInputElement | null>(null);
   const newActions = state.actions.filter((action) => action.status === "New");
   const doneActions = state.actions.filter((action) => action.status === "Done");
@@ -76,7 +73,6 @@ export function ActionsSection({
   const visibleOpenDeleteActionId =
     openDeleteActionId && state.actions.some((action) => action.id === openDeleteActionId) ? openDeleteActionId : null;
   const mobileOverlayOpen = mobileCreateOpen || mobileEditAction != null;
-  const desktopSidePanelOpen = true;
   const mobileSheetTop = useMobileSheetTop();
   const mobileCreateHasDraft = mobileCreateDraftHasText(mobileCreateDraft);
   const MobileCreateFabIcon = mobileCreateHasDraft ? FilePenLine : Plus;
@@ -131,7 +127,6 @@ export function ActionsSection({
 
   function openMobileEdit(action: ActivityItem) {
     setOpenDeleteActionId(null);
-    setSplitPercent(ACTIONS_SPLIT_DEFAULT_PERCENT);
     setSelectedActionId(action.id);
     setMobileEditActionId(action.id);
   }
@@ -150,7 +145,11 @@ export function ActionsSection({
   }
 
   function selectAction(actionId: string, focusDetailTitle: DetailTitleFocus = "end") {
-    if (selectedActionId !== actionId) setSplitPercent(ACTIONS_SPLIT_DEFAULT_PERCENT);
+    if (isMobileNavigationViewport()) {
+      const action = state.actions.find((item) => item.id === actionId);
+      if (action) openMobileEdit(action);
+      return;
+    }
     setSelectedActionId(actionId);
     if (focusDetailTitle === "end") setDetailTitleFocusRequest((current) => current + 1);
   }
@@ -195,80 +194,15 @@ export function ActionsSection({
     });
   }, [closeMobileCreate, mobileCreateOpen]);
 
-  function onSplitPointerDown(event: PointerEvent<HTMLButtonElement>) {
-    const workspace = workspaceRef.current;
-    if (!workspace) return;
-    event.preventDefault();
-    splitDragStyleRef.current = {
-      cursor: document.documentElement.style.cursor,
-      userSelect: document.body.style.userSelect,
-    };
-    document.documentElement.style.cursor = "ew-resize";
-    document.body.style.userSelect = "none";
-    event.currentTarget.setPointerCapture(event.pointerId);
-  }
-
-  function onSplitPointerMove(event: PointerEvent<HTMLButtonElement>) {
-    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
-    const workspace = workspaceRef.current;
-    if (!workspace) return;
-    const bounds = workspace.getBoundingClientRect();
-    const rawPercent = ((event.clientX - bounds.left) / bounds.width) * 100;
-    setSplitPercent(clampActionsSplitPercent(rawPercent));
-  }
-
-  function onSplitPointerEnd(event: PointerEvent<HTMLButtonElement>) {
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    const previous = splitDragStyleRef.current;
-    if (!previous) return;
-    document.documentElement.style.cursor = previous.cursor;
-    document.body.style.userSelect = previous.userSelect;
-    splitDragStyleRef.current = null;
-  }
-
-  function onSplitKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
-    if (event.key === "ArrowLeft") {
-      event.preventDefault();
-      setSplitPercent((current) => clampActionsSplitPercent(current - 2));
-    }
-    if (event.key === "ArrowRight") {
-      event.preventDefault();
-      setSplitPercent((current) => clampActionsSplitPercent(current + 2));
-    }
-    if (event.key === "Home") {
-      event.preventDefault();
-      setSplitPercent(ACTIONS_SPLIT_MIN_PERCENT);
-    }
-    if (event.key === "End") {
-      event.preventDefault();
-      setSplitPercent(100 - ACTIONS_SPLIT_MIN_PERCENT);
-    }
-  }
-
   return (
     <section
       className="actions-section relative grid h-full min-h-0 grid-rows-[minmax(0,1fr)] gap-3.5 max-[860px]:gap-0 max-[860px]:pb-0"
       aria-label="Действия"
       onClickCapture={closeOpenDeleteFromOutside}
     >
-      <div
-        ref={workspaceRef}
-        className={cx(
-          "actions-workspace relative grid h-full min-h-0 min-w-0 items-stretch gap-[18px] max-[860px]:block",
-          desktopSidePanelOpen ? "has-detail grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-0 overflow-hidden" : "grid-cols-[minmax(0,1fr)]",
-        )}
-        style={
-          desktopSidePanelOpen
-            ? ({
-                "--actions-list-percent": `${splitPercent}%`,
-                gridTemplateColumns: "minmax(0,var(--actions-list-percent)) minmax(0,calc(100% - var(--actions-list-percent)))",
-              } as CSSProperties)
-            : undefined
-        }
-      >
-        <ScrollArea className="actions-list-pane h-full min-h-0 min-w-0 max-[860px]:[&>[data-slot=scroll-area-viewport]>div]:pb-24">
+      <PageWorkspace
+        className="actions-workspace relative"
+        main={<ScrollArea className="actions-list-pane h-full min-h-0 min-w-0 max-[860px]:[&>[data-slot=scroll-area-viewport]>div]:pb-24">
           <form className="sticky top-0 z-[4] mb-[18px] max-[860px]:hidden" onSubmit={submitDesktop}>
             <InputGroup className="actions-add-form">
               <InputGroupInput
@@ -357,44 +291,20 @@ export function ActionsSection({
               ) : null}
             </section>
           ) : null}
-        </ScrollArea>
-
-        {desktopSidePanelOpen ? (
-          <>
-            <button
-              type="button"
-              className="actions-split-resizer group absolute inset-y-0 z-[5] hidden w-6 -translate-x-1/2 touch-none !cursor-ew-resize place-items-stretch justify-center border-0 bg-transparent px-[11px] py-0 max-[860px]:hidden min-[861px]:grid [&_*]:!cursor-ew-resize"
-              style={{ left: `${splitPercent}%` }}
-              aria-label="Изменить ширину панелей"
-              aria-valuemin={ACTIONS_SPLIT_MIN_PERCENT}
-              aria-valuemax={100 - ACTIONS_SPLIT_MIN_PERCENT}
-              aria-valuenow={Math.round(splitPercent)}
-              role="slider"
-              onPointerDown={onSplitPointerDown}
-              onPointerMove={onSplitPointerMove}
-              onPointerUp={onSplitPointerEnd}
-              onPointerCancel={onSplitPointerEnd}
-              onKeyDown={onSplitKeyDown}
-            >
-              <span className="block h-full w-px bg-border transition-colors group-hover:bg-primary" aria-hidden="true" />
-            </button>
-            {selectedAction && !mobileEditAction ? (
-              <ActivityDetailEditor
-                key={selectedAction.id}
-                action={selectedAction}
-                titleDraft={titleDrafts[selectedAction.id]}
-                mode="desktop"
-                focusTitleRequest={detailTitleFocusRequest}
-                onClose={() => setSelectedActionId(null)}
-                onTitleDraftChange={setTitleDraft}
-                onAutosaveDetails={onAutosaveDetails}
-              />
-            ) : (
-              <ActionsInfoPanel />
-            )}
-          </>
-        ) : null}
-      </div>
+        </ScrollArea>}
+        temporaryPanel={selectedAction && !mobileEditAction ? (
+          <ActivityDetailEditor
+            key={selectedAction.id}
+            action={selectedAction}
+            titleDraft={titleDrafts[selectedAction.id]}
+            mode="desktop"
+            focusTitleRequest={detailTitleFocusRequest}
+            onClose={() => setSelectedActionId(null)}
+            onTitleDraftChange={setTitleDraft}
+            onAutosaveDetails={onAutosaveDetails}
+          />
+        ) : undefined}
+      />
 
       {!mobileOverlayOpen && !dockOverflowOpen ? (
         <button

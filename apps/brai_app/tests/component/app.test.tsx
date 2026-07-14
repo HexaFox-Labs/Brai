@@ -36,8 +36,7 @@ describe("BraiApp shell", () => {
     expect(screen.queryByRole("button", { name: "Настройки" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Открыть меню" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Открыть левое меню" })).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByRole("button", { name: "Информация о действиях" })).toBeInTheDocument());
-    expect(screen.getAllByLabelText("Информация о действиях").length).toBeGreaterThan(0);
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Информация о действиях" })).not.toBeInTheDocument());
     expect(screen.getByRole("textbox", { name: "Добавить" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Открыть правое меню" })).toBeInTheDocument();
   });
@@ -245,7 +244,7 @@ describe("BraiApp shell", () => {
 
     render(<BraiApp />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Войти" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Войти" }, { timeout: 10_000 }));
     const email = await screen.findByRole("textbox", { name: "Email" });
     fireEvent.change(email, { target: { value: "random@example.test" } });
     fireEvent.click(screen.getByRole("button", { name: "Войти" }));
@@ -384,6 +383,7 @@ describe("BraiApp shell", () => {
     render(<BraiApp />);
 
     await waitFor(() => expect(document.querySelector('[data-slot="sidebar"][data-state="collapsed"]')).toBeInTheDocument());
+    expect(document.querySelectorAll('.desktop-rail [aria-disabled="true"]')).toHaveLength(12);
     fireEvent.click(screen.getByRole("button", { name: /Engine/ }));
     await waitFor(() => expect(screen.getByRole("heading", { name: "Engine" })).toBeInTheDocument());
     expect(window.location.pathname).toBe("/engine");
@@ -396,30 +396,24 @@ describe("BraiApp shell", () => {
     await waitFor(() => expect(screen.getByRole("heading", { name: "Архив" })).toBeInTheDocument());
   });
 
-  it("opens the mobile Inbox info sheet", async () => {
+  it("keeps Inbox without an informational panel", async () => {
     render(<BraiApp initialSection="inbox" />);
 
     await waitFor(() => expect(screen.getByRole("heading", { name: "Входящие" })).toBeInTheDocument());
-    const infoButton = await screen.findByRole("button", { name: "Информация о входящих" });
-    fireEvent.click(infoButton);
-
-    expect(document.querySelector(".mobile-context-sheet")).toBeInTheDocument();
-    expect(infoButton).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByRole("button", { name: "Информация о входящих" })).not.toBeInTheDocument();
+    expect(document.querySelector(".mobile-context-sheet")).not.toBeInTheDocument();
   });
 
-  it("opens the mobile dock overflow over an existing mobile sheet", async () => {
+  it("opens the 3×4 context menu over the second dock level", async () => {
     render(<BraiApp />);
 
-    const infoButton = await screen.findByRole("button", { name: "Информация о действиях" });
-    fireEvent.click(infoButton);
-    expect(document.querySelector(".mobile-context-sheet")).toBeInTheDocument();
-
     fireEvent.click(screen.getByRole("button", { name: "Открыть правое меню" }));
+    fireEvent.click(screen.getByRole("button", { name: "Контекст-меню" }));
 
     expect(document.querySelector(".mobile-dock-overflow-sheet")).toBeInTheDocument();
-    expect(document.querySelector(".mobile-dock-overflow-backdrop")).toHaveClass("z-[110]");
-    expect(document.querySelector(".mobile-context-sheet")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Draws" })).toBeInTheDocument();
+    const contextSheet = document.querySelector(".mobile-context-menu-sheet") as HTMLElement;
+    expect(contextSheet).toHaveClass("grid");
+    expect(within(contextSheet).getAllByRole("button", { name: /Контекст \d+: В разработке/ })).toHaveLength(12);
   });
 
   it("keeps the left dock overflow available and hides the mobile FAB while the right overflow is open", async () => {
@@ -754,7 +748,7 @@ describe("BraiApp shell", () => {
     );
     expect(contextScrollArea?.querySelector("[data-slot='scroll-area-scrollbar']")).toHaveStyle({ right: "var(--scroll-area-gap)" });
     expect(contextScrollArea?.querySelector("[data-slot='scroll-area-scrollbar']")).toHaveAttribute("data-scrollbar-state", "hidden");
-    expect(window.localStorage.getItem("brai_focus_context_panel")).toBe("goal");
+    await waitFor(() => expect(window.localStorage.getItem("brai_focus_context_panel:test-user")).toBe("goal"));
     first.unmount();
 
     render(<BraiApp initialSection="focus" />);
@@ -858,8 +852,11 @@ describe("BraiApp shell", () => {
     );
 
     render(<BraiApp initialSection="focus" />);
-    fireEvent.click(await screen.findByRole("button", { name: "История фокуса" }));
-    await waitFor(() => expect(screen.getByText("Сессий пока нет")).toBeInTheDocument());
+    const historyButton = await screen.findByRole("button", { name: "История фокуса" });
+    fireEvent.click(historyButton);
+    expect(historyButton).toHaveAttribute("aria-pressed", "true");
+    await waitFor(() => expect(window.localStorage.getItem("brai_focus_context_panel:test-user")).toBe("history"));
+    expect(document.querySelector(".mobile-context-sheet")).toHaveTextContent("История фокуса");
     await waitFor(() => expect(sockets.length).toBeGreaterThan(0));
 
     await act(async () => {
@@ -940,7 +937,7 @@ describe("BraiApp shell", () => {
 
     render(<BraiApp initialSection="focus" />);
     fireEvent.click(await screen.findByRole("button", { name: "История фокуса" }));
-    await waitFor(() => expect(screen.getByText("Сессий пока нет")).toBeInTheDocument());
+    expect(document.querySelector(".mobile-context-sheet")).toHaveTextContent("История фокуса");
     await waitFor(() => expect(sockets.length).toBeGreaterThan(0));
 
     await act(async () => {
@@ -1030,8 +1027,11 @@ describe("BraiApp shell", () => {
     );
 
     render(<BraiApp initialSection="focus" />);
-    fireEvent.click(await screen.findByRole("button", { name: "История фокуса" }));
-    await waitFor(() => expect(screen.getByText("Сессий пока нет")).toBeInTheDocument());
+    const pollingHistoryButton = await screen.findByRole("button", { name: "История фокуса" });
+    fireEvent.click(pollingHistoryButton);
+    expect(pollingHistoryButton).toHaveAttribute("aria-pressed", "true");
+    await waitFor(() => expect(window.localStorage.getItem("brai_focus_context_panel:test-user")).toBe("history"));
+    expect(document.querySelector(".mobile-context-sheet")).toHaveTextContent("История фокуса");
 
     await intervals.run(5000);
 

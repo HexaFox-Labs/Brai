@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, type ReactNode, type TouchEventHandler } from "react";
-import { Archive, ChevronDown, ChevronUp, Cpu, Download, Ellipsis, Flag, Menu, Pencil, Tag, type LucideIcon } from "lucide-react";
+import { Archive, Blocks, Brain, ChevronDown, ChevronUp, CircleDot, Compass, Cpu, Download, Ellipsis, Flag, Gauge, Layers3, Menu, Network, Pencil, Shapes, Sparkles, SunMedium, Tag, Telescope, Waves, Zap, type LucideIcon } from "lucide-react";
 import { BraiUserAvatar, BraiUserDropdownMenu, BraiUserMenuPanel } from "@/components/shadcn-space/dropdown-menu/dropdown-menu-01";
 import type { AppVersionState, AuthUser } from "@/shared/api/braiApi";
 import { useAppVersion } from "@/shared/config/runtime";
@@ -18,6 +18,21 @@ import { useMobileSheetDrag } from "../hooks/useMobileSheetDrag";
 import type { PrimarySectionId, SectionId } from "../appModel";
 import { isPrimarySection, navHref, navItems } from "../appModel";
 import { engineSectionView } from "../sections/engine/engineModel";
+
+export const CONTEXT_MENU_ITEMS: Array<{ id: string; icon: LucideIcon }> = [
+  { id: "orbit", icon: CircleDot },
+  { id: "compass", icon: Compass },
+  { id: "sparkles", icon: Sparkles },
+  { id: "brain", icon: Brain },
+  { id: "layers", icon: Layers3 },
+  { id: "network", icon: Network },
+  { id: "blocks", icon: Blocks },
+  { id: "telescope", icon: Telescope },
+  { id: "waves", icon: Waves },
+  { id: "gauge", icon: Gauge },
+  { id: "shapes", icon: Shapes },
+  { id: "zap", icon: Zap },
+];
 
 export function DesktopRail({
   section,
@@ -58,7 +73,11 @@ export function DesktopRail({
       className="desktop-rail max-[860px]:hidden"
       aria-label="Основная навигация"
     >
-      <SidebarContent className="min-h-0" />
+      <SidebarContent className="min-h-0 items-center overflow-y-auto py-2" aria-label="Контекст-меню">
+        <div className="grid justify-items-center gap-1">
+          {CONTEXT_MENU_ITEMS.map((item, index) => <ContextMenuButton key={item.id} item={item} index={index} />)}
+        </div>
+      </SidebarContent>
       <SidebarFooter className="items-center gap-3">
         <div className="desktop-rail-slot grid size-10 place-items-center">
           <DesktopRailStatus syncStatus={syncStatus} pendingCount={pendingCount} />
@@ -100,6 +119,22 @@ export function DesktopRail({
         </div>
       </SidebarFooter>
     </Sidebar>
+  );
+}
+
+function ContextMenuButton({ item, index }: { item: { icon: LucideIcon }; index: number }) {
+  const Icon = item.icon;
+  return (
+    <button
+      type="button"
+      className="grid size-10 place-items-center rounded-md border-0 bg-transparent text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground active:bg-accent/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      aria-label={`Контекст ${index + 1}: В разработке`}
+      aria-disabled="true"
+      title="В разработке"
+      onClick={(event) => event.preventDefault()}
+    >
+      <Icon className="size-4" aria-hidden="true" />
+    </button>
   );
 }
 
@@ -208,7 +243,7 @@ export function MobileProfileDrawer({
         ref={sheetRef}
         className="mobile-profile-drawer flex h-full w-64 max-w-[85vw] flex-col overflow-hidden border-r border-border bg-card pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] shadow-xl animate-[mobile-drawer-in_180ms_ease-out] [touch-action:pan-y] will-change-transform"
         style={sheetStyle}
-        aria-label="Контекстная панель"
+        aria-label="Левый рейл"
         {...sheetDragHandlers}
         onClick={(event) => event.stopPropagation()}
       >{children}</aside>
@@ -236,6 +271,7 @@ export function MobileDockOverflowSheet({
   onLogout,
   engineDownloading = false,
   engineHasUpdate = false,
+  onContextMenu,
 }: {
   side: "left" | "right";
   section: SectionId;
@@ -250,6 +286,7 @@ export function MobileDockOverflowSheet({
   onLogout: () => Promise<void>;
   engineDownloading?: boolean;
   engineHasUpdate?: boolean;
+  onContextMenu?: () => void;
 }) {
   const suppressPopRef = useRef(false);
   const afterCloseRef = useRef<(() => void) | null>(null);
@@ -285,6 +322,7 @@ export function MobileDockOverflowSheet({
         suppressPopRef.current = false;
         return;
       }
+      if (window.history.state?.braiMobileDockMenu === side) return;
       closeWithAnimation();
     }
 
@@ -368,10 +406,77 @@ export function MobileDockOverflowSheet({
               {MOBILE_DOCK_PLACEHOLDER_ITEMS.map(({ icon: Icon, label }) => (
                 <MobileDockOverflowActionButton key={label} icon={Icon} label={`Заглушка: ${label}`} disabled />
               ))}
+              <MobileDockOverflowActionButton icon={SunMedium} label="Контекст-меню" onClick={onContextMenu} />
             </div>
           )}
         </aside>
       </div>
+    </div>
+  );
+}
+
+export function MobileContextMenuSheet({ onClose }: { onClose: () => void }) {
+  const suppressPopRef = useRef(false);
+  const { backdropRef, backdropStyle, closeWithAnimation, resetOpen, sheetDragHandlers, sheetRef, sheetStyle } = useMobileSheetDrag({ onClose });
+  const closeSheet = useCallback(() => {
+    if (window.history.state?.braiMobileContextMenu) {
+      suppressPopRef.current = true;
+      window.history.back();
+    }
+    closeWithAnimation();
+  }, [closeWithAnimation]);
+
+  useEffect(() => {
+    resetOpen();
+    window.history.pushState({ ...window.history.state, braiMobileContextMenu: true }, "", window.location.href);
+    function onPopState() {
+      if (suppressPopRef.current) {
+        suppressPopRef.current = false;
+        return;
+      }
+      closeWithAnimation();
+    }
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [closeWithAnimation, resetOpen]);
+
+  useEffect(() => installAndroidBackHandler(() => {
+    closeSheet();
+    return true;
+  }), [closeSheet]);
+
+  return (
+    <div className="mobile-context-menu-backdrop fixed inset-0 z-[120] hidden items-end pb-[calc(7.75rem+env(safe-area-inset-bottom))] max-[860px]:flex" data-nav-swipe-exclusion onClick={closeSheet}>
+      <div ref={backdropRef} className="absolute inset-x-0 top-0 bottom-[calc(7.75rem+env(safe-area-inset-bottom))] bg-foreground/20 dark:bg-background/80" style={backdropStyle} aria-hidden="true" />
+      <aside
+        ref={sheetRef}
+        className="mobile-context-menu-sheet pointer-events-auto relative z-[1] grid w-full grid-rows-[auto_minmax(0,1fr)] rounded-t-2xl border-t border-border bg-card px-8 pb-6 pt-2 shadow-xl"
+        style={sheetStyle}
+        aria-label="Контекст-меню"
+        {...sheetDragHandlers}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="relative min-h-8">
+          <button type="button" className="sr-only" aria-label="Закрыть контекст-меню" onClick={closeSheet}>Закрыть</button>
+          <div className="absolute left-1/2 top-0 flex h-6 w-32 -translate-x-1/2 items-start justify-center pt-1.5">
+            <span className="h-1 w-11 rounded-full bg-muted-foreground/30" aria-hidden="true" />
+          </div>
+        </header>
+        <div className="grid grid-cols-3 gap-x-8 gap-y-3">
+          {CONTEXT_MENU_ITEMS.map(({ id, icon: Icon }, index) => (
+            <button
+              key={id}
+              type="button"
+              className="grid size-12 place-self-center place-items-center rounded-full border-0 bg-transparent text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground active:bg-accent/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label={`Контекст ${index + 1}: В разработке`}
+              aria-disabled="true"
+              onClick={(event) => event.preventDefault()}
+            >
+              <Icon className="size-5" aria-hidden="true" />
+            </button>
+          ))}
+        </div>
+      </aside>
     </div>
   );
 }

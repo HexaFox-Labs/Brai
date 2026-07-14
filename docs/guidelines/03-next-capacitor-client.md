@@ -13,12 +13,17 @@
 
 ## Layout и navigation
 
-- Основная навигация: `Действия`, `Фокус`, `Цель`.
+- Док-меню — центральная основная навигация; Дроп-меню — меню аватара на desktop и три точки слева на mobile; Контекст-меню — крайняя узкая desktop-панель и мобильная сетка 3×4.
+- Элементы страницы называются: левый рейл, верхний блок, главная область и панель. Не называть левый рейл контекст-меню или панелью страницы.
+- Основная навигация строится из единого массива разделов для desktop и mobile.
 - `Настройки` открываются как full app section из profile dropdown.
 - `/focus` является canonical route для таймера и History.
 - `/timer*` и `/history*` retired live URLs и не должны возвращаться без отдельного принятого решения.
 - Mobile использует bottom navigation и horizontal tab swipe.
-- Desktop использует left rail/dock и full workspace beside rail, без искусственного centered max-width shell.
+- Desktop shell uses the full workspace beside navigation rails; the shared page workspace, not each section, centers panel-less content at the accepted maximum width.
+- Authenticated product sections use the shared page workspace defined by `openspec/specs/next-capacitor-client/spec.md`; do not copy header, main/panel split, or mobile sheet shells into individual sections.
+- Without a panel, page content is centered at a 1024px maximum; with a panel, desktop uses the shared 50/50 region and mobile uses the shared sheet below the fixed opaque header.
+- Page-specific behavior is supplied through the central desktop/mobile rail and panel registry. Exceptions wrap the shared shell instead of modifying or copying its internals.
 - В разделе Goal/`Цели фокусировки` длительности показывай компактно: `Hч Mм`; часы без ведущего нуля, минуты не показываются при `0`.
 
 ## Styling

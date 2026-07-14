@@ -23,15 +23,15 @@ describe("contextual rail", () => {
 
   it("stores open state separately for each page", async () => {
     const view = render(<RailHarness section="actions" />);
-    await waitFor(() => expect(screen.getByLabelText("Контекстная панель")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByLabelText("Левый рейл")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Переключить" }));
-    expect(screen.queryByLabelText("Контекстная панель")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Левый рейл")).not.toBeInTheDocument();
 
     view.rerender(<RailHarness section="inbox" />);
-    await waitFor(() => expect(screen.getByLabelText("Контекстная панель")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByLabelText("Левый рейл")).toBeInTheDocument());
 
     view.rerender(<RailHarness section="actions" />);
-    await waitFor(() => expect(screen.queryByLabelText("Контекстная панель")).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByLabelText("Левый рейл")).not.toBeInTheDocument());
   });
 
   it("uses a shared account width and supports keyboard resizing", async () => {

@@ -637,7 +637,7 @@ test("reorders mobile actions by long-pressing a row", async ({ page }, testInfo
   await expect.poll(() => titles.allTextContents()).toEqual(["Первое", "Второе"]);
 });
 
-test("opens the desktop activity description split panel", async ({ page }, testInfo) => {
+test("opens the desktop activity detail in the fixed page panel", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "desktop-only detail panel");
 
   const title = "Пересобрать механизм страницы Действий с длинным заголовком который должен быть виден полностью";
@@ -674,31 +674,13 @@ test("opens the desktop activity description split panel", async ({ page }, test
   await expect(detailPanel).toHaveCSS("border-left-width", "0px");
   await expect(detailPanel).toHaveCSS("overflow-y", "hidden");
 
-  const resizer = await page.locator(".actions-split-resizer").boundingBox();
-  expect(resizer).not.toBeNull();
-  await expect(page.locator(".actions-split-resizer")).toHaveCSS("cursor", "ew-resize");
-  await expect(page.locator(".desktop-rail")).not.toHaveCSS("cursor", "ew-resize");
-  const resizerCursors = await page.locator(".actions-split-resizer").evaluate((node) => {
-    const rect = node.getBoundingClientRect();
-    return [2, rect.width / 2, rect.width - 2].map((offset) => {
-      const target = document.elementFromPoint(rect.left + offset, rect.top + rect.height / 2);
-      return target instanceof Element ? getComputedStyle(target).cursor : null;
-    });
-  });
-  expect(resizerCursors).toEqual(["ew-resize", "ew-resize", "ew-resize"]);
-  await page.mouse.move((resizer?.x ?? 0) + (resizer?.width ?? 0) / 2, (resizer?.y ?? 0) + (resizer?.height ?? 0) / 2);
-  await page.mouse.down();
-  await page.mouse.move((workspace?.x ?? 0) + (workspace?.width ?? 0) * 0.3, (resizer?.y ?? 0) + (resizer?.height ?? 0) / 2);
-  await page.mouse.up();
-  await expect.poll(() => page.evaluate(() => document.documentElement.style.cursor)).not.toBe("ew-resize");
+  await expect(page.locator(".actions-split-resizer")).toHaveCount(0);
   await expect.poll(() => detailTitle.evaluate((node) => node.scrollHeight <= node.clientHeight + 1)).toBe(true);
-  await expect.poll(async () => ((await page.locator(".actions-list-pane").boundingBox())?.width ?? 0) / ((await page.locator(".actions-workspace").boundingBox())?.width ?? 1)).toBeGreaterThan(0.29);
-  await expect.poll(async () => ((await page.locator(".actions-list-pane").boundingBox())?.width ?? 0) / ((await page.locator(".actions-workspace").boundingBox())?.width ?? 1)).toBeLessThan(0.31);
   await page.getByRole("button", { name: "Закрыть редактор" }).click();
+  await expect(page.locator(".actions-workspace")).not.toHaveClass(/has-panel/);
+  const centeredMain = await page.locator(".actions-workspace > .page-main").boundingBox();
+  expect(centeredMain?.width ?? 0).toBeLessThanOrEqual(1024);
   await page.getByRole("textbox", { name: `Название действия: ${title}` }).click();
-  await expect
-    .poll(async () => ((await page.locator(".actions-list-pane").boundingBox())?.width ?? 0) / ((await page.locator(".actions-workspace").boundingBox())?.width ?? 1))
-    .toBeGreaterThan(0.49);
   const overLimitTitle = "я".repeat(270);
   await detailTitle.fill(overLimitTitle);
   await expect.poll(async () => (await detailTitle.inputValue()).length).toBe(250);
