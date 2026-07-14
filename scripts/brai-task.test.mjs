@@ -140,6 +140,7 @@ test("server access contract checks operation helper sudo boundary", () => {
   const sudoers = fs.readFileSync(new URL("../deploy/ansible/templates/brai-deploy-sudoers.j2", import.meta.url), "utf8");
   assert.match(script, /commandCheck\("operation create helper host-local sudo"/);
   assert.match(script, /commandCheck\("operation complete helper host-local sudo"/);
+  assert.match(script, /commandCheck\("Inbox operation complete helper host-local sudo"/);
   assert.match(script, /commandCheck\("operation list helper host-local sudo"/);
   assert.match(script, /commandCheck\("accepted preview OTA sync access"/);
   assert.match(script, /sync-occupied-preview-ota-manifests\.sh/);
@@ -149,12 +150,14 @@ test("server access contract checks operation helper sudo boundary", () => {
   assert.match(sudoers, /ALL=\(\{\{ brai_service_user \}\}\) NOPASSWD:/);
   assert.match(sudoers, /create-operation-activity\.sh --local \*/);
   assert.match(sudoers, /complete-operation-activities\.sh --local \*/);
+  assert.match(sudoers, /complete-inbox-operations\.sh --local \*/);
   assert.match(sudoers, /list-operation-activities\.sh --local \*/);
   assert.match(sudoers, /brai_operation_maintainers/);
 });
 
 test("delivery classifier keeps operation helper changes in infra", () => {
   assert.equal(deliveryClassForFile("deploy/scripts/create-operation-activity.sh"), "infra");
+  assert.equal(deliveryClassForFile("deploy/scripts/complete-inbox-operations.sh"), "infra");
   assert.equal(deliveryClassForFile("deploy/scripts/list-operation-activities.sh"), "infra");
 });
 
@@ -2408,6 +2411,15 @@ test("accept preview checks verified preview before PR actions", () => {
   assert.match(script, /cd "\$ROOT"/);
   assert.ok(script.indexOf('ROOT="$(find_acceptance_root)"') < script.indexOf("ensure_acceptance_marker_writable"));
   assert.ok(script.indexOf('cd "$ROOT"') < script.indexOf("ensure_acceptance_marker_writable"));
+});
+
+test("accept preview handles deleted merged refs and requires explicit supersession", () => {
+  const script = fs.readFileSync(path.join(process.cwd(), "deploy/scripts/accept-preview.sh"), "utf8");
+  assert.ok(script.indexOf('HEAD_SHA="$(git rev-parse "$BRANCH")"') < script.indexOf('git fetch origin "$BRANCH:refs/remotes/origin/$BRANCH"'));
+  assert.match(script, /--supersede codex\/<older-branch>/);
+  assert.match(script, /gh pr close "\$earlier_number"/);
+  assert.match(script, /ci-ssh-release-slot\.sh/);
+  assert.match(script, /To supersede explicitly:/);
 });
 
 test("accepted preview stale cleanup is required", () => {

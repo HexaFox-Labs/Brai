@@ -185,6 +185,7 @@ describe("mobile OTA publish scripts", () => {
         BRAI_ROOT: root,
         BRAI_BUILD_CLIENT: "false",
         BRAI_ENVS_ROOT: path.join(root, "envs"),
+        BRAI_SKIP_DEPLOY_USER_REENTRY: "true",
         BRAI_APP_VERSION: "9.9.9",
         BRAI_TARGET_APK_VERSION: "2999",
         BRAI_PUBLISHED_AT: "2026-06-15T00:00:00Z",
@@ -580,7 +581,8 @@ describe("mobile OTA publish scripts", () => {
     expect(deploy).toContain("export BRAI_NATIVE_APK_CHANGE");
     expect(deployBranch).toContain("BRAI_NATIVE_APK_CHANGE:-false");
     expect(deployBranch).toContain('resolve-required-apk-version.mjs" prod apkVersion');
-    expect(deployBranch).toContain('export BRAI_TARGET_APK_VERSION="$("$NODE_BIN" "$SCRIPT_DIR/resolve-required-apk-version.mjs" prod apkVersion)"');
+    expect(deployBranch).toContain('BRAI_TARGET_APK_VERSION="$("$NODE_BIN" "$SCRIPT_DIR/resolve-required-apk-version.mjs" prod apkVersion)"');
+    expect(deployBranch).toContain("export BRAI_TARGET_APK_VERSION");
     expect(deployBranch).toContain('export BRAI_TARGET_APK_BUILD_KIND="stable"');
     expect(deployBranch).not.toContain("BRAI_TARGET_APK_VERSION:-");
     expect(deployBranch).not.toContain("BRAI_TARGET_APK_BUILD_KIND:-stable");

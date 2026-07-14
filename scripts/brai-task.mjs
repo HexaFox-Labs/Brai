@@ -13,6 +13,7 @@ const DEPENDENCY_DIRS = [
   "admin/node_modules",
   "apps/brai_app/node_modules",
   "services/brai_api/node_modules",
+  "services/brai_goal_agents/node_modules",
   "services/brai_temporal/node_modules",
 ];
 const WORKSPACE_WRITABLE_DIRS = [
@@ -480,6 +481,9 @@ function preCommit() {
   if (blocked.length) {
     throw new Error(`Refusing to commit generated/runtime/secret-like files:\n${blocked.map((file) => `- ${file}`).join("\n")}`);
   }
+  const hasImplementationFiles = staged.some((file) => !file.endsWith(".md") && !file.startsWith("docs/") && !file.startsWith("memory-bank/"));
+  const socraticode = validateSocraticodeRequirement(readTaskMarker(), hasImplementationFiles);
+  if (!socraticode.ok) throw new Error(socraticode.message);
   markWriteIntent();
 }
 
@@ -510,6 +514,9 @@ function prePush(remoteName) {
   const changed = diffFromAcceptedBase();
   if (changed.some((file) => file.startsWith("scripts/brai-") || file.startsWith(".codex/") || file.startsWith(".githooks/"))) {
     runRequired(["npm", "run", "task:test"], "Brai task guard changes require passing npm run task:test before push.");
+  }
+  if (changed.some((file) => /^(scripts|deploy\/scripts)\/[^/]+\.sh$/.test(file))) {
+    runRequired(["scripts/brai-shellcheck.sh"], "Changed first-party shell scripts must pass ShellCheck before push.");
   }
   if (changed.some((file) => file.startsWith("services/brai_temporal/") || file === ".github/workflows/brai-delivery.yml")) {
     runRequired(["npm", "run", "temporal:test"], "Temporal-sensitive changes require passing npm run temporal:test before push.");
@@ -758,6 +765,7 @@ function serverAccessContract(root = process.env.BRAI_ROOT ?? "/srv/projects/bra
   const supabaseDeployEnvFile = process.env.BRAI_SUPABASE_DEPLOY_ENV_FILE ?? path.join(protectedEnvDir, "supabase-deploy.env");
   const localCreateOperationHelper = path.join(root, "deploy/scripts/create-operation-activity.sh");
   const localCompleteOperationHelper = path.join(root, "deploy/scripts/complete-operation-activities.sh");
+  const localCompleteInboxHelper = path.join(root, "deploy/scripts/complete-inbox-operations.sh");
   const localListOperationHelper = path.join(root, "deploy/scripts/list-operation-activities.sh");
   const acceptedPreviewOtaHelper = path.join(root, "deploy/scripts/sync-occupied-preview-ota-manifests.sh");
   const checks = [
@@ -807,6 +815,7 @@ function serverAccessContract(root = process.env.BRAI_ROOT ?? "/srv/projects/bra
     }),
     commandCheck("operation create helper host-local sudo", [localCreateOperationHelper, "--host-local", "--check-access"], { cwd: root }),
     commandCheck("operation complete helper host-local sudo", [localCompleteOperationHelper, "--host-local", "--check-access"], { cwd: root }),
+    commandCheck("Inbox operation complete helper host-local sudo", [localCompleteInboxHelper, "--host-local", "--check-access"], { cwd: root }),
     commandCheck("operation list helper host-local sudo", [localListOperationHelper, "--host-local", "--check-access"], { cwd: root }),
     commandCheck("accepted preview OTA sync access", [acceptedPreviewOtaHelper, "--check-access"], {
       cwd: root,
@@ -834,6 +843,15 @@ function serverAccessContract(root = process.env.BRAI_ROOT ?? "/srv/projects/bra
       deployHost,
       localOperationHelper: localCompleteOperationHelper,
       checkName: "operation complete helper remote ssh",
+      root,
+    }),
+    operationHelperRemoteAccessCheck({
+      deployIdentityFile,
+      deploySshPort,
+      deployUser,
+      deployHost,
+      localOperationHelper: localCompleteInboxHelper,
+      checkName: "Inbox operation complete helper remote ssh",
       root,
     }),
     operationHelperRemoteAccessCheck({
@@ -1841,8 +1859,9 @@ function sandboxCheckMode(commandText) {
     /\bnode scripts\/brai-task\.mjs access-contract --server\b/.test(text) ||
     /\bscripts\/brai-preview-handoff\.sh\b/.test(text) ||
     /\bdeploy\/scripts\/accept-preview\.sh\b/.test(text) ||
+    /\bdeploy\/scripts\/apply-main-infra\.sh\b/.test(text) ||
     /\bnode scripts\/brai-task\.mjs (acceptance-reconcile|acceptance-repair|handoff|preview)\b/.test(text) ||
-    /\bdeploy\/scripts\/(complete-operation-activities|create-operation-activity|list-operation-activities)\.sh\b/.test(text)
+    /\bdeploy\/scripts\/(complete-inbox-operations|complete-operation-activities|create-operation-activity|list-operation-activities)\.sh\b/.test(text)
   ) {
     return { mode: "require_escalated", reason: "Brai host/Git/runtime boundaries for this command are not authoritative inside the Codex sandbox." };
   }
@@ -1977,6 +1996,7 @@ function deliveryClassForFile(file) {
       "deploy/scripts/classify-delivery.mjs",
       "deploy/scripts/accept-preview.sh",
       "deploy/scripts/accepted-preview-branches.mjs",
+      "deploy/scripts/apply-main-infra.sh",
       "deploy/scripts/apk-release-targets.mjs",
       "deploy/scripts/build-android-env-apk.sh",
       "deploy/scripts/build-nonproduction-apks.sh",
@@ -1990,12 +2010,14 @@ function deliveryClassForFile(file) {
       "deploy/scripts/cleanup-accepted-branches.mjs",
       "deploy/scripts/cleanup-test-schemas.mjs",
       "deploy/scripts/complete-operation-activities.sh",
+      "deploy/scripts/complete-inbox-operations.sh",
       "deploy/scripts/codex-cli-smoke.sh",
       "deploy/scripts/create-operation-activity.sh",
       "deploy/scripts/list-operation-activities.sh",
       "deploy/scripts/deploy-branch.sh",
       "deploy/scripts/detect-native-apk-change.mjs",
       "deploy/scripts/generate-android-preview-icons.sh",
+      "deploy/scripts/install-chrome-devtools-caddy-auth.mjs",
       "deploy/scripts/preview-slots.mjs",
       "deploy/scripts/preview-slots.sh",
       "deploy/scripts/permissions.sh",
@@ -2190,10 +2212,15 @@ function readPreviewSlot(branch, sha) {
 }
 
 function queryTemporalPreview(branch, sha) {
+  const localRegistry = process.env.BRAI_PREVIEW_REGISTRY ?? "/srv/projects/brai-envs/preview-slots.json";
   const result = spawnSync("deploy/scripts/ci-temporal-signal.sh", ["query-preview-deploy", "--branch", branch, "--sha", sha], {
     cwd: git("rev-parse", "--show-toplevel"),
     encoding: "utf8",
-    env: { ...gitEnv(), BRAI_TEMPORAL_REQUIRED: "true" },
+    env: {
+      ...gitEnv(),
+      BRAI_TEMPORAL_REQUIRED: "true",
+      ...(fs.existsSync(localRegistry) ? { BRAI_TEMPORAL_DIRECT: "true" } : {}),
+    },
   });
   if (result.status !== 0) {
     throw new Error(`Temporal query failed:\n${result.stderr || result.stdout || "(no output)"}`);
