@@ -962,6 +962,10 @@ test("preview deploy requires Postgres and preserves artifact setgid", () => {
   assert.match(script, /BRAI_DATABASE_URL is required/);
   assert.match(ciDeploy, /postgres-smoke\.mjs "\$CURRENT_DATABASE_URL"/);
   assert.match(ciDeploy, /postgres-smoke\.mjs "\$TARGET_DATABASE_URL"/);
+  assert.match(ciDeploy, /BRAI_PREVIEW_PREVIOUS_STATUS.*previousStatus/);
+  assert.match(ciDeploy, /BRAI_PREVIEW_PREVIOUS_APK_BUILD_KIND.*previousApkBuildKind/);
+  assert.match(ciDeploy, /BRAI_PREVIEW_PREVIOUS_STATUS" == "failed"/);
+  assert.match(ciDeploy, /BRAI_PREVIEW_PREVIOUS_APK_BUILD_KIND" == "preview"/);
   assert.match(script, /check_api_service_contract/);
   assert.match(script, /BRAI_INBOUND_STORAGE_ROOT/);
   assert.match(script, /BRAI_INBOX_STORAGE_ROOT/);
