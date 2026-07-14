@@ -570,6 +570,27 @@ test("truncated remote tar upload writes a failed terminal marker", (t) => {
   assert.ok(Number.isFinite(Date.parse(marker.finishedAt)));
 });
 
+test("remote deploy command preserves an empty preview lease generation", () => {
+  const values = [
+    "/srv/projects/brai",
+    "/srv/projects/brai-envs/ci uploads/main-attempt",
+    "main",
+    "a".repeat(40),
+    "false",
+    "",
+    "/srv/projects/brai-envs/ci uploads",
+    ".brai-upload-terminal.json",
+    "12",
+  ];
+  const openSshCommand = ["bash", "-s", "--", ...values].map(shellQuote).join(" ");
+  const result = spawnSync("bash", ["-c", openSshCommand], {
+    input: 'set -euo pipefail\nprintf "%s|%s|%s\\n" "$#" "${6-missing}" "$9"\n',
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, "9||12\n");
+});
+
 test("signal between source renames restores the old source and marks cancellation", (t) => {
   const ci = read("deploy/scripts/ci-ssh-deploy.sh");
   const functionNames = [
