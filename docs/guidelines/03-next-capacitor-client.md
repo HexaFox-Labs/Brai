@@ -27,6 +27,7 @@
 - Fullscreen product modes use the shared page workspace's explicit full-bleed override; local width or inset bypasses are forbidden.
 - Dismissible mobile sheets and drawers use the shared gesture primitive as the only transform owner for enter, drag, settle, and exit. Do not combine it with component keyframes.
 - Backdrop taps and directional backdrop swipes dismiss the active mobile layer. Upper Dock layers remain clipped behind the visible lower layer during motion.
+- Mobile Dock edge controls remain fixed and visible while overflow layers are open. The two Dock rows reserve equal edge lanes and share the same centered four-button geometry; account content must stay above the main Dock and use the local `ScrollArea` only when the viewport is too short.
 - В разделе Goal/`Цели фокусировки` длительности показывай компактно: `Hч Mм`; часы без ведущего нуля, минуты не показываются при `0`.
 
 ## Styling

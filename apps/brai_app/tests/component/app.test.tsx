@@ -433,6 +433,22 @@ describe("BraiApp shell", () => {
     expect(screen.queryByRole("button", { name: "Добавить действие" })).not.toBeInTheDocument();
   });
 
+  it("keeps both Dock edge controls visible and switches the account dropdown through its close motion", async () => {
+    render(<BraiApp />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Открыть левое меню" }));
+
+    expect(screen.getByRole("button", { name: "Скрыть левое меню" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Открыть правое меню" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Выход" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Открыть правое меню" }));
+    await waitFor(() => expect(document.querySelector(".mobile-dock-overflow-sheet")).toHaveAttribute("aria-label", "Правое меню"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Скрыть правое меню" }));
+    await waitFor(() => expect(document.querySelector(".mobile-dock-overflow-sheet")).not.toBeInTheDocument());
+  });
+
   it("hides app chrome while Draws is fullscreen", async () => {
     Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 1200 });
     stubDrawsFetch();

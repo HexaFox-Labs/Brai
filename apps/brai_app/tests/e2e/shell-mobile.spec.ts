@@ -42,7 +42,9 @@ test("keeps the burger drawer empty and opens the left overflow from the aligned
   await expect(overflowSheet).not.toContainText("Platform");
   await expect(overflowSheet).not.toContainText("Time");
   await expect(overflowSheet.getByRole("button", { name: /Engine/ })).toBeVisible();
-  expect(await overflowSheet.locator(":scope > div").evaluate((element) => getComputedStyle(element).overflowY)).toBe("visible");
+  await expect(overflowSheet.getByRole("button", { name: "Выход" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Скрыть левое меню" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Открыть правое меню" })).toBeVisible();
 
   await page.waitForTimeout(240);
   const openingTops = await page.evaluate(() => (window as typeof window & { __dockSheetTops?: number[] }).__dockSheetTops ?? []);
@@ -57,8 +59,30 @@ test("keeps the burger drawer empty and opens the left overflow from the aligned
 
   const sheet = await page.locator(".mobile-dock-overflow-sheet").boundingBox();
   const viewport = page.viewportSize();
+  const logout = await overflowSheet.getByRole("button", { name: "Выход" }).boundingBox();
+  const dock = await page.locator(".main-dock").boundingBox();
   expect(sheet?.width ?? 0).toBeGreaterThanOrEqual((viewport?.width ?? 0) - 1);
-  expect(sheet?.height ?? 999).toBeLessThan((viewport?.height ?? 0) * 0.6);
+  expect(sheet?.height ?? 999).toBeLessThan(viewport?.height ?? 0);
+  expect((logout?.y ?? 999) + (logout?.height ?? 0)).toBeLessThanOrEqual((dock?.y ?? 0) + 1);
+
+  const leftControlBefore = await page.getByRole("button", { name: "Скрыть левое меню" }).boundingBox();
+  const rightControlBefore = await page.getByRole("button", { name: "Открыть правое меню" }).boundingBox();
+  await page.getByRole("button", { name: "Открыть правое меню" }).click();
+  await expect(page.locator(".mobile-dock-overflow-sheet")).toHaveAttribute("aria-label", "Правое меню");
+  const leftControlAfter = await page.getByRole("button", { name: "Открыть левое меню" }).boundingBox();
+  const rightControlAfter = await page.getByRole("button", { name: "Скрыть правое меню" }).boundingBox();
+  expect(Math.abs((leftControlBefore?.x ?? 0) - (leftControlAfter?.x ?? 0))).toBeLessThanOrEqual(1);
+  expect(Math.abs((leftControlBefore?.y ?? 0) - (leftControlAfter?.y ?? 0))).toBeLessThanOrEqual(1);
+  expect(Math.abs((rightControlBefore?.x ?? 0) - (rightControlAfter?.x ?? 0))).toBeLessThanOrEqual(1);
+  expect(Math.abs((rightControlBefore?.y ?? 0) - (rightControlAfter?.y ?? 0))).toBeLessThanOrEqual(1);
+  await page.getByRole("button", { name: "Скрыть правое меню" }).click();
+  await expect(page.locator(".mobile-dock-overflow-sheet")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Открыть левое меню" }).click();
+  await page.getByRole("button", { name: "Скрыть левое меню" }).click();
+  await expect(page.locator(".mobile-dock-overflow-sheet")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Открыть левое меню" }).click();
 
   await dispatchTouch(page, "touchstart", { x: 320, y: 220 });
   await dispatchTouch(page, "touchend", { x: 180, y: 224 });
@@ -88,6 +112,24 @@ test("opens Settings from the mobile action rail", async ({ page }, testInfo) =>
   await expect(page.locator(".mobile-dock-overflow-sheet")).not.toContainText("Workspace");
   await expect(page.getByRole("button", { name: "Архив" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Engine/ })).toBeVisible();
+});
+
+test("scrolls the account dropdown above the Dock on a short mobile viewport", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile", "mobile-only account dropdown");
+
+  await page.setViewportSize({ width: 412, height: 360 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Открыть левое меню" }).click();
+
+  const sheet = page.locator(".mobile-dock-overflow-sheet");
+  const scrollViewport = sheet.locator("[data-slot='scroll-area-viewport']");
+  await expect.poll(() => scrollViewport.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+
+  const logout = sheet.getByRole("button", { name: "Выход" });
+  await logout.scrollIntoViewIfNeeded();
+  const logoutBox = await logout.boundingBox();
+  const dockBox = await page.locator(".main-dock").boundingBox();
+  expect((logoutBox?.y ?? 999) + (logoutBox?.height ?? 0)).toBeLessThanOrEqual((dockBox?.y ?? 0) + 1);
 });
 
 test("opens the right mobile dock overflow with placeholder items", async ({ page }, testInfo) => {
@@ -127,6 +169,20 @@ test("opens the right mobile dock overflow with placeholder items", async ({ pag
   expect(Math.abs(rightButtonBefore.x - rightButtonAfter.x)).toBeLessThanOrEqual(1);
   expect(Math.abs(rightButtonBefore.y - rightButtonAfter.y)).toBeLessThanOrEqual(1);
   await expect(page.locator(".mobile-dock-overflow-dim")).not.toHaveClass(/mobile-dock-dim-in/);
+
+  const upperButtons = ["Draws", "Заглушка: Флаг", "Заглушка: Тег", "Заглушка: Архив"];
+  const upperCenters = await Promise.all(upperButtons.map(async (name) => {
+    const box = await sheet.getByRole("button", { name }).boundingBox();
+    return { x: (box?.x ?? 0) + (box?.width ?? 0) / 2, y: (box?.y ?? 0) + (box?.height ?? 0) / 2 };
+  }));
+  const mainCenters = await page.locator(".mobile-nav .nav-button").evaluateAll((elements) => elements.map((element) => {
+    const box = element.getBoundingClientRect();
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  }));
+  upperCenters.forEach((center, index) => expect(Math.abs(center.x - mainCenters[index].x)).toBeLessThanOrEqual(1.5));
+  const sunBox = await page.getByRole("button", { name: "Контекст-меню" }).boundingBox();
+  expect(Math.abs((sunBox?.y ?? 0) + (sunBox?.height ?? 0) / 2 - upperCenters[0].y)).toBeLessThanOrEqual(1.5);
+  expect(Math.abs((sunBox?.x ?? 0) + (sunBox?.width ?? 0) / 2 - (rightButtonAfter.x + rightButtonAfter.width / 2))).toBeLessThanOrEqual(1.5);
 
   await leftButton.click();
   await expect(page.locator(".mobile-dock-overflow-sheet")).toHaveAttribute("aria-label", "Левое меню");

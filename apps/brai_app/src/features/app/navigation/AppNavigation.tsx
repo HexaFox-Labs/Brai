@@ -9,6 +9,7 @@ import { installAndroidBackHandler } from "@/shared/platform/platform";
 import type { BraiOtaState } from "@/shared/platform/ota";
 import { FloatingDock } from "@/shared/ui/floating-dock";
 import { NavigationIndicator, UpdateNavigationDot } from "@/shared/ui/navigation-indicator";
+import { ScrollArea } from "@/shared/ui/scroll-area";
 import { formatHourMinute } from "@/shared/time/format";
 import type { SyncStatus, TimerState } from "@/shared/types/timer";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarMenuButton } from "@/shared/ui/sidebar";
@@ -180,7 +181,7 @@ export function MobileDockOverflowButton({
         side === "left" ? "left-3" : "right-3",
         hidden && "max-[860px]:pointer-events-none max-[860px]:invisible max-[860px]:opacity-0",
       )}
-      aria-label={side === "left" ? "Открыть левое меню" : open ? "Скрыть правое меню" : "Открыть правое меню"}
+      aria-label={side === "left" ? open ? "Скрыть левое меню" : "Открыть левое меню" : open ? "Скрыть правое меню" : "Открыть правое меню"}
       onClick={onClick}
     >
       {side === "left" ? <Ellipsis className="h-5 w-5" aria-hidden="true" /> : open ? <ChevronDown className="h-5 w-5" aria-hidden="true" /> : <ChevronUp className="h-5 w-5" aria-hidden="true" />}
@@ -271,6 +272,7 @@ export function MobileDockOverflowSheet({
   engineDownloading = false,
   engineHasUpdate = false,
   onContextMenu,
+  onSwitchSide,
   contextMenuOpen = false,
 }: {
   side: "left" | "right";
@@ -287,6 +289,7 @@ export function MobileDockOverflowSheet({
   engineDownloading?: boolean;
   engineHasUpdate?: boolean;
   onContextMenu?: () => void;
+  onSwitchSide: (side: "left" | "right") => void;
   contextMenuOpen?: boolean;
 }) {
   const suppressPopRef = useRef(false);
@@ -371,7 +374,7 @@ export function MobileDockOverflowSheet({
           className={cx(
             "mobile-dock-overflow-sheet pointer-events-auto grid min-w-0 overflow-hidden shadow-xl will-change-transform",
             side === "left"
-              ? "max-h-[60dvh] w-full grid-rows-[auto_minmax(0,1fr)] rounded-t-2xl border-t border-border bg-card pb-[env(safe-area-inset-bottom)] pt-2"
+              ? "max-h-[calc(100dvh-env(safe-area-inset-top)-0.5rem)] w-full grid-rows-[auto_minmax(0,1fr)] rounded-t-2xl border-t border-border bg-card pb-[calc(3.25rem+env(safe-area-inset-bottom))] pt-2"
               : "h-16 w-full items-center justify-center border-t border-border/40 bg-background/95 px-0 py-1 shadow-none backdrop-blur-[14px] dark:bg-background/95",
           )}
           style={sheetStyle}
@@ -388,41 +391,70 @@ export function MobileDockOverflowSheet({
                   <span className="mobile-dock-overflow-grabber h-1 w-11 rounded-full bg-muted-foreground/30" aria-hidden="true" />
                 </div>
               </header>
-              <div className="min-h-0 px-3 pb-4">
-                <BraiUserMenuPanel
-                  activeSection={section}
-                  engineDownloading={engineDownloading}
-                  engineHasUpdate={engineHasUpdate}
-                  user={authUser}
-                  onArchive={() => closeThen(onArchive)}
-                  onBraiCmd={() => closeThen(onBraiCmd)}
-                  onEngine={() => closeThen(onEngine)}
-                  onLogout={() => closeThenAsync(onLogout)}
-                  onProfile={() => closeThen(onProfile)}
-                  onSettings={() => closeThen(onSettings)}
-                />
-              </div>
+              <ScrollArea className="min-h-0" contentInset="none">
+                <div className="px-3 pb-4">
+                  <BraiUserMenuPanel
+                    activeSection={section}
+                    engineDownloading={engineDownloading}
+                    engineHasUpdate={engineHasUpdate}
+                    user={authUser}
+                    onArchive={() => closeThen(onArchive)}
+                    onBraiCmd={() => closeThen(onBraiCmd)}
+                    onEngine={() => closeThen(onEngine)}
+                    onLogout={() => closeThenAsync(onLogout)}
+                    onProfile={() => closeThen(onProfile)}
+                    onSettings={() => closeThen(onSettings)}
+                  />
+                </div>
+              </ScrollArea>
             </>
           ) : (
-            <div className="mobile-dock-overflow-icons grid min-h-0 w-full grid-cols-5 items-center">
-              <MobileDockOverflowActionButton icon={Pencil} label="Draws" active={section === "draws"} onClick={() => closeThen(onDraws)} />
-              {MOBILE_DOCK_PLACEHOLDER_ITEMS.map(({ icon: Icon, label }) => (
-                <MobileDockOverflowActionButton key={label} icon={Icon} label={`Заглушка: ${label}`} disabled />
-              ))}
+            <div className="mobile-dock-overflow-icons grid min-h-0 w-full grid-cols-[4.25rem_minmax(0,1fr)_4.25rem] items-center">
+              <span aria-hidden="true" />
+              <div className="flex items-center justify-center gap-2">
+                <MobileDockOverflowActionButton icon={Pencil} label="Draws" active={section === "draws"} onClick={() => closeThen(onDraws)} />
+                {MOBILE_DOCK_PLACEHOLDER_ITEMS.map(({ icon: Icon, label }) => (
+                  <MobileDockOverflowActionButton key={label} icon={Icon} label={`Заглушка: ${label}`} disabled />
+                ))}
+              </div>
+              <span aria-hidden="true" />
             </div>
           )}
         </aside>
       </div>
     </div>
-    {side === "right" && !contextMenuOpen ? <MobileContextMenuButton open={false} onClick={onContextMenu} /> : null}
+    {!contextMenuOpen ? (
+      <>
+        <MobileDockOverflowButton
+          side="left"
+          open={side === "left"}
+          hidden={false}
+          onClick={() => side === "left" ? closeSheet() : closeThen(() => onSwitchSide("left"))}
+        />
+        <MobileDockOverflowButton
+          side="right"
+          open={side === "right"}
+          hidden={false}
+          onClick={() => side === "right" ? closeSheet() : closeThen(() => onSwitchSide("right"))}
+        />
+        {side === "right" ? <MobileContextMenuButton open={false} onClick={onContextMenu} /> : null}
+      </>
+    ) : null}
     </>
   );
 }
 
-export function MobileContextMenuSheet({ onClose }: { onClose: () => void }) {
+export function MobileContextMenuSheet({ onClose, onSwitchLeft }: { onClose: () => void; onSwitchLeft: () => void }) {
   const suppressPopRef = useRef(false);
-  const { backdropRef, backdropStyle, closeWithAnimation, gestureRef, resetOpen, sheetDragHandlers, sheetRef, sheetStyle } = useMobileSheetDrag({ onClose });
-  const closeSheet = useCallback(() => {
+  const afterCloseRef = useRef<(() => void) | null>(null);
+  const finishClose = useCallback(() => {
+    onClose();
+    afterCloseRef.current?.();
+    afterCloseRef.current = null;
+  }, [onClose]);
+  const { backdropRef, backdropStyle, closeWithAnimation, gestureRef, resetOpen, sheetDragHandlers, sheetRef, sheetStyle } = useMobileSheetDrag({ onClose: finishClose });
+  const closeSheet = useCallback((afterClose?: () => void) => {
+    afterCloseRef.current = afterClose ?? null;
     if (window.history.state?.braiMobileContextMenu) {
       suppressPopRef.current = true;
       window.history.back();
@@ -451,7 +483,7 @@ export function MobileContextMenuSheet({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-    <div ref={gestureRef} className="mobile-context-menu-backdrop fixed inset-x-0 bottom-[calc(7.25rem+env(safe-area-inset-bottom))] top-0 z-[120] hidden items-end overflow-hidden max-[860px]:flex" data-nav-swipe-exclusion onClick={closeSheet} {...sheetDragHandlers}>
+    <div ref={gestureRef} className="mobile-context-menu-backdrop fixed inset-x-0 bottom-[calc(7.25rem+env(safe-area-inset-bottom))] top-0 z-[120] hidden items-end overflow-hidden max-[860px]:flex" data-nav-swipe-exclusion onClick={() => closeSheet()} {...sheetDragHandlers}>
       <div ref={backdropRef} className="absolute inset-0 bg-foreground/20 dark:bg-background/80" style={backdropStyle} aria-hidden="true" />
       <aside
         ref={sheetRef}
@@ -461,7 +493,7 @@ export function MobileContextMenuSheet({ onClose }: { onClose: () => void }) {
         onClick={(event) => event.stopPropagation()}
       >
         <header className="relative min-h-8">
-          <button type="button" className="sr-only" aria-label="Закрыть панель: Контекст-меню" onClick={closeSheet}>Закрыть</button>
+          <button type="button" className="sr-only" aria-label="Закрыть панель: Контекст-меню" onClick={() => closeSheet()}>Закрыть</button>
           <div className="absolute left-1/2 top-0 flex h-6 w-32 -translate-x-1/2 items-start justify-center pt-1.5">
             <span className="h-1 w-11 rounded-full bg-muted-foreground/30" aria-hidden="true" />
           </div>
@@ -482,8 +514,9 @@ export function MobileContextMenuSheet({ onClose }: { onClose: () => void }) {
         </div>
       </aside>
     </div>
-    <MobileContextMenuButton open onClick={closeSheet} />
-    <MobileDockOverflowButton side="right" open hidden={false} onClick={closeSheet} />
+    <MobileDockOverflowButton side="left" hidden={false} onClick={() => closeSheet(onSwitchLeft)} />
+    <MobileContextMenuButton open onClick={() => closeSheet()} />
+    <MobileDockOverflowButton side="right" open hidden={false} onClick={() => closeSheet()} />
     </>
   );
 }
@@ -492,7 +525,7 @@ function MobileContextMenuButton({ open, onClick }: { open: boolean; onClick?: (
   return (
     <button
       type="button"
-      className="mobile-context-menu-button pointer-events-auto fixed bottom-[calc(3.25rem+env(safe-area-inset-bottom))] right-3 z-[140] hidden size-11 place-items-center rounded-full border-0 bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-0 focus-visible:ring-2 focus-visible:ring-ring max-[860px]:grid"
+      className="mobile-context-menu-button pointer-events-auto fixed bottom-[calc(3.875rem+env(safe-area-inset-bottom))] right-3 z-[140] hidden size-11 place-items-center rounded-full border-0 bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-0 focus-visible:ring-2 focus-visible:ring-ring max-[860px]:grid"
       aria-label={open ? "Закрыть контекст-меню" : "Контекст-меню"}
       aria-pressed={open}
       onClick={onClick}

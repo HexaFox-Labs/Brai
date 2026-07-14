@@ -610,22 +610,19 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
           timer={app.timer}
         />
       ) : null}
-      {!drawsFullscreenActive ? (
+      {!drawsFullscreenActive && !mobileDockMenu ? (
         <>
           <MobileDockOverflowButton
             side="left"
             hasUpdate={engineView.hasUpdate}
-            hidden={app.mobileMenuOpen || mobileDockMenu === "left" || app.actionOverlayOpen}
+            hidden={app.mobileMenuOpen || app.actionOverlayOpen}
             onClick={() => setMobileDockLayer("left")}
           />
-          {!mobileContextMenuOpen ? (
-            <MobileDockOverflowButton
-              side="right"
-              open={mobileDockMenu === "right"}
-              hidden={app.mobileMenuOpen || mobileDockMenu === "left" || app.actionOverlayOpen}
-              onClick={() => setMobileDockLayer((current) => current === "right" ? null : "right")}
-            />
-          ) : null}
+          <MobileDockOverflowButton
+            side="right"
+            hidden={app.mobileMenuOpen || app.actionOverlayOpen}
+            onClick={() => setMobileDockLayer("right")}
+          />
         </>
       ) : null}
       {app.mobileMenuOpen && !drawsFullscreenActive ? (
@@ -650,10 +647,11 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
           onLogout={app.onLogout}
           contextMenuOpen={mobileContextMenuOpen}
           onContextMenu={() => setMobileDockLayer("context")}
+          onSwitchSide={setMobileDockLayer}
         />
       ) : null}
       {mobileContextMenuOpen && mobileDockMenu === "right" && !drawsFullscreenActive ? (
-        <MobileContextMenuSheet onClose={() => setMobileDockLayer("right")} />
+        <MobileContextMenuSheet onClose={() => setMobileDockLayer("right")} onSwitchLeft={() => setMobileDockLayer("left")} />
       ) : null}
       {mobileViewport && app.focusContextPanel === "goal" && visibleSection === "focus" ? (
         <FocusContextPanelSheet panel="goal" history={app.history} goal={app.goal} todayKey={app.todayKey} onClose={() => app.setFocusContextPanel("none")} onCloseStart={app.markMobileContextPanelClosing} onDeleteSession={app.onDeleteFocusSession} onEditInterval={app.onEditFocusInterval} onEditSession={app.onEditFocusSession} />
