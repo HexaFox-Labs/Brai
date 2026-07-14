@@ -971,6 +971,8 @@ test("remote deploy serializes dependency staging before replacing the active so
 test("production deploy tolerates an omitted preview lease generation", () => {
   const deploy = fs.readFileSync(new URL("../deploy/scripts/ci-ssh-deploy.sh", import.meta.url), "utf8");
   assert.match(deploy, /BRAI_PREVIEW_LEASE_GENERATION="\$\{6:-\}"/);
+  assert.match(deploy, /printf -v REMOTE_DEPLOY_COMMAND 'bash -s -- %q %q %q %q %q %q %q %q %q'/);
+  assert.match(deploy, /ssh[^\n]*\\\n\s+"\$REMOTE_DEPLOY_COMMAND" <<'REMOTE'/);
 });
 
 test("direct Android builds share the deploy source-operation lock", () => {
