@@ -628,7 +628,8 @@ async function foreignKeyDependencies(pool, schema) {
   const result = await pool.query(`
     SELECT DISTINCT
       child.relname AS table_name,
-      parent.relname AS referenced_table
+      parent.relname AS referenced_table,
+      fk.condeferred AS deferred
     FROM pg_constraint fk
     JOIN pg_class child ON child.oid = fk.conrelid
     JOIN pg_namespace child_namespace ON child_namespace.oid = child.relnamespace
@@ -640,7 +641,8 @@ async function foreignKeyDependencies(pool, schema) {
   `, [schema]);
   return result.rows.map((row) => ({
     table: row.table_name,
-    referencedTable: row.referenced_table
+    referencedTable: row.referenced_table,
+    deferred: row.deferred
   }));
 }
 

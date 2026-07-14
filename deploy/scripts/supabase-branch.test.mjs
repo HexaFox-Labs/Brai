@@ -73,6 +73,15 @@ test("production seed loads only explicitly marked idempotent migrations into th
   assert.doesNotMatch(script, /reapplyPostProductionSeedMigrations/);
 });
 
+test("production copy exposes initially deferred foreign keys to dependency ordering", () => {
+  const script = fs.readFileSync(path.join(repoRoot, "deploy/scripts/supabase-branch.mjs"), "utf8");
+  const start = script.indexOf("async function foreignKeyDependencies");
+  const body = script.slice(start, script.indexOf("function migrationTableOrder", start));
+
+  assert.match(body, /fk\.condeferred AS deferred/);
+  assert.match(body, /deferred: row\.deferred/);
+});
+
 test("production seed never copies account AI credentials, routing, or device links", () => {
   const script = fs.readFileSync(path.join(repoRoot, "deploy/scripts/supabase-branch.mjs"), "utf8");
   const exclusionStart = script.indexOf("const TEST_DATA_COPY_EXCLUDED_TABLES");
