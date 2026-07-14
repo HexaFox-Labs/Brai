@@ -74,6 +74,47 @@ describe("Actions workspace accessibility", () => {
     expect(screen.getByRole("button", { name: "Луна" })).toHaveClass("max-[860px]:min-h-11");
   });
 
+  it("keeps Goal membership inside the action row as the third swipe control", () => {
+    const item = workItem();
+    item.memberships = [];
+    item.selectedRelation = null;
+    const { container } = render(
+      <WorkspaceWorkList
+        items={[item]}
+        goals={[goal()]}
+        filter="all"
+        selectedId={null}
+        titleDrafts={{}}
+        openDeleteActionId="action-1"
+        activeActivityId={null}
+        activeActivityElapsedSeconds={0}
+        onSelect={vi.fn()}
+        onEditMobile={vi.fn()}
+        onUpdateTitle={vi.fn()}
+        onTitleDraftChange={vi.fn()}
+        onSetStatus={vi.fn()}
+        onDelete={vi.fn()}
+        onOpenDelete={vi.fn()}
+        onCloseDelete={vi.fn()}
+        onStartFocus={vi.fn()}
+        onStopFocus={vi.fn()}
+        onSelectFilter={vi.fn()}
+        onAddToGoals={vi.fn()}
+        onRemoveFromGoal={vi.fn()}
+      />,
+    );
+
+    const row = container.querySelector(".action-row")!;
+    const controls = row.querySelector(".action-row-controls")!;
+    const membership = controls.querySelector(".action-membership-control")!;
+    const remove = controls.querySelector(".action-delete-button")!;
+    const focus = controls.querySelector(".action-focus-button")!;
+    expect(row.parentElement?.children).toHaveLength(1);
+    expect(membership.compareDocumentPosition(remove) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(remove.compareDocumentPosition(focus) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Добавить в список: Первый шаг" })).toBeInTheDocument();
+  });
+
   it("applies 44px mobile touch targets without changing desktop control sizes", () => {
     const activities = emptyActivitiesState();
     activities.goals = [goal()];
