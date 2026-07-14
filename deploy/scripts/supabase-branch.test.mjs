@@ -154,6 +154,7 @@ test("production copy reseeds copied tables before repair migrations and before 
   const copyFunction = script.slice(copyStart, inspectStart);
   const begin = 'client.query("BEGIN ISOLATION LEVEL REPEATABLE READ")';
   const searchPath = "SET LOCAL search_path TO";
+  const constraintsImmediate = 'client.query("SET CONSTRAINTS ALL IMMEDIATE")';
   const reapply = "for (const { sql } of postSeedMigrations) await client.query(sql)";
   const reseed = "await reseedOwnedSequences(client, { schema: targetSchema, tables: copyTables })";
   const firstReseed = copyFunction.indexOf(reseed);
@@ -171,6 +172,8 @@ test("production copy reseeds copied tables before repair migrations and before 
   assert.ok(copyFunction.indexOf(searchPath) < copyFunction.indexOf("TRUNCATE TABLE"));
   assert.ok(copyFunction.indexOf(reapply) > copyFunction.indexOf("OVERRIDING SYSTEM VALUE"));
   assert.ok(firstReseed > copyFunction.indexOf("OVERRIDING SYSTEM VALUE"));
+  assert.ok(copyFunction.indexOf(constraintsImmediate) > firstReseed);
+  assert.ok(copyFunction.indexOf(constraintsImmediate) < copyFunction.indexOf(reapply));
   assert.ok(firstReseed < copyFunction.indexOf(reapply));
   assert.ok(secondReseed > copyFunction.indexOf(reapply));
   assert.ok(secondReseed < copyFunction.indexOf('client.query("COMMIT")'));
