@@ -11,6 +11,7 @@ import { eventsLogsMethods } from './store-events-logs.js';
 import { readModelMethods } from './store-read-models.js';
 import { roleLinkMethods } from './store-role-links.js';
 import { timerEventMethods } from './store-timer-events.js';
+import { userAiStoreMethods } from './store-user-ai.js';
 import { workflowStoreMethods } from './store-workflows.js';
 import { userContentMethods } from './store-user-content.js';
 export { formatActivity, formatFocusInterval, formatSession, groupSessionsByDateHour } from './store-helpers.js';
@@ -39,5 +40,6 @@ Object.assign(
   inboxEventMethods,
   workflowStoreMethods,
   userContentMethods,
-  readModelMethods
+  readModelMethods,
+  userAiStoreMethods
 );
