@@ -64,6 +64,7 @@ export function ActivityDetailEditor({
     backdropRef,
     backdropStyle,
     closeWithAnimation,
+    gestureRef,
     resetOpen,
     sheetDragHandlers,
     sheetRef,
@@ -331,7 +332,7 @@ export function ActivityDetailEditor({
       <div className={infoChromeInset}>
         <DetailPanelTabBar activeTab={activeTab} className="mt-0" onChange={setActiveTab} />
       </div>
-      <ScrollArea className="actions-detail-description-scroll min-h-0 w-full min-w-0" role="tabpanel">
+      <ScrollArea className="actions-detail-description-scroll min-h-0 w-full min-w-0" contentInset="none" role="tabpanel">
         <div className={cx("min-h-full w-full min-w-0", infoScrollInset)}>
           {detailTitle}
           <div className="h-px bg-border" aria-hidden="true" />
@@ -353,15 +354,14 @@ export function ActivityDetailEditor({
 
   if (mode === "mobile") {
     return (
-      <div className="actions-detail-backdrop fixed inset-0 z-[84] hidden max-[860px]:block" style={{ top: mobileSheetTop } as CSSProperties} data-nav-swipe-exclusion>
+      <div ref={gestureRef} className="actions-detail-backdrop fixed inset-0 z-[84] hidden max-[860px]:block" style={{ top: mobileSheetTop } as CSSProperties} data-nav-swipe-exclusion {...sheetDragHandlers}>
         <div ref={backdropRef} className="absolute inset-0 bg-foreground/20 dark:bg-background/80" style={backdropStyle} aria-hidden="true" />
         <aside
           ref={sheetRef}
-          className={cx("actions-detail-panel mobile absolute inset-x-0 bottom-0 top-[env(safe-area-inset-top)] z-[1] grid min-h-0 min-w-0 gap-0 overflow-hidden rounded-t-2xl border-t border-border bg-card pb-[env(safe-area-inset-bottom)] pt-1 shadow-xl animate-[mobile-detail-sheet-in_180ms_ease-out] will-change-transform", panelRows, panelPadding)}
+          className={cx("actions-detail-panel mobile absolute inset-x-0 bottom-0 top-[env(safe-area-inset-top)] z-[1] grid min-h-0 min-w-0 gap-0 overflow-hidden rounded-t-2xl border-t border-border bg-card pb-[env(safe-area-inset-bottom)] pt-1 shadow-xl will-change-transform", panelRows, panelPadding)}
           style={{ ...mobileSheetStyle, top: 0 } as CSSProperties}
           aria-label="Редактирование действия"
           onKeyDown={onKeyDown}
-          {...sheetDragHandlers}
         >
           {editorBody}
         </aside>

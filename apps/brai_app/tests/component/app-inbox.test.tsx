@@ -64,7 +64,7 @@ describe("BraiApp inbox", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "Входящие" }).at(-1) as HTMLElement);
     await waitFor(() => expect(screen.getByRole("heading", { name: "Входящие" })).toBeInTheDocument());
     expect(screen.queryByLabelText("Информация о входящих")).not.toBeInTheDocument();
-    expect(document.querySelector(".page-main")).toHaveClass("max-w-5xl");
+    expect(document.querySelector(".page-main")).toHaveClass("max-w-3xl");
 
     const input = screen.getByRole("textbox", { name: "Добавить входящее" });
     fireEvent.change(input, { target: { value: " Новое письмо " } });

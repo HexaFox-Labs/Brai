@@ -176,7 +176,7 @@ export function MobileDockOverflowButton({
     <button
       type="button"
       className={cx(
-        "mobile-dock-overflow-button pointer-events-auto fixed bottom-[calc(0.25rem+env(safe-area-inset-bottom))] z-[100] hidden h-11 w-11 place-items-center rounded-full border-0 bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-0 focus-visible:ring-2 focus-visible:ring-ring max-[860px]:grid",
+        "mobile-dock-overflow-button pointer-events-auto fixed bottom-[calc(0.25rem+env(safe-area-inset-bottom))] z-[140] hidden h-11 w-11 place-items-center rounded-full border-0 bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-0 focus-visible:ring-2 focus-visible:ring-ring max-[860px]:grid",
         side === "left" ? "left-3" : "right-3",
         hidden && "max-[860px]:pointer-events-none max-[860px]:invisible max-[860px]:opacity-0",
       )}
@@ -197,7 +197,7 @@ export function MobileProfileDrawer({
   children?: ReactNode;
 }) {
   const suppressPopRef = useRef(false);
-  const { backdropRef, backdropStyle, closeWithAnimation, resetOpen, sheetDragHandlers, sheetRef, sheetStyle } = useMobileSheetDrag({
+  const { backdropRef, backdropStyle, closeWithAnimation, gestureRef, resetOpen, sheetDragHandlers, sheetRef, sheetStyle } = useMobileSheetDrag({
     axis: "x",
     excludeControls: true,
     onClose,
@@ -237,14 +237,13 @@ export function MobileProfileDrawer({
   }), [closeMenu]);
 
   return (
-    <div className="mobile-menu-backdrop fixed inset-0 z-[90]" data-nav-swipe-exclusion onClick={() => closeMenu()}>
+    <div ref={gestureRef} className="mobile-menu-backdrop fixed inset-0 z-[90]" data-nav-swipe-exclusion onClick={() => closeMenu()} {...sheetDragHandlers}>
       <div ref={backdropRef} className="absolute inset-0 bg-foreground/15 dark:bg-background/80" style={backdropStyle} aria-hidden="true" />
       <aside
         ref={sheetRef}
-        className="mobile-profile-drawer flex h-full w-64 max-w-[85vw] flex-col overflow-hidden border-r border-border bg-card pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] shadow-xl animate-[mobile-drawer-in_180ms_ease-out] [touch-action:pan-y] will-change-transform"
+        className="mobile-profile-drawer flex h-full w-64 max-w-[85vw] flex-col overflow-hidden border-r border-border bg-card pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] shadow-xl [touch-action:pan-y] will-change-transform"
         style={sheetStyle}
         aria-label="Левый рейл"
-        {...sheetDragHandlers}
         onClick={(event) => event.stopPropagation()}
       >{children}</aside>
     </div>
@@ -272,6 +271,7 @@ export function MobileDockOverflowSheet({
   engineDownloading = false,
   engineHasUpdate = false,
   onContextMenu,
+  contextMenuOpen = false,
 }: {
   side: "left" | "right";
   section: SectionId;
@@ -287,6 +287,7 @@ export function MobileDockOverflowSheet({
   engineDownloading?: boolean;
   engineHasUpdate?: boolean;
   onContextMenu?: () => void;
+  contextMenuOpen?: boolean;
 }) {
   const suppressPopRef = useRef(false);
   const afterCloseRef = useRef<(() => void) | null>(null);
@@ -295,7 +296,7 @@ export function MobileDockOverflowSheet({
     afterCloseRef.current?.();
     afterCloseRef.current = null;
   }, [onClose]);
-  const { backdropRef, backdropStyle, closeWithAnimation, resetOpen, sheetDragHandlers, sheetRef, sheetStyle } = useMobileSheetDrag({
+  const { backdropRef, backdropStyle, closeWithAnimation, gestureRef, resetOpen, sheetDragHandlers, sheetRef, sheetStyle } = useMobileSheetDrag({
     excludeControls: true,
     onClose: finishClose,
   });
@@ -344,35 +345,37 @@ export function MobileDockOverflowSheet({
   }
 
   return (
+    <>
     <div
       className={cx(
         "mobile-dock-overflow-backdrop fixed inset-0 z-[110] hidden items-end max-[860px]:flex",
-        side === "right" && "pointer-events-none justify-center pb-[calc(3.75rem+env(safe-area-inset-bottom))]",
+        side === "right" && "pointer-events-none inset-x-0 bottom-[calc(3.25rem+env(safe-area-inset-bottom))] top-0 justify-center overflow-hidden",
       )}
+      ref={gestureRef}
       data-nav-swipe-exclusion
       onClick={() => closeSheet()}
+      {...sheetDragHandlers}
     >
       <div
         ref={backdropRef}
         className={cx(
-          "mobile-dock-overflow-dim absolute inset-x-0 top-0 bg-foreground/20 motion-safe:animate-[mobile-dock-dim-in_180ms_ease-out] dark:bg-background/80",
-          side === "left" ? "bottom-0" : "pointer-events-auto bottom-[calc(7.75rem+env(safe-area-inset-bottom))]",
+          "mobile-dock-overflow-dim absolute inset-x-0 top-0 bg-foreground/20 dark:bg-background/80",
+          side === "left" ? "bottom-0" : "pointer-events-auto bottom-16",
         )}
         style={backdropStyle}
         aria-hidden="true"
       />
-      <div className="mobile-dock-overflow-motion relative z-[1] w-full animate-[mobile-detail-sheet-in_180ms_ease-out] will-change-transform">
+      <div className="mobile-dock-overflow-motion relative z-[1] w-full">
         <aside
           ref={sheetRef}
           className={cx(
             "mobile-dock-overflow-sheet pointer-events-auto grid min-w-0 overflow-hidden shadow-xl will-change-transform",
             side === "left"
               ? "max-h-[60dvh] w-full grid-rows-[auto_minmax(0,1fr)] rounded-t-2xl border-t border-border bg-card pb-[env(safe-area-inset-bottom)] pt-2"
-              : "h-16 w-full items-center justify-center border-y border-border/40 bg-background/95 px-8 py-1 shadow-none backdrop-blur-[14px] dark:bg-background/95",
+              : "h-16 w-full items-center justify-center border-t border-border/40 bg-background/95 px-0 py-1 shadow-none backdrop-blur-[14px] dark:bg-background/95",
           )}
           style={sheetStyle}
           aria-label={side === "left" ? "Левое меню" : "Правое меню"}
-          {...sheetDragHandlers}
           onClick={(event) => event.stopPropagation()}
         >
           {side === "left" ? (
@@ -401,23 +404,24 @@ export function MobileDockOverflowSheet({
               </div>
             </>
           ) : (
-            <div className="mobile-dock-overflow-icons flex min-h-0 w-full items-center justify-around gap-2">
+            <div className="mobile-dock-overflow-icons grid min-h-0 w-full grid-cols-5 items-center">
               <MobileDockOverflowActionButton icon={Pencil} label="Draws" active={section === "draws"} onClick={() => closeThen(onDraws)} />
               {MOBILE_DOCK_PLACEHOLDER_ITEMS.map(({ icon: Icon, label }) => (
                 <MobileDockOverflowActionButton key={label} icon={Icon} label={`Заглушка: ${label}`} disabled />
               ))}
-              <MobileDockOverflowActionButton icon={SunMedium} label="Контекст-меню" onClick={onContextMenu} />
             </div>
           )}
         </aside>
       </div>
     </div>
+    {side === "right" && !contextMenuOpen ? <MobileContextMenuButton open={false} onClick={onContextMenu} /> : null}
+    </>
   );
 }
 
 export function MobileContextMenuSheet({ onClose }: { onClose: () => void }) {
   const suppressPopRef = useRef(false);
-  const { backdropRef, backdropStyle, closeWithAnimation, resetOpen, sheetDragHandlers, sheetRef, sheetStyle } = useMobileSheetDrag({ onClose });
+  const { backdropRef, backdropStyle, closeWithAnimation, gestureRef, resetOpen, sheetDragHandlers, sheetRef, sheetStyle } = useMobileSheetDrag({ onClose });
   const closeSheet = useCallback(() => {
     if (window.history.state?.braiMobileContextMenu) {
       suppressPopRef.current = true;
@@ -446,18 +450,18 @@ export function MobileContextMenuSheet({ onClose }: { onClose: () => void }) {
   }), [closeSheet]);
 
   return (
-    <div className="mobile-context-menu-backdrop fixed inset-0 z-[120] hidden items-end pb-[calc(7.75rem+env(safe-area-inset-bottom))] max-[860px]:flex" data-nav-swipe-exclusion onClick={closeSheet}>
-      <div ref={backdropRef} className="absolute inset-x-0 top-0 bottom-[calc(7.75rem+env(safe-area-inset-bottom))] bg-foreground/20 dark:bg-background/80" style={backdropStyle} aria-hidden="true" />
+    <>
+    <div ref={gestureRef} className="mobile-context-menu-backdrop fixed inset-x-0 bottom-[calc(7.25rem+env(safe-area-inset-bottom))] top-0 z-[120] hidden items-end overflow-hidden max-[860px]:flex" data-nav-swipe-exclusion onClick={closeSheet} {...sheetDragHandlers}>
+      <div ref={backdropRef} className="absolute inset-0 bg-foreground/20 dark:bg-background/80" style={backdropStyle} aria-hidden="true" />
       <aside
         ref={sheetRef}
         className="mobile-context-menu-sheet pointer-events-auto relative z-[1] grid w-full grid-rows-[auto_minmax(0,1fr)] rounded-t-2xl border-t border-border bg-card px-8 pb-6 pt-2 shadow-xl"
         style={sheetStyle}
         aria-label="Контекст-меню"
-        {...sheetDragHandlers}
         onClick={(event) => event.stopPropagation()}
       >
         <header className="relative min-h-8">
-          <button type="button" className="sr-only" aria-label="Закрыть контекст-меню" onClick={closeSheet}>Закрыть</button>
+          <button type="button" className="sr-only" aria-label="Закрыть панель: Контекст-меню" onClick={closeSheet}>Закрыть</button>
           <div className="absolute left-1/2 top-0 flex h-6 w-32 -translate-x-1/2 items-start justify-center pt-1.5">
             <span className="h-1 w-11 rounded-full bg-muted-foreground/30" aria-hidden="true" />
           </div>
@@ -478,6 +482,23 @@ export function MobileContextMenuSheet({ onClose }: { onClose: () => void }) {
         </div>
       </aside>
     </div>
+    <MobileContextMenuButton open onClick={closeSheet} />
+    <MobileDockOverflowButton side="right" open hidden={false} onClick={closeSheet} />
+    </>
+  );
+}
+
+function MobileContextMenuButton({ open, onClick }: { open: boolean; onClick?: () => void }) {
+  return (
+    <button
+      type="button"
+      className="mobile-context-menu-button pointer-events-auto fixed bottom-[calc(3.25rem+env(safe-area-inset-bottom))] right-3 z-[140] hidden size-11 place-items-center rounded-full border-0 bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-0 focus-visible:ring-2 focus-visible:ring-ring max-[860px]:grid"
+      aria-label={open ? "Закрыть контекст-меню" : "Контекст-меню"}
+      aria-pressed={open}
+      onClick={onClick}
+    >
+      <SunMedium className="size-5" aria-hidden="true" />
+    </button>
   );
 }
 
@@ -556,6 +577,7 @@ function EngineRailButton({
 }
 
 export function MainDock({
+  expanded = false,
   section,
   hidden,
   mobileViewport,
@@ -563,6 +585,7 @@ export function MainDock({
   swipeHandlers,
   timer,
 }: {
+  expanded?: boolean;
   section: SectionId;
   hidden: boolean;
   mobileViewport: boolean;
@@ -591,7 +614,8 @@ export function MainDock({
   return (
     <nav
       className={cx(
-        "main-dock pointer-events-auto fixed bottom-5 left-1/2 z-[70] -translate-x-1/2 max-[860px]:static max-[860px]:inset-auto max-[860px]:flex max-[860px]:translate-x-0 max-[860px]:justify-center max-[860px]:border-t max-[860px]:border-border max-[860px]:bg-background max-[860px]:pb-[env(safe-area-inset-bottom)] max-[860px]:[touch-action:none]",
+        "main-dock pointer-events-auto fixed bottom-5 left-1/2 z-[70] -translate-x-1/2 max-[860px]:static max-[860px]:z-[130] max-[860px]:inset-auto max-[860px]:flex max-[860px]:translate-x-0 max-[860px]:justify-center max-[860px]:bg-background max-[860px]:pb-[env(safe-area-inset-bottom)] max-[860px]:[touch-action:none]",
+        !expanded && "max-[860px]:border-t max-[860px]:border-border",
         hidden && "max-[860px]:pointer-events-none max-[860px]:invisible max-[860px]:opacity-0",
       )}
       aria-label="Основная навигация"

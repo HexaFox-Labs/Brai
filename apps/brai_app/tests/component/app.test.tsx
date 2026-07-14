@@ -446,6 +446,8 @@ describe("BraiApp shell", () => {
     fireEvent.click(fullScreenButton);
 
     await waitFor(() => expect(document.querySelector(".desktop-rail")).not.toBeInTheDocument());
+    expect(document.querySelector(".page-main")).toHaveClass("w-full", "max-w-none");
+    expect(document.querySelector(".page-main")).not.toHaveClass("max-w-3xl", "mx-auto");
     expect(document.querySelector(".main-dock")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Открыть левое меню" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Выйти из полноэкранного режима" })).toBeInTheDocument();
@@ -529,6 +531,9 @@ describe("BraiApp shell", () => {
     await waitFor(() => expect(screen.getByRole("heading", { name: "Фокус" })).toBeInTheDocument());
     expect(screen.getByRole("button", { name: "Цели фокусировки" })).toHaveAttribute("aria-pressed", "false");
     expect(screen.getByRole("button", { name: "История фокуса" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "Цели фокусировки" })).toHaveClass("max-[860px]:size-8");
+    expect(screen.getByRole("button", { name: "Цели фокусировки" }).querySelector("svg")).toHaveClass("h-5", "w-5");
+    expect(document.querySelector(".section-page-current .status-pill")).toHaveClass("max-[860px]:size-8");
     expect(document.querySelector(".section-page-current .timer-face .status-pill")).not.toBeInTheDocument();
   });
 

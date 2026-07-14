@@ -44,4 +44,14 @@ describe("contextual rail", () => {
     view.rerender(<RailHarness section="factory" />);
     await waitFor(() => expect(screen.getByRole("slider", { name: "Изменить ширину контекстной панели" })).toHaveAttribute("aria-valuenow", "512"));
   });
+
+  it("uses the next page's persisted closed state in the navigation render", async () => {
+    const view = render(<RailHarness section="actions" />);
+    await waitFor(() => expect(screen.getByLabelText("Левый рейл")).toBeInTheDocument());
+    window.localStorage.setItem("brai_context_rail_open:test-user:inbox", "false");
+
+    view.rerender(<RailHarness section="inbox" />);
+
+    expect(screen.queryByLabelText("Левый рейл")).not.toBeInTheDocument();
+  });
 });

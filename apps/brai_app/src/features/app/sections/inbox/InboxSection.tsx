@@ -78,13 +78,11 @@ export function InboxSection({
   const [titleDrafts, setTitleDrafts] = useState<Record<string, string>>({});
   const [detailTitleFocusRequest, setDetailTitleFocusRequest] = useState(0);
   const desktopInputRef = useRef<HTMLInputElement | null>(null);
-  const suppressMobileCreatePopRef = useRef(false);
   const selectedItem = selectedItemId ? state.inbox.find((item) => item.id === selectedItemId) : null;
   const mobileEditItem = mobileEditItemId ? state.inbox.find((item) => item.id === mobileEditItemId) : null;
   const visibleOpenDeleteItemId =
     openDeleteItemId && state.inbox.some((item) => item.id === openDeleteItemId) ? openDeleteItemId : null;
   const mobileOverlayOpen = mobileCreateOpen || mobileEditItem != null;
-  const mobileSheetTop = useMobileSheetTop();
   const mobileCreateHasDraft = mobileCreateDraftHasText(mobileCreateDraft);
   const MobileCreateFabIcon = mobileCreateHasDraft ? FilePenLine : Plus;
   const mobileCreateFabLabel = mobileCreateHasDraft ? "Продолжить черновик входящего" : "Добавить входящее";
@@ -126,14 +124,6 @@ export function InboxSection({
     setMobileCreateOpen(true);
   }
 
-  const closeMobileCreate = useCallback(() => {
-    if (window.history.state?.braiMobileInboxCreate) {
-      suppressMobileCreatePopRef.current = true;
-      window.history.back();
-    }
-    setMobileCreateOpen(false);
-  }, []);
-
   function openMobileEdit(item: InboxItem) {
     setOpenDeleteItemId(null);
     setSelectedItemId(item.id);
@@ -166,36 +156,7 @@ export function InboxSection({
   async function submitMobile(title: string, descriptionMd: string) {
     await onCreate(title, descriptionMd);
     onMobileCreateDraftChange({ title: "", descriptionMd: "" });
-    closeMobileCreate();
   }
-
-  useEffect(() => {
-    if (!mobileCreateOpen) return undefined;
-    if (window.history.state?.braiMobileInboxCreate) {
-      window.history.replaceState({ ...window.history.state, braiMobileInboxCreate: true }, "", window.location.href);
-    } else {
-      window.history.pushState({ ...window.history.state, braiMobileInboxCreate: true }, "", window.location.href);
-    }
-
-    function onPopState() {
-      if (suppressMobileCreatePopRef.current) {
-        suppressMobileCreatePopRef.current = false;
-        return;
-      }
-      setMobileCreateOpen(false);
-    }
-
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
-  }, [mobileCreateOpen]);
-
-  useEffect(() => {
-    if (!mobileCreateOpen) return undefined;
-    return installAndroidBackHandler(() => {
-      closeMobileCreate();
-      return true;
-    });
-  }, [closeMobileCreate, mobileCreateOpen]);
 
   return (
     <section
@@ -273,22 +234,16 @@ export function InboxSection({
       ) : null}
 
       {mobileCreateOpen ? (
-        <div
-          className="actions-mobile-overlay fixed inset-0 z-[80] hidden items-end bg-foreground/25 pb-[env(safe-area-inset-bottom)] max-[860px]:flex dark:bg-background/80"
-          style={{ top: mobileSheetTop } as CSSProperties}
-          data-nav-swipe-exclusion
-          onClick={closeMobileCreate}
-        >
           <MobileCreateComposer
             draft={mobileCreateDraft}
             titleLabel="Добавить входящее"
             descriptionLabel="Описание входящего"
             submitLabel="Добавить входящее"
-            onCancel={closeMobileCreate}
+            historyStateKey="braiMobileInboxCreate"
+            onCancel={() => setMobileCreateOpen(false)}
             onDraftChange={onMobileCreateDraftChange}
             onSubmit={submitMobile}
           />
-        </div>
       ) : null}
 
       {mobileEditItem ? (
@@ -705,6 +660,7 @@ function InboxDetailEditor({
     backdropRef,
     backdropStyle,
     closeWithAnimation,
+    gestureRef,
     resetOpen,
     sheetDragHandlers,
     sheetRef,
@@ -996,7 +952,7 @@ function InboxDetailEditor({
       <div className={infoChromeInset}>
         <DetailPanelTabBar activeTab={activeTab} className="mt-0" onChange={setActiveTab} />
       </div>
-      <ScrollArea className="actions-detail-description-scroll min-h-0 w-full min-w-0" role="tabpanel">
+      <ScrollArea className="actions-detail-description-scroll min-h-0 w-full min-w-0" contentInset="none" role="tabpanel">
         <div className={cx("min-h-full w-full min-w-0", infoScrollInset)}>
           {detailTitle}
           <div className="h-px bg-border" aria-hidden="true" />
@@ -1018,15 +974,14 @@ function InboxDetailEditor({
 
   if (mode === "mobile") {
     return (
-      <div className="actions-detail-backdrop fixed inset-0 z-[84] hidden max-[860px]:block" style={{ top: mobileSheetTop } as CSSProperties} data-nav-swipe-exclusion>
+      <div ref={gestureRef} className="actions-detail-backdrop fixed inset-0 z-[84] hidden max-[860px]:block" style={{ top: mobileSheetTop } as CSSProperties} data-nav-swipe-exclusion {...sheetDragHandlers}>
         <div ref={backdropRef} className="absolute inset-0 bg-foreground/20 dark:bg-background/80" style={backdropStyle} aria-hidden="true" />
         <aside
           ref={sheetRef}
-          className={cx("actions-detail-panel mobile absolute inset-x-0 bottom-0 top-[env(safe-area-inset-top)] z-[1] grid min-h-0 min-w-0 gap-0 overflow-hidden rounded-t-2xl border-t border-border bg-card pb-[env(safe-area-inset-bottom)] pt-1 shadow-xl animate-[mobile-detail-sheet-in_180ms_ease-out] will-change-transform", panelRows, panelPadding)}
+          className={cx("actions-detail-panel mobile absolute inset-x-0 bottom-0 top-[env(safe-area-inset-top)] z-[1] grid min-h-0 min-w-0 gap-0 overflow-hidden rounded-t-2xl border-t border-border bg-card pb-[env(safe-area-inset-bottom)] pt-1 shadow-xl will-change-transform", panelRows, panelPadding)}
           style={{ ...mobileSheetStyle, top: 0 } as CSSProperties}
           aria-label="Редактирование входящего"
           onKeyDown={onKeyDown}
-          {...sheetDragHandlers}
         >
           {editorBody}
         </aside>

@@ -1129,7 +1129,7 @@ describe("BraiApp actions", () => {
 
     expect(screen.queryByRole("button", { name: "Информация о действиях" })).not.toBeInTheDocument();
     expect(document.querySelector(".page-panel")).not.toBeInTheDocument();
-    expect(document.querySelector(".page-main")).toHaveClass("max-w-5xl");
+    expect(document.querySelector(".page-main")).toHaveClass("max-w-3xl");
 
     await waitFor(() => expect(screen.getByText("Информационная замена")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("textbox", { name: "Название действия: Информационная замена" }));
@@ -1138,7 +1138,7 @@ describe("BraiApp actions", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Закрыть редактор" }));
     expect(document.querySelector(".page-panel")).not.toBeInTheDocument();
-    expect(document.querySelector(".page-main")).toHaveClass("max-w-5xl");
+    expect(document.querySelector(".page-main")).toHaveClass("max-w-3xl");
   });
 
   it("opens the mobile full-screen detail editor and flushes through the Android back bridge", async () => {

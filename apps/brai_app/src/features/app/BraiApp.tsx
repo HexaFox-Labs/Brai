@@ -59,8 +59,7 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
   const { authDisplayName, authUser, provisionBraiCmdDeviceToken } = app;
   const router = useRouter();
   const nativeAndroid = useMountedNativeAndroid();
-  const [mobileDockMenu, setMobileDockMenu] = useState<"left" | "right" | null>(null);
-  const [mobileContextMenuOpen, setMobileContextMenuOpen] = useState(false);
+  const [mobileDockLayer, setMobileDockLayer] = useState<"left" | "right" | "context" | null>(null);
   const [startupIntroComplete, setStartupIntroComplete] = useState(false);
   const [onboardingStartupActive, setOnboardingStartupActive] = useState(true);
   const [onboardingVisible, setOnboardingVisible] = useState(() => shouldShowOnboarding(false) || (isNativeAndroid() && shouldKeepStoredLockedOnboarding()));
@@ -86,7 +85,9 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
   const { setMobileMenuOpen } = app;
   const closeMobilePageRail = useCallback(() => setMobileMenuOpen(false), [setMobileMenuOpen]);
   const activeContextualContent = contextualContent?.section === visibleSection ? contextualContent.content : null;
-  const dockOverflowOpen = mobileDockMenu != null;
+  const mobileDockMenu = mobileDockLayer === "left" ? "left" : mobileDockLayer === "right" || mobileDockLayer === "context" ? "right" : null;
+  const mobileContextMenuOpen = mobileDockLayer === "context";
+  const dockOverflowOpen = mobileDockLayer != null;
   const [actionsMobileCreateDraft, setActionsMobileCreateDraft] = useStoredMobileCreateDraft(ACTIONS_MOBILE_CREATE_DRAFT_STORAGE_KEY);
   const [inboxMobileCreateDraft, setInboxMobileCreateDraft] = useStoredMobileCreateDraft(INBOX_MOBILE_CREATE_DRAFT_STORAGE_KEY);
   const mobileViewport = useMountedMobileNavigationViewport();
@@ -94,7 +95,9 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
   const drawsFullscreenActive = visibleSection === "draws" && drawsFullScreen;
   const handleDrawsFullscreenChange = useCallback((nextFullScreen: boolean) => {
     setDrawsFullScreen(nextFullScreen);
-    if (nextFullScreen) setMobileDockMenu(null);
+    if (nextFullScreen) {
+      setMobileDockLayer(null);
+    }
   }, []);
   const sectionRef = useRef(app.section);
   const selectSectionRef = useRef(app.selectSection);
@@ -103,8 +106,8 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
   const adjacentSection = unauthEngineActive ? null : app.swipeNavigation.visual?.to;
   const handleStartupIntroComplete = useCallback(() => setStartupIntroComplete(true), []);
   const mobileMenuSwipe = useLeftEdgeMenuSwipe(
-    () => setMobileDockMenu("left"),
-    !app.mobileMenuOpen && !mobileDockMenu && !app.mobilePanelOpen && !app.actionOverlayOpen,
+    () => setMobileDockLayer("left"),
+    !app.mobileMenuOpen && !mobileDockLayer && !app.mobilePanelOpen && !app.actionOverlayOpen,
   );
   const webAuthRequired = !nativeAndroid && app.displaySyncStatus === "auth_required";
 
@@ -448,7 +451,8 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
             onBackground={app.setFocusBackground}
           />
         ) : screenSection === "draws" ? (
-          <PageWorkspace main={<DrawsSection
+          <PageWorkspace fullBleed={isActivePage && drawsFullscreenActive} main={<DrawsSection
+            fullScreen={isActivePage && drawsFullscreenActive}
             theme={app.theme}
             onFullscreenChange={isActivePage ? handleDrawsFullscreenChange : undefined}
             onRailContent={isActivePage ? registerDrawsRail : undefined}
@@ -597,8 +601,9 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
       </SidebarInset>
       {!drawsFullscreenActive ? (
         <MainDock
+          expanded={mobileDockLayer === "right" || mobileDockLayer === "context"}
           section={visibleSection}
-          hidden={app.actionOverlayOpen || app.mobilePanelOpen || mobileContextMenuOpen}
+          hidden={app.actionOverlayOpen || app.mobilePanelOpen}
           mobileViewport={mobileViewport}
           onSection={app.selectSection}
           swipeHandlers={app.swipeNavigation.handlers}
@@ -611,14 +616,16 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
             side="left"
             hasUpdate={engineView.hasUpdate}
             hidden={app.mobileMenuOpen || mobileDockMenu === "left" || app.actionOverlayOpen}
-            onClick={() => setMobileDockMenu("left")}
+            onClick={() => setMobileDockLayer("left")}
           />
-          <MobileDockOverflowButton
-            side="right"
-            open={mobileDockMenu === "right"}
-            hidden={app.mobileMenuOpen || mobileDockMenu === "left" || app.actionOverlayOpen}
-            onClick={() => setMobileDockMenu((current) => current === "right" ? null : "right")}
-          />
+          {!mobileContextMenuOpen ? (
+            <MobileDockOverflowButton
+              side="right"
+              open={mobileDockMenu === "right"}
+              hidden={app.mobileMenuOpen || mobileDockMenu === "left" || app.actionOverlayOpen}
+              onClick={() => setMobileDockLayer((current) => current === "right" ? null : "right")}
+            />
+          ) : null}
         </>
       ) : null}
       {app.mobileMenuOpen && !drawsFullscreenActive ? (
@@ -633,7 +640,7 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
           authUser={app.authUser}
           engineDownloading={engineDownloading}
           engineHasUpdate={engineView.hasUpdate}
-          onClose={() => setMobileDockMenu(null)}
+          onClose={() => setMobileDockLayer(null)}
           onProfile={() => app.selectSection("profile")}
           onSettings={app.openSettingsPage}
           onBraiCmd={openBraiCmd}
@@ -641,11 +648,12 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
           onEngine={() => app.selectSection("engine")}
           onArchive={() => app.selectSection("archive")}
           onLogout={app.onLogout}
-          onContextMenu={() => setMobileContextMenuOpen(true)}
+          contextMenuOpen={mobileContextMenuOpen}
+          onContextMenu={() => setMobileDockLayer("context")}
         />
       ) : null}
       {mobileContextMenuOpen && mobileDockMenu === "right" && !drawsFullscreenActive ? (
-        <MobileContextMenuSheet onClose={() => setMobileContextMenuOpen(false)} />
+        <MobileContextMenuSheet onClose={() => setMobileDockLayer("right")} />
       ) : null}
       {mobileViewport && app.focusContextPanel === "goal" && visibleSection === "focus" ? (
         <FocusContextPanelSheet panel="goal" history={app.history} goal={app.goal} todayKey={app.todayKey} onClose={() => app.setFocusContextPanel("none")} onCloseStart={app.markMobileContextPanelClosing} onDeleteSession={app.onDeleteFocusSession} onEditInterval={app.onEditFocusInterval} onEditSession={app.onEditFocusSession} />

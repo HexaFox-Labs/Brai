@@ -22,8 +22,11 @@
 - Mobile использует bottom navigation и horizontal tab swipe.
 - Desktop shell uses the full workspace beside navigation rails; the shared page workspace, not each section, centers panel-less content at the accepted maximum width.
 - Authenticated product sections use the shared page workspace defined by `openspec/specs/next-capacitor-client/spec.md`; do not copy header, main/panel split, or mobile sheet shells into individual sections.
-- Without a panel, page content is centered at a 1024px maximum; with a panel, desktop uses the shared 50/50 region and mobile uses the shared sheet below the fixed opaque header.
+- Without a panel, page content is centered at a 768px maximum; with a panel, desktop uses the shared 50/50 region and mobile uses the shared sheet below the fixed opaque header.
 - Page-specific behavior is supplied through the central desktop/mobile rail and panel registry. Exceptions wrap the shared shell instead of modifying or copying its internals.
+- Fullscreen product modes use the shared page workspace's explicit full-bleed override; local width or inset bypasses are forbidden.
+- Dismissible mobile sheets and drawers use the shared gesture primitive as the only transform owner for enter, drag, settle, and exit. Do not combine it with component keyframes.
+- Backdrop taps and directional backdrop swipes dismiss the active mobile layer. Upper Dock layers remain clipped behind the visible lower layer during motion.
 - В разделе Goal/`Цели фокусировки` длительности показывай компактно: `Hч Mм`; часы без ведущего нуля, минуты не показываются при `0`.
 
 ## Styling

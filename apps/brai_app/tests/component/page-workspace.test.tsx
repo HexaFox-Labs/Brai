@@ -7,12 +7,19 @@ describe("PageWorkspace", () => {
   it("centers a panel-free main column and gives an open panel a fixed half", () => {
     const view = render(<PageWorkspace main={<div>Главная</div>} />);
 
-    expect(screen.getByText("Главная").parentElement).toHaveClass("max-w-5xl");
+    expect(screen.getByText("Главная").parentElement).toHaveClass("max-w-3xl");
     expect(document.querySelector(".page-panel")).not.toBeInTheDocument();
 
     view.rerender(<PageWorkspace main={<div>Главная</div>} persistentPanel={<div>Постоянная</div>} />);
     expect(document.querySelector(".page-workspace")).toHaveClass("grid-cols-2", "has-panel");
     expect(screen.getByText("Постоянная")).toBeInTheDocument();
+  });
+
+  it("removes the centered maximum for an explicit full-bleed page", () => {
+    render(<PageWorkspace fullBleed main={<div>Полный экран</div>} />);
+
+    expect(screen.getByText("Полный экран").parentElement).toHaveClass("w-full", "max-w-none");
+    expect(screen.getByText("Полный экран").parentElement).not.toHaveClass("max-w-3xl", "mx-auto");
   });
 
   it("temporarily replaces and then restores the persistent panel", () => {

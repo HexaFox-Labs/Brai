@@ -4,6 +4,7 @@ import { cx } from "../appUtils";
 /** Shared responsive geometry for page main content and its optional panel. */
 export function PageWorkspace({
   className,
+  fullBleed = false,
   main,
   mainClassName,
   persistentPanel,
@@ -11,6 +12,7 @@ export function PageWorkspace({
   panelClassName,
 }: {
   className?: string;
+  fullBleed?: boolean;
   main: ReactNode;
   mainClassName?: string;
   persistentPanel?: ReactNode;
@@ -31,7 +33,8 @@ export function PageWorkspace({
       <div
         className={cx(
           "page-main h-full min-h-0 min-w-0 overflow-auto overscroll-contain",
-          !split && "mx-auto w-full max-w-5xl",
+          !split && !fullBleed && "mx-auto w-full max-w-3xl",
+          fullBleed && "w-full max-w-none",
           mainClassName,
         )}
       >

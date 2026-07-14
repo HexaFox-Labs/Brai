@@ -1,9 +1,8 @@
 "use client";
 
-import type { CSSProperties, FormEvent, MouseEvent } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import type { FormEvent, MouseEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronDown, FilePenLine, Plus } from "lucide-react";
-import { installAndroidBackHandler } from "@/shared/platform/platform";
 import { cleanTitle, TITLE_MAX_LENGTH } from "@/shared/activities/text";
 import type { ActivityItem, ActivitiesState, ActivityStatus } from "@/shared/types/activities";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/shared/ui/input-group";
@@ -11,7 +10,6 @@ import { ScrollArea } from "@/shared/ui/scroll-area";
 import { cx } from "../../appUtils";
 import { PageWorkspace } from "../../chrome/PageWorkspace";
 import { MobileCreateComposer, mobileCreateDraftHasText, type MobileCreateDraft } from "../MobileCreateComposer";
-import { useMobileSheetTop } from "../../hooks/useMobileSheetTop";
 import { isMobileNavigationViewport } from "../../navigation/useSectionSwipeNavigation";
 import { ActionRow, type DetailTitleFocus } from "./ActionRow";
 import { SortableActionList } from "./ActionList";
@@ -63,7 +61,6 @@ export function ActionsSection({
   const [openDeleteActionId, setOpenDeleteActionId] = useState<string | null>(null);
   const [titleDrafts, setTitleDrafts] = useState<Record<string, string>>({});
   const [detailTitleFocusRequest, setDetailTitleFocusRequest] = useState(0);
-  const suppressMobileCreatePopRef = useRef(false);
   const mobileCreateSubmitInFlightRef = useRef(false);
   const desktopInputRef = useRef<HTMLInputElement | null>(null);
   const newActions = state.actions.filter((action) => action.status === "New");
@@ -73,7 +70,6 @@ export function ActionsSection({
   const visibleOpenDeleteActionId =
     openDeleteActionId && state.actions.some((action) => action.id === openDeleteActionId) ? openDeleteActionId : null;
   const mobileOverlayOpen = mobileCreateOpen || mobileEditAction != null;
-  const mobileSheetTop = useMobileSheetTop();
   const mobileCreateHasDraft = mobileCreateDraftHasText(mobileCreateDraft);
   const MobileCreateFabIcon = mobileCreateHasDraft ? FilePenLine : Plus;
   const mobileCreateFabLabel = mobileCreateHasDraft ? "Продолжить черновик действия" : "Добавить действие";
@@ -117,14 +113,6 @@ export function ActionsSection({
     setMobileCreateOpen(true);
   }
 
-  const closeMobileCreate = useCallback(() => {
-    if (window.history.state?.braiMobileActionCreate) {
-      suppressMobileCreatePopRef.current = true;
-      window.history.back();
-    }
-    setMobileCreateOpen(false);
-  }, []);
-
   function openMobileEdit(action: ActivityItem) {
     setOpenDeleteActionId(null);
     setSelectedActionId(action.id);
@@ -158,41 +146,12 @@ export function ActionsSection({
     if (mobileCreateSubmitInFlightRef.current) return;
     mobileCreateSubmitInFlightRef.current = true;
     onMobileCreateDraftChange({ title: "", descriptionMd: "" });
-    closeMobileCreate();
     try {
       await onCreate(title, descriptionMd);
     } finally {
       mobileCreateSubmitInFlightRef.current = false;
     }
   }
-
-  useEffect(() => {
-    if (!mobileCreateOpen) return undefined;
-    if (window.history.state?.braiMobileActionCreate) {
-      window.history.replaceState({ ...window.history.state, braiMobileActionCreate: true }, "", window.location.href);
-    } else {
-      window.history.pushState({ ...window.history.state, braiMobileActionCreate: true }, "", window.location.href);
-    }
-
-    function onPopState() {
-      if (suppressMobileCreatePopRef.current) {
-        suppressMobileCreatePopRef.current = false;
-        return;
-      }
-      setMobileCreateOpen(false);
-    }
-
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
-  }, [mobileCreateOpen]);
-
-  useEffect(() => {
-    if (!mobileCreateOpen) return undefined;
-    return installAndroidBackHandler(() => {
-      closeMobileCreate();
-      return true;
-    });
-  }, [closeMobileCreate, mobileCreateOpen]);
 
   return (
     <section
@@ -319,22 +278,16 @@ export function ActionsSection({
       ) : null}
 
       {mobileCreateOpen ? (
-        <div
-          className="actions-mobile-overlay fixed inset-0 z-[80] hidden items-end bg-foreground/25 pb-[env(safe-area-inset-bottom)] max-[860px]:flex dark:bg-background/80"
-          style={{ top: mobileSheetTop } as CSSProperties}
-          data-nav-swipe-exclusion
-          onClick={closeMobileCreate}
-        >
           <MobileCreateComposer
             draft={mobileCreateDraft}
             titleLabel="Добавить действие"
             descriptionLabel="Описание действия"
             submitLabel="Добавить действие"
-            onCancel={closeMobileCreate}
+            historyStateKey="braiMobileActionCreate"
+            onCancel={() => setMobileCreateOpen(false)}
             onDraftChange={onMobileCreateDraftChange}
             onSubmit={submitMobile}
           />
-        </div>
       ) : null}
 
       {mobileEditAction ? (

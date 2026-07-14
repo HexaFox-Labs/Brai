@@ -35,7 +35,7 @@ test("keeps the burger drawer empty and opens the left overflow from the aligned
   await page.getByRole("button", { name: "Открыть левое меню" }).click();
   await expect(page.locator(".mobile-dock-overflow-backdrop")).toBeVisible();
   const overflowSheet = page.locator(".mobile-dock-overflow-sheet");
-  await expect(page.locator(".mobile-dock-overflow-motion")).toHaveClass(/mobile-detail-sheet-in/);
+  await expect(page.locator(".mobile-dock-overflow-motion")).not.toHaveClass(/mobile-detail-sheet-in/);
   await expect(overflowSheet).not.toContainText("Workspace");
   await expect(overflowSheet).not.toContainText("Меню страницы");
   await expect(overflowSheet).not.toContainText("Действия");
@@ -121,12 +121,12 @@ test("opens the right mobile dock overflow with placeholder items", async ({ pag
   expect(placeholderColor).toBe(inactiveDockColor);
   expect(sheetBox.width).toBeGreaterThanOrEqual(viewport.width - 1);
   expect(sheetBox.height).toBeLessThan(90);
-  expect(sheetBox.y + sheetBox.height).toBeLessThanOrEqual(dockBox.y + 1);
+  expect(Math.abs(sheetBox.y + sheetBox.height - dockBox.y)).toBeLessThanOrEqual(1);
   expect(dimBox.y + dimBox.height).toBeLessThanOrEqual(sheetBox.y + 1);
   expect(dimBox.y + dimBox.height).toBeLessThanOrEqual(dockBox.y - sheetBox.height + 1);
   expect(Math.abs(rightButtonBefore.x - rightButtonAfter.x)).toBeLessThanOrEqual(1);
   expect(Math.abs(rightButtonBefore.y - rightButtonAfter.y)).toBeLessThanOrEqual(1);
-  await expect(page.locator(".mobile-dock-overflow-dim")).toHaveClass(/mobile-dock-dim-in/);
+  await expect(page.locator(".mobile-dock-overflow-dim")).not.toHaveClass(/mobile-dock-dim-in/);
 
   await leftButton.click();
   await expect(page.locator(".mobile-dock-overflow-sheet")).toHaveAttribute("aria-label", "Левое меню");
@@ -150,6 +150,23 @@ test("opens the 3x4 context grid above the second Dock level", async ({ page }, 
   await expect(contextMenu).toBeVisible();
   await expect(contextMenu.getByRole("button", { name: /Контекст \d+: В разработке/ })).toHaveCount(12);
   await expect(contextMenu.locator(".grid-cols-3")).toBeVisible();
+  const sun = page.getByRole("button", { name: "Закрыть контекст-меню" });
+  const arrow = page.getByRole("button", { name: "Скрыть правое меню" });
+  const sunBox = await sun.boundingBox();
+  const arrowBox = await arrow.boundingBox();
+  expect(Math.abs((sunBox?.x ?? 0) + (sunBox?.width ?? 0) / 2 - ((arrowBox?.x ?? 0) + (arrowBox?.width ?? 0) / 2))).toBeLessThanOrEqual(1);
+  await sun.click();
+  await expect(contextMenu).toHaveCount(0);
+  await expect(page.locator(".mobile-dock-overflow-sheet")).toBeVisible();
+  await page.getByRole("button", { name: "Контекст-меню" }).click();
+  await expect(contextMenu).toBeVisible();
+  await dispatchElementTouch(page, ".mobile-context-menu-backdrop", "touchstart", { x: 20, y: 80 });
+  await dispatchElementTouch(page, ".mobile-context-menu-backdrop", "touchmove", { x: 20, y: 240 });
+  await dispatchElementTouch(page, ".mobile-context-menu-backdrop", "touchend", { x: 20, y: 240 });
+  await expect(contextMenu).toHaveCount(0);
+  await expect(page.locator(".mobile-dock-overflow-sheet")).toBeVisible();
+  await page.getByRole("button", { name: "Контекст-меню" }).click();
+  await expect(contextMenu).toBeVisible();
   await page.locator(".mobile-context-menu-backdrop").click({ position: { x: 20, y: 80 } });
   await expect(contextMenu).toHaveCount(0);
   await expect(page.locator(".mobile-dock-overflow-sheet")).toBeVisible();
@@ -239,6 +256,7 @@ test("opens and closes mobile Action details as a bottom sheet", async ({ page }
   await expect(sheet).toBeVisible();
   await expect(sheet.locator(".actions-detail-grabber")).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Основная навигация" })).toHaveCount(0);
+  await expect.poll(() => sheet.evaluate((element) => Math.round(new DOMMatrixReadOnly(getComputedStyle(element).transform).m42))).toBe(0);
 
   const backdropBox = await visualBackdrop.boundingBox();
   const topbar = await page.locator(".section-page-current .topbar").boundingBox();
@@ -272,6 +290,7 @@ test("opens and closes mobile Inbox details as a bottom sheet", async ({ page },
   await expect(sheet).toBeVisible();
   await expect(sheet.locator(".actions-detail-grabber")).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Основная навигация" })).toHaveCount(0);
+  await expect.poll(() => sheet.evaluate((element) => Math.round(new DOMMatrixReadOnly(getComputedStyle(element).transform).m42))).toBe(0);
 
   const dragZone = await sheet.locator(".actions-detail-drag-zone").boundingBox();
   const viewport = page.viewportSize();
@@ -848,7 +867,7 @@ test("keeps the mobile Goal panel inside the viewport", async ({ page }, testInf
   const sheet = page.locator(".mobile-context-sheet");
   const sheetBox = await sheet.boundingBox();
   const topbar = await page.locator(".section-page-current .topbar").boundingBox();
-  await expect(page.locator(".section-page-current .topbar")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(page.locator(".section-page-current .topbar")).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   const title = await sheet.getByRole("heading", { name: "Цели фокусировки" }).boundingBox();
   const grabber = await sheet.locator(".mobile-context-grabber").boundingBox();
   const goalButton = await page.locator(".section-page-current .topbar").getByRole("button", { name: "Цели фокусировки" }).boundingBox();

@@ -24,7 +24,7 @@ describe("Factory workspace", () => {
 
     const card = await screen.findByRole("button", { name: /Явно выбранный лог/ });
     expect(document.querySelector(".page-panel")).not.toBeInTheDocument();
-    expect(document.querySelector(".page-main")).toHaveClass("max-w-5xl");
+    expect(document.querySelector(".page-main")).toHaveClass("max-w-3xl");
 
     fireEvent.click(card);
     await waitFor(() => expect(document.querySelector(".page-workspace")).toHaveClass("has-panel"));

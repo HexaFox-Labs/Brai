@@ -20,26 +20,14 @@ export function useContextualRail(section: SectionId, userId?: string | null) {
   const accountKey = userId ?? "anonymous";
   const currentOpenKey = openKey(accountKey, section);
   const currentWidthKey = widthKey(accountKey);
-  const [openState, setOpenState] = useState({ key: currentOpenKey, value: true });
-  const [widthState, setWidthState] = useState({ key: currentWidthKey, value: DEFAULT_WIDTH });
+  const [openState, setOpenState] = useState(() => ({ key: currentOpenKey, value: readBoolean(currentOpenKey, true) }));
+  const [widthState, setWidthState] = useState(() => ({ key: currentWidthKey, value: readWidth(currentWidthKey) }));
   const saveTimer = useRef<number | null>(null);
-  const open = openState.key === currentOpenKey ? openState.value : true;
-  const width = widthState.key === currentWidthKey ? widthState.value : DEFAULT_WIDTH;
+  const open = openState.key === currentOpenKey ? openState.value : readBoolean(currentOpenKey, true);
+  const width = widthState.key === currentWidthKey ? widthState.value : readWidth(currentWidthKey);
 
   useEffect(() => {
-    if (!isContextualRailSection(section)) return;
-    const timeout = window.setTimeout(() => {
-      setOpenState({ key: currentOpenKey, value: readBoolean(currentOpenKey, true) });
-    }, 0);
-    return () => window.clearTimeout(timeout);
-  }, [currentOpenKey, section]);
-
-  useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      const cached = Number(readStorage(currentWidthKey));
-      if (Number.isFinite(cached)) setWidthState({ key: currentWidthKey, value: clampWidth(cached) });
-    }, 0);
-    if (!userId) return () => window.clearTimeout(timeout);
+    if (!userId) return undefined;
     let cancelled = false;
     void api.preferences().then((preferences) => {
       if (cancelled) return;
@@ -49,7 +37,6 @@ export function useContextualRail(section: SectionId, userId?: string | null) {
     }).catch(() => undefined);
     return () => {
       cancelled = true;
-      window.clearTimeout(timeout);
     };
   }, [api, currentWidthKey, userId]);
 
@@ -148,6 +135,11 @@ export function PageRailPlaceholder() {
 
 function clampWidth(value: number): number {
   return Math.round(Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, value || DEFAULT_WIDTH)));
+}
+
+function readWidth(key: string): number {
+  const cached = Number(readStorage(key));
+  return Number.isFinite(cached) ? clampWidth(cached) : DEFAULT_WIDTH;
 }
 
 function openKey(account: string, section: SectionId): string {
