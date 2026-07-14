@@ -1968,6 +1968,15 @@ test("delivery handoff writes infra-docs receipt only for merged PRs", () => {
   assert.equal(receipt.runId, 42);
 });
 
+test("delivery handoff performs one safe initial push before fetching a missing remote branch", () => {
+  const script = fs.readFileSync(new URL("./brai-task.mjs", import.meta.url), "utf8");
+  const helper = script.slice(script.indexOf("function ensureTaskBranchPushed"), script.indexOf("function remoteBranchExists"));
+  assert.match(helper, /if \(!remoteBranchExists\(branch\)\)/);
+  assert.match(helper, /\["git", "push", "-u", "origin", `HEAD:refs\/heads\/\$\{branch\}`\]/);
+  assert.ok(helper.indexOf("git\", \"push") < helper.indexOf("fetchTaskBranch(branch)"));
+  assert.match(helper, /remoteSha !== head/);
+});
+
 test("preview handoff waits for an in-progress delivery run before writing a receipt", () => {
   const fixture = setupPreviewHandoffFixture();
   const result = runPreviewHandoffFixture(fixture);

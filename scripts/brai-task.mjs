@@ -550,10 +550,8 @@ function previewHandoff(branchArg) {
   if (branch !== currentBranch()) throw new Error(`Current branch is ${currentBranch()}, not ${branch}`);
   const head = git("rev-parse", "HEAD");
 
-  fetchTaskBranch(branch);
-  const remoteSha = git("rev-parse", `origin/${branch}`);
-  if (remoteSha !== head) throw new Error(`HEAD ${head} is not pushed to origin/${branch} (${remoteSha}). Push before handoff.`);
   if (git("status", "--porcelain").trim()) throw new Error("Working tree is not clean. Commit or remove local changes before handoff.");
+  ensureTaskBranchPushed(branch, head);
   const baseRef = taskBaseRefForBranch(branch);
   if (!isAncestor(baseRef, head)) throw new Error(`Task base ${baseRef} is not an ancestor of ${head}.`);
 
@@ -616,10 +614,8 @@ function deliveryHandoff(branchArg) {
   }
   requireSocraticodeForHandoff(changedFiles);
 
-  fetchTaskBranch(branch);
-  const remoteSha = git("rev-parse", `origin/${branch}`);
-  if (remoteSha !== head) throw new Error(`HEAD ${head} is not pushed to origin/${branch} (${remoteSha}). Push before handoff.`);
   if (git("status", "--porcelain").trim()) throw new Error("Working tree is not clean. Commit or remove local changes before handoff.");
+  ensureTaskBranchPushed(branch, head);
   const marker = readTaskMarker();
   if (marker?.base && !isAncestor(marker.base, head)) {
     throw new Error(`Task base ${marker.base} is not an ancestor of ${head}. Start a fresh task branch from ${acceptedBaseRef()}.`);
@@ -2281,6 +2277,18 @@ function fetchAcceptedBase() {
 
 function fetchTaskBranch(branch) {
   git("fetch", "origin", `+refs/heads/${branch}:refs/remotes/origin/${branch}`);
+}
+
+function ensureTaskBranchPushed(branch, head) {
+  if (!remoteBranchExists(branch)) {
+    runRequired(
+      ["git", "push", "-u", "origin", `HEAD:refs/heads/${branch}`],
+      `Initial push failed for ${branch}.`,
+    );
+  }
+  fetchTaskBranch(branch);
+  const remoteSha = git("rev-parse", `origin/${branch}`);
+  if (remoteSha !== head) throw new Error(`HEAD ${head} is not pushed to origin/${branch} (${remoteSha}). Push before handoff.`);
 }
 
 function remoteBranchExists(branch) {
