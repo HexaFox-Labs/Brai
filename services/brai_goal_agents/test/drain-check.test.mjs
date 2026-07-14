@@ -8,6 +8,7 @@ import {
   readGoalAgentDrainState,
   runGoalAgentDrainCheck,
   runGoalAgentTemporalEmptyCheck,
+  selectNonterminalDrainRows,
   temporalVersionMatches,
   validateDeploymentContinuity,
   validateFrozenDrainRows,
@@ -136,6 +137,24 @@ test("missing or wrong frozen context build blocks before context access", () =>
   }
 });
 
+test("an exact terminal Temporal run is excluded before incoming frozen-build validation", () => {
+  const stale = row({
+    status: "running",
+    run_id: "run-terminal",
+    input_json: {
+      execution_contract: { context_worker_build_id: "relations-goals-context.v1.oldoldoldold" }
+    }
+  });
+  const terminal = temporal(stale, { status: "FAILED" });
+  const selected = selectNonterminalDrainRows(
+    [stale],
+    { described: [terminal], visible: [] },
+    catalog
+  );
+  assert.deepEqual(selected, []);
+  assert.deepEqual(validateFrozenDrainRows(selected, catalog), []);
+});
+
 test("queued work rejects self-consistent manifest contract substitutions", () => {
   for (const mutation of [
     { workflow_type: "SubstitutedWorkflow" },
@@ -200,7 +219,7 @@ test("list inventory may omit version metadata when exact describe pins the depl
   }), errorCode("goal_agent_drain_temporal_contract_mismatch"));
 });
 
-test("running mismatch, Temporal orphan, and queued bound run fail closed", () => {
+test("running mismatch and Temporal orphan fail closed while queued history may be terminal", () => {
   const running = row({ status: "running", run_id: "run-exact" });
   const rows = validateFrozenDrainRows([running], catalog);
   assert.throws(() => validateTemporalDrainState({
@@ -227,14 +246,14 @@ test("running mismatch, Temporal orphan, and queued bound run fail closed", () =
     temporal: { described: [temporal(queued)], visible: [temporal(queued)] },
     catalog
   }), errorCode("goal_agent_drain_queued_temporal_inconsistent"));
-  assert.throws(() => validateTemporalDrainState({
+  assert.doesNotThrow(() => validateTemporalDrainState({
     rows: validateFrozenDrainRows([queued], catalog),
     temporal: {
       described: [temporal(queued, { status: "COMPLETED" })],
       visible: []
     },
     catalog
-  }), errorCode("goal_agent_drain_queued_temporal_inconsistent"));
+  }));
 });
 
 test("foreign-environment seeded rows are excluded but NULL environment blocks", () => {

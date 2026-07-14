@@ -16,6 +16,7 @@ const { Client, Connection, WorkflowNotFoundError } = requireFromGoalAgents("@te
 
 export const MAX_DRAIN_EXECUTIONS = 200;
 const NONTERMINAL = new Set(["queued", "running"]);
+const TERMINAL_TEMPORAL = new Set(["COMPLETED", "FAILED", "CANCELLED", "TERMINATED", "TIMED_OUT"]);
 const CURRENT_COLUMNS = [
   "contract_hash",
   "contract_json",
@@ -101,26 +102,13 @@ export async function readGoalAgentDrainState(pool, environment, limit = MAX_DRA
 
 export function validateFrozenDrainRows(rows, catalog) {
   const target = [];
-  for (const raw of rows) {
-    if (raw.deployment_environment == null) {
-      throw new GoalAgentDrainError("goal_agent_drain_environment_missing");
-    }
-    if (raw.deployment_environment !== catalog.environment) continue;
+  for (const raw of validateDrainRowIdentities(rows, catalog)) {
     const row = {
       ...raw,
       contract_json: jsonObject(raw.contract_json),
       input_json: jsonObject(raw.input_json)
     };
     const expected = catalog.agents[row.agent_id];
-    if (!expected || !NONTERMINAL.has(row.status)) {
-      throw new GoalAgentDrainError("goal_agent_drain_row_malformed");
-    }
-    if (row.status === "running" && !textValue(row.run_id)) {
-      throw new GoalAgentDrainError("goal_agent_drain_running_run_missing");
-    }
-    if (row.status === "queued" && textValue(row.run_id)) {
-      throw new GoalAgentDrainError("goal_agent_drain_queued_run_inconsistent");
-    }
     const contract = row.contract_json;
     if (contract.id !== row.agent_id
       || contract.worker_build_id !== expected.buildId
@@ -138,6 +126,29 @@ export function validateFrozenDrainRows(rows, catalog) {
     if (row.input_json.execution_contract?.context_worker_build_id !== catalog.context.buildId) {
       throw new GoalAgentDrainError("goal_agent_drain_context_build_mismatch");
     }
+    target.push(row);
+  }
+  return target;
+}
+
+export function validateDrainRowIdentities(rows, catalog) {
+  const target = [];
+  for (const raw of rows) {
+    if (raw.deployment_environment == null) {
+      throw new GoalAgentDrainError("goal_agent_drain_environment_missing");
+    }
+    if (raw.deployment_environment !== catalog.environment) continue;
+    const expected = catalog.agents[raw.agent_id];
+    const row = { ...raw };
+    if (!expected || !NONTERMINAL.has(row.status)) {
+      throw new GoalAgentDrainError("goal_agent_drain_row_malformed");
+    }
+    if (row.status === "running" && !textValue(row.run_id)) {
+      throw new GoalAgentDrainError("goal_agent_drain_running_run_missing");
+    }
+    if (row.status === "queued" && textValue(row.run_id)) {
+      throw new GoalAgentDrainError("goal_agent_drain_queued_run_inconsistent");
+    }
     if (!String(row.workflow_id ?? "").startsWith(
       `brai:${catalog.environment}:agent:${row.agent_id}:`
     )) {
@@ -146,6 +157,24 @@ export function validateFrozenDrainRows(rows, catalog) {
     target.push(row);
   }
   return target;
+}
+
+export function selectNonterminalDrainRows(rows, temporal, catalog) {
+  const described = new Map(temporal.described.map((execution) => [execution.workflowId, execution]));
+  return rows.filter((row) => {
+    if (row.status !== "running") return true;
+    const execution = described.get(row.workflow_id);
+    if (!execution?.found) return true;
+    const expected = catalog.agents[row.agent_id];
+    if (execution.workflowId !== row.workflow_id
+      || execution.runId !== row.run_id
+      || execution.type !== expected?.workflowType) {
+      throw new GoalAgentDrainError("goal_agent_drain_temporal_contract_mismatch");
+    }
+    if (execution.status === "RUNNING") return true;
+    if (TERMINAL_TEMPORAL.has(execution.status)) return false;
+    throw new GoalAgentDrainError("goal_agent_drain_temporal_status_mismatch");
+  });
 }
 
 export async function inspectGoalAgentTemporalState(client, rows, environment, limit = MAX_DRAIN_EXECUTIONS) {
@@ -182,7 +211,10 @@ export function validateTemporalDrainState({ rows, temporal, catalog }) {
       continue;
     }
     if (row.status === "queued") {
-      throw new GoalAgentDrainError("goal_agent_drain_queued_temporal_inconsistent");
+      if (!TERMINAL_TEMPORAL.has(execution.status)) {
+        throw new GoalAgentDrainError("goal_agent_drain_queued_temporal_inconsistent");
+      }
+      continue;
     }
     if (execution.status !== "RUNNING") {
       throw new GoalAgentDrainError("goal_agent_drain_temporal_status_mismatch");
@@ -260,14 +292,14 @@ export async function runGoalAgentDrainCheck({
     await pool.end().catch(() => {});
   }
 
-  const rows = validateFrozenDrainRows(database.rows, catalog);
+  const candidates = validateDrainRowIdentities(database.rows, catalog);
   let connection;
   let temporal;
   try {
     connection = await connectTemporal({ address: temporalAddress, connectTimeout: "5 seconds" });
     const client = new Client({ connection, namespace: temporalNamespace });
     temporal = await client.withDeadline(Date.now() + 20_000, () => (
-      inspectGoalAgentTemporalState(client, rows, catalog.environment)
+      inspectGoalAgentTemporalState(client, candidates, catalog.environment)
     ));
   } catch (error) {
     if (error instanceof GoalAgentDrainError) throw error;
@@ -275,6 +307,7 @@ export async function runGoalAgentDrainCheck({
   } finally {
     await connection?.close().catch(() => {});
   }
+  const rows = validateFrozenDrainRows(selectNonterminalDrainRows(candidates, temporal, catalog), catalog);
   validateTemporalDrainState({ rows, temporal, catalog });
 
   let deployed = { deployedBranch: null, deployedContext: null };

@@ -160,6 +160,56 @@ test('poller observation writes one environment-qualified heartbeat per agent qu
   }
 });
 
+test('a provider-reported workflow failure cannot leave a discovery execution running or retry immediately', async () => {
+  const fixture = await createFixture([NOW]);
+  let reconciler;
+  try {
+    claimOwner(fixture);
+    fixture.store.configureGoalAgentEnvironment('preview-c');
+    const manifestList = await loadGoalAgentManifests();
+    fixture.store.syncGoalAgentCatalog(manifestList, NOW);
+    owner(fixture, () => fixture.store.noteGoalDiscoveryChanges({ count: 5, nowIso: NOW }));
+    const [execution] = fixture.store.ensureEligibleGoalDiscoveries({ nowIso: NOW });
+    const failure = {
+      type: 'GoalAgentResultFailure',
+      details: [{ status: 'failed', error: { code: 'llm_failed' } }]
+    };
+    const handle = {
+      firstExecutionRunId: 'failed-run',
+      result: async () => { throw failure; },
+      describe: async () => ({ runId: 'failed-run', status: { name: 'FAILED' } })
+    };
+    reconciler = createGoalAgentReconciler({
+      store: fixture.store,
+      client: {
+        workflow: {
+          start: async () => handle,
+          getHandle: () => handle
+        }
+      },
+      manifests: new Map(manifestList.map((manifest) => [manifest.id, manifest])),
+      environment: 'preview-c',
+      now: () => new Date(NOW),
+      logger: { error: () => {} }
+    });
+
+    assert.equal(await reconciler.run(), 1);
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const row = fixture.store.db.prepare(`
+      SELECT status, last_error, next_retry_at_utc FROM workflow_executions WHERE id = ?
+    `).get(execution.id);
+    assert.equal(row.status, 'failed');
+    assert.equal(row.last_error, 'llm_failed');
+    assert.equal(row.next_retry_at_utc, new Date(Date.parse(NOW) + 60_000).toISOString());
+    assert.deepEqual(fixture.store.ensureEligibleGoalDiscoveries({ nowIso: NOW }), []);
+  } finally {
+    await reconciler?.close();
+    await fixture.close();
+  }
+});
+
 function claimOwner(fixture) {
   fixture.store.db.prepare(`
     INSERT INTO "user" (id, name, email, "emailVerified", "createdAt", "updatedAt")

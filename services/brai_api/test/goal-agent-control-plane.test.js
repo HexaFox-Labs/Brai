@@ -223,6 +223,13 @@ test('discovery watermarks trigger at five or 24h, never overlap, retry failure,
     assert.equal(owner(fixture, () => fixture.store.failGoalAgentExecution({
       executionId: first.id, reason: 'worker_unavailable', nowIso: plusHours(1)
     })), true);
+    const retryAt = new Date(Date.parse(plusHours(1)) + 60_000).toISOString();
+    assert.equal(fixture.store.db.prepare(`
+      SELECT next_retry_at_utc FROM workflow_executions WHERE id = ?
+    `).get(first.id).next_retry_at_utc, retryAt);
+    assert.deepEqual(fixture.store.ensureEligibleGoalDiscoveries({
+      nowIso: new Date(Date.parse(plusHours(1)) + 30_000).toISOString()
+    }), []);
     let watermark = fixture.store.db.prepare(`
       SELECT processed_sequence, relevant_sequence, relevant_change_count, active_workflow_execution_id
       FROM context_discovery_watermarks WHERE user_id = ?

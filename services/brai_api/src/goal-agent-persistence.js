@@ -53,12 +53,21 @@ export function failExecution(store, execution, reason, now, {
   result = null, status = 'failed', currentStep = 'invoke_agent'
 } = {}) {
   const error = String(reason ?? 'agent_failed').slice(0, 1000);
+  const nextRetryAt = execution.workflow_definition_id === 'goal.discovery' && status === 'failed'
+    ? discoveryRetryAt(execution, now)
+    : null;
   store.db.prepare(`
     UPDATE workflow_executions SET status = ?, current_step = ?, result_json = COALESCE(?::jsonb, result_json),
-      last_error = ?, next_retry_at_utc = NULL, completed_at_utc = ?, updated_at_utc = ?, trace_status = 'complete'
+      last_error = ?, next_retry_at_utc = ?, completed_at_utc = ?, updated_at_utc = ?, trace_status = 'complete'
     WHERE id = ? AND status IN ('queued','running')
-  `).run(status, currentStep, result ? JSON.stringify(result) : null, error, now, now, execution.id);
+  `).run(status, currentStep, result ? JSON.stringify(result) : null, error, nextRetryAt, now, now, execution.id);
   if (execution.workflow_definition_id === 'goal.discovery') restoreDiscoveryWatermark(store, execution, now);
+}
+
+function discoveryRetryAt(execution, now) {
+  const attempt = Math.max(0, Number(execution.attempt_count ?? 0) - 1);
+  const delayMs = Math.min(24 * 60 * 60 * 1000, 60_000 * (2 ** Math.min(attempt, 11)));
+  return new Date(Date.parse(now) + delayMs).toISOString();
 }
 
 export function isDeterministicPersistenceError(error) {

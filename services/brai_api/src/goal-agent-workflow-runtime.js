@@ -138,7 +138,14 @@ export function createGoalAgentReconciler({
       .catch(async (error) => {
         if (closing) return;
         const failedResult = goalAgentFailureResult(error);
-        if (failedResult) return;
+        if (failedResult) {
+          withUserScope(execution.user_id, () => store.failGoalAgentExecution({
+            executionId: execution.id,
+            reason: failedResult.error?.code ?? 'agent_failed',
+            nowIso: now().toISOString()
+          }));
+          return;
+        }
         const status = await terminalStatus(handle, error);
         if (!status) {
           withUserScope(execution.user_id, () => store.noteGoalAgentTransportFailure({

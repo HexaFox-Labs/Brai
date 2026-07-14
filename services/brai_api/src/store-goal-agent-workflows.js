@@ -151,16 +151,30 @@ export const goalAgentWorkflowMethods = {
     const candidates = this.db.prepare(`SELECT user_id FROM context_discovery_watermarks
       WHERE relevant_change_count > 0 AND active_workflow_execution_id IS NULL
         AND (relevant_change_count >= 5 OR COALESCE(first_unprocessed_change_at_utc, last_relevant_change_at_utc) <= ?)
+        AND NOT EXISTS (
+          SELECT 1 FROM workflow_executions retry
+          WHERE retry.user_id = context_discovery_watermarks.user_id
+            AND retry.workflow_definition_id = 'goal.discovery'
+            AND retry.status = 'failed' AND retry.watermark_to = context_discovery_watermarks.relevant_sequence
+            AND retry.next_retry_at_utc > ?
+        )
       ORDER BY COALESCE(first_unprocessed_change_at_utc, last_relevant_change_at_utc), user_id LIMIT ?
-    `).all(cutoff, boundedLimit(limit));
+    `).all(cutoff, now, boundedLimit(limit));
     const executions = [];
     for (const candidate of candidates) {
       const execution = atomic(this, () => {
         const row = this.db.prepare(`SELECT * FROM context_discovery_watermarks
           WHERE user_id = ? AND relevant_change_count > 0 AND active_workflow_execution_id IS NULL
             AND (relevant_change_count >= 5 OR COALESCE(first_unprocessed_change_at_utc, last_relevant_change_at_utc) <= ?)
+            AND NOT EXISTS (
+              SELECT 1 FROM workflow_executions retry
+              WHERE retry.user_id = context_discovery_watermarks.user_id
+                AND retry.workflow_definition_id = 'goal.discovery'
+                AND retry.status = 'failed' AND retry.watermark_to = context_discovery_watermarks.relevant_sequence
+                AND retry.next_retry_at_utc > ?
+            )
           FOR UPDATE
-        `).get(candidate.user_id, cutoff);
+        `).get(candidate.user_id, cutoff, now);
         if (!row) return null;
         const claimed = withUserScope(row.user_id, () => ensureExecution(this, {
           agentId: 'goal.discovery', subjectKind: 'user', subjectId: row.user_id,
