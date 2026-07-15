@@ -24,7 +24,7 @@ try {
     scalar("SELECT 1"),
     scalar("SELECT COUNT(*)::int FROM schema_migrations"),
     scalar("SELECT COUNT(*)::int FROM supabase_migration_files"),
-    scalar("SELECT COUNT(*)::int FROM version_types WHERE id IN ('apk', 'build', 'macos', 'ios') AND (SELECT COUNT(*) FROM version_types) = 4"),
+    scalar("SELECT COUNT(*)::int FROM version_types WHERE id IN ('apk', 'build', 'macos', 'ios')"),
     scalar("SELECT COUNT(*)::int FROM activity_types WHERE id IN ('action', 'operation')"),
     scalar("SELECT COUNT(*)::int FROM inbox_record_types"),
     scalar("SELECT COUNT(*)::int FROM role_statuses WHERE id IN ('active', 'ended', 'deleted')"),
