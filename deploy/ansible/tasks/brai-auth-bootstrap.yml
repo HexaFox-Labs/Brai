@@ -22,6 +22,15 @@
     group: root
     mode: "0755"
 
+- name: Install isolated Brai auth sudoers boundary
+  ansible.builtin.template:
+    src: templates/brai-auth-sudoers.j2
+    dest: /etc/sudoers.d/brai-auth
+    owner: root
+    group: root
+    mode: "0440"
+    validate: "visudo -cf %s"
+
 - name: Provision deploy-owned auth operation locks
   ansible.builtin.file:
     path: "{{ brai_env_root }}/{{ item.value.path }}/.auth-operation.lock"
@@ -82,4 +91,4 @@
 
       **Как используется:** source of truth — `deploy/ansible/` в Brai repo; check/apply выполняются только из clean synchronized `main`: `deploy/scripts/apply-main-infra.sh --check brai-auth-bootstrap`, затем `--apply brai-auth-bootstrap` и повторный `--check`.
 
-      **Где находится:** `/srv/opt/brai-auth/compose.yml`, `/srv/opt/brai-auth-runtime.sh`, `/etc/caddy/brai-auth/<environment>/route.caddy`, `/srv/projects/brai-envs/<environment>/.auth-operation.lock`, `/srv/opt/brai-auth/caddy.lock`.
+      **Где находится:** `/srv/opt/brai-auth/compose.yml`, `/srv/opt/brai-auth-runtime.sh`, `/etc/sudoers.d/brai-auth`, `/etc/caddy/brai-auth/<environment>/route.caddy`, `/srv/projects/brai-envs/<environment>/.auth-operation.lock`, `/srv/opt/brai-auth/caddy.lock`.

@@ -1458,7 +1458,6 @@
         - brai-goal-agents
         - brai-storage-maintenance
         - brai-supavisor-maintenance
-        - brai-auth-bootstrap
         - targeted-infra-apply
 
   handlers:

@@ -8,6 +8,9 @@ import test from "node:test";
 const repoRoot = path.resolve(import.meta.dirname, "../..");
 const helper = path.join(repoRoot, "deploy/ansible/files/brai-auth-runtime.sh");
 const compose = path.join(repoRoot, "deploy/ansible/files/brai-auth-compose.yml");
+const authSudoers = path.join(repoRoot, "deploy/ansible/templates/brai-auth-sudoers.j2");
+const deploySudoers = path.join(repoRoot, "deploy/ansible/templates/brai-deploy-sudoers.j2");
+const authTasks = path.join(repoRoot, "deploy/ansible/tasks/brai-auth-bootstrap.yml");
 const digest = `ghcr.io/sergobright/brai-auth@sha256:${"a".repeat(64)}`;
 const priorDigest = `ghcr.io/sergobright/brai-auth@sha256:${"b".repeat(64)}`;
 const branch = "codex/auth-service";
@@ -26,6 +29,18 @@ test("auth Compose is fixed, secret-free, localhost-only, and uses the external 
   assert.doesNotMatch(source, /container_name:/);
   assert.doesNotMatch(source, /volumes:/);
   assert.doesNotMatch(source, /(password|secret|token|postgres(?:ql)?:\/\/)/i);
+});
+
+test("auth sudoers grants are isolated from the shared deploy boundary", () => {
+  const isolated = fs.readFileSync(authSudoers, "utf8");
+  const shared = fs.readFileSync(deploySudoers, "utf8");
+  const tasks = fs.readFileSync(authTasks, "utf8");
+  assert.match(isolated, /brai_auth_runtime_helper \}\} deploy \*/);
+  assert.match(isolated, /apply-main-infra\.sh --check brai-auth-bootstrap/);
+  assert.match(isolated, /apply-main-infra\.sh --apply brai-auth-bootstrap/);
+  assert.match(isolated, /brai_operation_maintainers/);
+  assert.doesNotMatch(shared, /brai_auth_runtime_helper|brai-auth-bootstrap/);
+  assert.match(tasks, /name: Install isolated Brai auth sudoers boundary[\s\S]*?dest: \/etc\/sudoers\.d\/brai-auth[\s\S]*?validate: "visudo -cf %s"/);
 });
 
 test("helper syntax and root/test boundary stay fixed", () => {
