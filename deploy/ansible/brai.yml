@@ -831,6 +831,7 @@
         label: "{{ item.value.service }}"
       register: brai_api_source_directories
       tags:
+        - brai-auth-bootstrap
         - brai-goal-agents
 
     - name: Install Brai API systemd units
@@ -847,6 +848,7 @@
         - Reload systemd
         - Restart active Brai API services after Codex access change
       tags:
+        - brai-auth-bootstrap
         - brai-goal-agents
 
     - name: Install Brai Admin systemd units
@@ -1189,6 +1191,7 @@
         mode: "0755"
       tags:
         - brai-db-backup
+        - brai-auth-bootstrap
         - targeted-infra-apply
 
     - name: Install Brai Temporal worker systemd unit
@@ -1227,6 +1230,7 @@
       notify: Reload systemd
       tags:
         - brai-db-backup
+        - brai-auth-bootstrap
         - targeted-infra-apply
 
     - name: Enable Brai DB Telegram backup timer
@@ -1455,6 +1459,7 @@
         validate: "visudo -cf %s"
       tags:
         - brai-caddy
+        - brai-auth-bootstrap
         - brai-goal-agents
         - brai-storage-maintenance
         - brai-supavisor-maintenance

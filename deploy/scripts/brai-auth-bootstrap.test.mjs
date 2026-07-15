@@ -11,6 +11,8 @@ const compose = path.join(repoRoot, "deploy/ansible/files/brai-auth-compose.yml"
 const authSudoers = path.join(repoRoot, "deploy/ansible/templates/brai-auth-sudoers.j2");
 const deploySudoers = path.join(repoRoot, "deploy/ansible/templates/brai-deploy-sudoers.j2");
 const authTasks = path.join(repoRoot, "deploy/ansible/tasks/brai-auth-bootstrap.yml");
+const playbook = path.join(repoRoot, "deploy/ansible/brai.yml");
+const apiService = path.join(repoRoot, "deploy/ansible/templates/brai-api.service.j2");
 const digest = `ghcr.io/sergobright/brai-auth@sha256:${"a".repeat(64)}`;
 const priorDigest = `ghcr.io/sergobright/brai-auth@sha256:${"b".repeat(64)}`;
 const branch = "codex/auth-service";
@@ -36,11 +38,25 @@ test("auth sudoers grants are isolated from the shared deploy boundary", () => {
   const shared = fs.readFileSync(deploySudoers, "utf8");
   const tasks = fs.readFileSync(authTasks, "utf8");
   assert.match(isolated, /brai_auth_runtime_helper \}\} deploy \*/);
+  assert.match(isolated, /brai_auth_runtime_helper \}\} preflight-rollback \*/);
   assert.match(isolated, /apply-main-infra\.sh --check brai-auth-bootstrap/);
   assert.match(isolated, /apply-main-infra\.sh --apply brai-auth-bootstrap/);
   assert.match(isolated, /brai_operation_maintainers/);
   assert.doesNotMatch(shared, /brai_auth_runtime_helper|brai-auth-bootstrap/);
   assert.match(tasks, /name: Install isolated Brai auth sudoers boundary[\s\S]*?dest: \/etc\/sudoers\.d\/brai-auth[\s\S]*?validate: "visudo -cf %s"/);
+});
+
+test("auth bootstrap target installs API and verified-backup cutover prerequisites", () => {
+  const tasks = fs.readFileSync(playbook, "utf8");
+  const service = fs.readFileSync(apiService, "utf8");
+  const sudoers = fs.readFileSync(deploySudoers, "utf8");
+  assert.equal((service.match(/BRAI_AUTH_INTERNAL_URL=http:\/\/127\.0\.0\.1:\{\{ item\.value\.auth_port \}\}/g) ?? []).length, 2);
+  assert.match(tasks, /name: Check Brai API source directories before active-service restart[\s\S]*?tags:\n\s+- brai-auth-bootstrap\n\s+- brai-goal-agents/);
+  assert.match(tasks, /name: Install Brai API systemd units[\s\S]*?tags:\n\s+- brai-auth-bootstrap\n\s+- brai-goal-agents/);
+  assert.match(tasks, /name: Install Brai DB Telegram backup script[\s\S]*?tags:\n\s+- brai-db-backup\n\s+- brai-auth-bootstrap\n\s+- targeted-infra-apply/);
+  assert.match(tasks, /name: Install Brai DB Telegram backup systemd units[\s\S]*?tags:\n\s+- brai-db-backup\n\s+- brai-auth-bootstrap\n\s+- targeted-infra-apply/);
+  assert.match(tasks, /name: Install deploy user sudoers boundary[\s\S]*?tags:\n\s+- brai-caddy\n\s+- brai-auth-bootstrap/);
+  assert.match(sudoers, /^\{\{ brai_deploy_user \}\} ALL=\(root\) NOPASSWD: \/bin\/systemctl start brai-db-telegram-backup\.service$/m);
 });
 
 test("helper syntax and root/test boundary stay fixed", () => {
@@ -50,7 +66,7 @@ test("helper syntax and root/test boundary stay fixed", () => {
   assert.match(source, /if \(\( EUID == 0 \)\)/);
   assert.match(source, /BRAI_AUTH_TEST_\* overrides are forbidden for root execution/);
   assert.match(source, /Unsupported test override/);
-  assert.match(source, /deploy\|route-enable\|route-disable\|rollback\|remove/);
+  assert.match(source, /deploy\|route-enable\|route-disable\|preflight-rollback\|rollback\|remove/);
   assert.match(source, /A short-lived GHCR token is required on stdin/);
   assert.match(source, /DOCKER_CONFIG=.*login ghcr\.io --username sergobright --password-stdin/);
   assert.doesNotMatch(source, /docker\.sock|groupadd|usermod|set -x/);
@@ -64,6 +80,7 @@ test("unsupported input and mutable images fail before Docker or Caddy", { skip:
     ["deploy", "prod", "ghcr.io/sergobright/brai-auth:latest"],
     ["deploy", "prod", digest, "/tmp/arbitrary-compose.yml"],
     ["rollback", "prod", digest, "arbitrary-route"],
+    ["rollback", "prod", "absent", "enabled"],
   ]) {
     const result = fixture.run(...args);
     assert.notEqual(result.status, 0, `${args.join(" ")} unexpectedly succeeded`);
@@ -177,7 +194,7 @@ test("all seven environments use only their fixed port, env file, and Compose pr
 
   const log = fixture.readLog();
   const expected = [
-    ["brai", 3050, path.join(fixture.root, "etc/brai/brai-auth.env")],
+    ["brai", 3050, path.join(fixture.root, "srv/projects/brai-envs/prod/brai-auth.env")],
     ["dev-brai", 3051, path.join(fixture.root, "srv/projects/brai-envs/dev/brai-auth.env")],
     ...["a", "b", "c", "d", "e"].map((slot, index) => [
       `preview-${slot}-brai`, 3052 + index,
@@ -255,18 +272,76 @@ test("failed Caddy validation and reload restore the previous fragment atomicall
 test("rollback and remove use only the fixed Compose service and restore the requested route state", { skip: skipRuntime }, (context) => {
   const fixture = createFixture(context);
   assert.equal(fixture.run("route-enable", "prod").status, 0);
+  fixture.markImageLocal();
+  const prodEnv = path.join(fixture.root, "srv/projects/brai-envs/prod/brai-auth.env");
+  fs.chmodSync(prodEnv, 0o640);
+  const unsafeEnv = fixture.runWithoutToken("preflight-rollback", "prod", priorDigest, "disabled");
+  assert.notEqual(unsafeEnv.status, 0);
+  assert.match(unsafeEnv.stderr, /exact mode 600/);
+  fs.chmodSync(prodEnv, 0o600);
   fixture.clearLog();
 
-  const rollback = fixture.run("rollback", "prod", priorDigest, "disabled");
+  const rollback = fixture.runWithoutToken("rollback", "prod", priorDigest, "disabled");
   assert.equal(rollback.status, 0, rollback.stderr);
   assert.equal(fixture.readRoute("prod"), "# Brai auth route is disabled until an exact-digest runtime deployment.\n");
-  assert.match(fixture.readLog(), /pull auth[\s\S]+up -d --no-build auth/);
+  assert.match(fixture.readLog(), /image inspect[\s\S]+up -d --no-build auth/);
+  assert.doesNotMatch(fixture.readLog(), /login ghcr\.io|pull auth/);
   assert.doesNotMatch(fixture.readLog(), /down|--remove-orphans/);
 
   fixture.clearLog();
   const remove = fixture.run("remove", "prod");
   assert.equal(remove.status, 0, remove.stderr);
   assert.match(fixture.readLog(), /docker compose --project-name brai .* rm --stop --force auth/);
+});
+
+test("rollback preflight is read-only and requires a local prior image", { skip: skipRuntime }, (context) => {
+  const fixture = createFixture(context);
+  const missing = fixture.runWithoutToken("preflight-rollback", "prod", priorDigest, "disabled");
+  assert.notEqual(missing.status, 0);
+  assert.match(missing.stderr, /Prior auth image is not local/);
+  assert.doesNotMatch(fixture.readLog(), /up -d|rm --stop|systemctl reload/);
+
+  fixture.markImageLocal();
+  fixture.clearLog();
+  const ready = fixture.runWithoutToken("preflight-rollback", "prod", priorDigest, "disabled");
+  assert.equal(ready.status, 0, ready.stderr);
+  assert.match(fixture.readLog(), /caddy validate[\s\S]*image inspect/);
+  assert.doesNotMatch(fixture.readLog(), /up -d|rm --stop|systemctl reload/);
+});
+
+test("rollback recovers the runtime but still fails when Caddy disable fails", { skip: skipRuntime }, (context) => {
+  const restored = createFixture(context);
+  assert.equal(restored.run("route-enable", "prod").status, 0);
+  restored.markImageLocal();
+  restored.clearLog();
+  restored.failOnce("systemctl");
+  const prior = restored.runWithoutToken("rollback", "prod", priorDigest, "enabled");
+  assert.notEqual(prior.status, 0);
+  assert.match(prior.stderr, /runtime recovery completed but rollback did not succeed/);
+  assert.match(restored.readLog(), /image inspect[\s\S]+up -d --no-build auth/);
+  assert.doesNotMatch(restored.readLog(), /login ghcr\.io|pull auth/);
+  assert.match(restored.readRoute("prod"), /@brai_auth_official/);
+  assert.equal(prior.stdout, "");
+
+  const disabledPrior = createFixture(context);
+  assert.equal(disabledPrior.run("route-enable", "prod").status, 0);
+  disabledPrior.markImageLocal();
+  disabledPrior.clearLog();
+  disabledPrior.failOnce("systemctl");
+  const disabled = disabledPrior.runWithoutToken("rollback", "prod", priorDigest, "disabled");
+  assert.notEqual(disabled.status, 0);
+  assert.match(disabledPrior.readLog(), /image inspect[\s\S]+up -d --no-build auth/);
+  assert.doesNotMatch(disabledPrior.readLog(), /rm --stop --force auth/);
+  assert.equal(disabled.stdout, "");
+
+  const removed = createFixture(context);
+  assert.equal(removed.run("route-enable", "prod").status, 0);
+  removed.clearLog();
+  removed.failOnce("systemctl");
+  const absent = removed.run("rollback", "prod", "absent", "disabled");
+  assert.notEqual(absent.status, 0);
+  assert.match(removed.readLog(), /rm --stop --force auth/);
+  assert.equal(absent.stdout, "");
 });
 
 function createFixture(context) {
@@ -283,11 +358,9 @@ function createFixture(context) {
   fs.mkdirSync(bin, { recursive: true });
   fs.mkdirSync(authRoot, { recursive: true });
   fs.mkdirSync(caddyRoot, { recursive: true });
-  fs.mkdirSync(path.join(root, "etc/brai"), { recursive: true });
   fs.writeFileSync(path.join(authRoot, "compose.yml"), fs.readFileSync(compose));
   fs.writeFileSync(path.join(authRoot, "caddy.lock"), "");
   fs.writeFileSync(path.join(root, "etc/caddy/Caddyfile"), "# complete test Caddyfile\n");
-  fs.writeFileSync(path.join(root, "etc/brai/brai-auth.env"), "BETTER_AUTH_SECRET=fixture-secret\n");
   fs.writeFileSync(log, "");
 
   for (const environment of ["prod", "dev", "preview-a", "preview-b", "preview-c", "preview-d", "preview-e"]) {
@@ -297,7 +370,7 @@ function createFixture(context) {
     fs.mkdirSync(routeRoot, { recursive: true });
     fs.writeFileSync(path.join(envRoot, ".auth-operation.lock"), "");
     fs.writeFileSync(path.join(routeRoot, "route.caddy"), "# Brai auth route is disabled until an exact-digest runtime deployment.\n");
-    if (environment !== "prod") fs.writeFileSync(path.join(envRoot, "brai-auth.env"), "BETTER_AUTH_SECRET=fixture-secret\n");
+    fs.writeFileSync(path.join(envRoot, "brai-auth.env"), "BETTER_AUTH_SECRET=fixture-secret\n", { mode: 0o600 });
   }
   fs.writeFileSync(path.join(envsRoot, "preview-slots.lock"), "");
   fs.writeFileSync(path.join(envsRoot, "preview-slots.json"), JSON.stringify(emptyRegistry()));

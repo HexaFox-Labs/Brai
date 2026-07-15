@@ -15,6 +15,7 @@ usage:
   brai-auth-runtime.sh deploy <environment> <digest> [<branch> <commit> <lease>]
   brai-auth-runtime.sh route-enable <environment> [<branch> <commit> <lease>]
   brai-auth-runtime.sh route-disable <environment> [<branch> <commit> <lease>]
+  brai-auth-runtime.sh preflight-rollback <environment> <digest|absent> <enabled|disabled> [<branch> <commit> <lease>]
   brai-auth-runtime.sh rollback <environment> <digest|absent> <enabled|disabled> [<branch> <commit> <lease>]
   brai-auth-runtime.sh remove <environment> [<branch> <commit> <lease>]
 EOF
@@ -45,7 +46,7 @@ configure_paths() {
   CADDY_ROOT="$prefix/etc/caddy/brai-auth"
   CADDYFILE="$prefix/etc/caddy/Caddyfile"
   ENVS_ROOT="$prefix/srv/projects/brai-envs"
-  PROD_ENV_FILE="$prefix/etc/brai/brai-auth.env"
+  PROD_ENV_FILE="$ENVS_ROOT/prod/brai-auth.env"
   PREVIEW_REGISTRY="$ENVS_ROOT/preview-slots.json"
   PREVIEW_LOCK="$ENVS_ROOT/preview-slots.lock"
   DOCKER_BIN="${bin_root:-/usr/bin}/docker"
@@ -166,6 +167,8 @@ compose() {
 
 pull_image_if_missing() (
   local image="$1" registry_token='' docker_config=''
+  # Invoked indirectly by the EXIT trap below.
+  # shellcheck disable=SC2329
   cleanup_registry_login() {
     registry_token=''
     [[ -z "$docker_config" ]] || /bin/rm -rf -- "$docker_config"
@@ -203,6 +206,30 @@ deploy_image() {
 remove_container() {
   local placeholder='ghcr.io/sergobright/brai-auth@sha256:0000000000000000000000000000000000000000000000000000000000000000'
   compose "$placeholder" rm --stop --force auth
+}
+
+preflight_rollback() {
+  local image="$1" prior_route="$2"
+  require_safe_dir "$AUTH_ROOT"
+  require_safe_file "$COMPOSE_FILE"
+  require_safe_dir "$CADDY_ROOT"
+  require_safe_dir "$ROUTE_DIR"
+  require_safe_file "$CADDY_LOCK"
+  require_safe_file "$CADDYFILE"
+  require_executable "$DOCKER_BIN"
+  require_executable "$CADDY_BIN"
+  require_executable "$SYSTEMCTL_BIN"
+  [[ -f "$ROUTE_FILE" && ! -L "$ROUTE_FILE" ]] || die "Auth route fragment is missing or unsafe: $ROUTE_FILE"
+  "$CADDY_BIN" validate --adapter caddyfile --config "$CADDYFILE" >/dev/null
+  if [[ "$image" == "$ABSENT_IMAGE" ]]; then
+    [[ "$prior_route" == 'disabled' ]] || die 'An absent prior auth image cannot have an enabled route.'
+  else
+    require_safe_file "$ENV_FILE"
+    [[ "$(/usr/bin/stat -c '%a' -- "$ENV_FILE")" == '600' ]] \
+      || die "Prior auth environment file must have exact mode 600: $ENV_FILE"
+    "$DOCKER_BIN" image inspect "$image" >/dev/null 2>&1 \
+      || die 'Prior auth image is not local, so tokenless rollback cannot be guaranteed.'
+  fi
 }
 
 render_enabled_route() {
@@ -286,7 +313,8 @@ set_route_state() {
       die 'Caddy auth route update failed and rollback could not be verified; operator intervention is required.'
     fi
     exec 7>&-
-    die 'Caddy auth route update failed and the previous fragment was restored.'
+    printf 'Caddy auth route update failed and the previous fragment was restored.\n' >&2
+    return 1
   fi
   /bin/rm -f -- "$backup"
   exec 7>&-
@@ -300,10 +328,23 @@ run_action() {
     deploy) deploy_image "$image" ;;
     route-enable) set_route_state enabled ;;
     route-disable) set_route_state disabled ;;
+    preflight-rollback) preflight_rollback "$image" "$prior_route" ;;
     rollback)
-      set_route_state disabled
-      if [[ "$image" == "$ABSENT_IMAGE" ]]; then remove_container; else deploy_image "$image"; fi
-      [[ "$prior_route" != 'enabled' ]] || set_route_state enabled
+      if set_route_state disabled; then
+        if [[ "$image" == "$ABSENT_IMAGE" ]]; then remove_container; else deploy_image "$image"; fi
+        [[ "$prior_route" != 'enabled' ]] || set_route_state enabled
+      else
+        printf 'Caddy route disable failed; restoring the prior served runtime or removing the incoming container.\n' >&2
+        if [[ "$image" != "$ABSENT_IMAGE" ]]; then
+          if ! deploy_image "$image"; then
+            remove_container || die 'Could not restore the prior auth image or remove the incoming container.'
+            die 'Prior auth image restore failed; incoming container was removed fail-closed.'
+          fi
+        else
+          remove_container || die 'Could not remove the incoming auth container after route-disable failure.'
+        fi
+        die 'Caddy route disable failed; runtime recovery completed but rollback did not succeed.'
+      fi
       ;;
     remove)
       set_route_state disabled
@@ -320,7 +361,7 @@ main() {
   [[ $# -ge 2 ]] || usage
   local action="$1" environment="$2" image='' prior_route=''
   shift 2
-  case "$action" in deploy|route-enable|route-disable|rollback|remove) ;; *) usage ;; esac
+  case "$action" in deploy|route-enable|route-disable|preflight-rollback|rollback|remove) ;; *) usage ;; esac
   load_environment "$environment"
   case "$action" in
     deploy)
@@ -331,13 +372,15 @@ main() {
       parse_lease "$@"
       ;;
     route-enable|route-disable|remove) parse_lease "$@" ;;
-    rollback)
+    preflight-rollback|rollback)
       [[ $# -ge 2 ]] || usage
       image="$1"
       prior_route="$2"
       shift 2
       [[ "$image" == "$ABSENT_IMAGE" ]] || require_image "$image"
       [[ "$prior_route" == 'enabled' || "$prior_route" == 'disabled' ]] || usage
+      [[ "$image" != "$ABSENT_IMAGE" || "$prior_route" == 'disabled' ]] \
+        || die 'An absent prior auth image cannot have an enabled route.' 2
       parse_lease "$@"
       ;;
   esac
