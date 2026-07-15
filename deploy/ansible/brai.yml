@@ -150,6 +150,7 @@
       register: brai_db_telegram_backup_env_file
       tags:
         - brai-db-backup
+        - brai-auth-bootstrap
         - targeted-infra-apply
 
     - name: Refuse to create Brai DB Telegram backup secrets from source
@@ -158,6 +159,7 @@
       when: not brai_db_telegram_backup_env_file.stat.exists
       tags:
         - brai-db-backup
+        - brai-auth-bootstrap
         - targeted-infra-apply
 
     - name: Ensure Brai DB Telegram backup env file permissions
@@ -170,6 +172,7 @@
       when: brai_db_telegram_backup_env_file.stat.exists
       tags:
         - brai-db-backup
+        - brai-auth-bootstrap
         - targeted-infra-apply
 
     - name: Check Brai DB Telegram backup encryption key exists
@@ -178,6 +181,7 @@
       register: brai_db_telegram_backup_key_file
       tags:
         - brai-db-backup
+        - brai-auth-bootstrap
         - targeted-infra-apply
 
     - name: Refuse to create Brai DB Telegram backup encryption key from source
@@ -186,6 +190,7 @@
       when: not brai_db_telegram_backup_key_file.stat.exists
       tags:
         - brai-db-backup
+        - brai-auth-bootstrap
         - targeted-infra-apply
 
     - name: Ensure Brai DB Telegram backup encryption key permissions
@@ -198,6 +203,7 @@
       when: brai_db_telegram_backup_key_file.stat.exists
       tags:
         - brai-db-backup
+        - brai-auth-bootstrap
         - targeted-infra-apply
 
     - name: Check Brai Temporal worker secret reference files exist

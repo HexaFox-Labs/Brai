@@ -55,6 +55,17 @@ test("auth bootstrap target installs API and verified-backup cutover prerequisit
   assert.match(tasks, /name: Install Brai API systemd units[\s\S]*?tags:\n\s+- brai-auth-bootstrap\n\s+- brai-goal-agents/);
   assert.match(tasks, /name: Install Brai DB Telegram backup script[\s\S]*?tags:\n\s+- brai-db-backup\n\s+- brai-auth-bootstrap\n\s+- targeted-infra-apply/);
   assert.match(tasks, /name: Install Brai DB Telegram backup systemd units[\s\S]*?tags:\n\s+- brai-db-backup\n\s+- brai-auth-bootstrap\n\s+- targeted-infra-apply/);
+  for (const name of [
+    "Check Brai DB Telegram backup env file exists",
+    "Refuse to create Brai DB Telegram backup secrets from source",
+    "Ensure Brai DB Telegram backup env file permissions",
+    "Check Brai DB Telegram backup encryption key exists",
+    "Refuse to create Brai DB Telegram backup encryption key from source",
+    "Ensure Brai DB Telegram backup encryption key permissions",
+  ]) {
+    const block = tasks.match(new RegExp(`- name: ${name}\\n[\\s\\S]*?(?=\\n    - name:)`))?.[0] ?? "";
+    assert.match(block, /\n\s+- brai-auth-bootstrap\n/, `${name} is unreachable from brai-auth-bootstrap`);
+  }
   assert.match(tasks, /name: Install deploy user sudoers boundary[\s\S]*?tags:\n\s+- brai-caddy\n\s+- brai-auth-bootstrap/);
   assert.match(sudoers, /^\{\{ brai_deploy_user \}\} ALL=\(root\) NOPASSWD: \/bin\/systemctl start brai-db-telegram-backup\.service$/m);
 });
