@@ -570,6 +570,36 @@ test("dev env setup enables explicit test email login", () => {
   assert.equal(fs.statSync(envFile).mode & 0o777, 0o660);
 });
 
+test("self-hosted preview generator switches only to the non-production tenant after cutover", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "brai-supabase-tenant-env-"));
+  const envFile = path.join(dir, "brai-api.env");
+  const result = spawnSync("node", [
+    path.join(repoRoot, "deploy/scripts/supabase-branch.mjs"),
+    "dev-env",
+    "--runtime-env",
+    envFile,
+  ], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      BRAI_SUPABASE_DRY_RUN: "true",
+      BRAI_SUPAVISOR_TENANT_ISOLATION: "true",
+      BRAI_RELEASE_PASSWORD: "shared-release-password",
+      SUPABASE_SELF_HOSTED: "true",
+      SUPABASE_SELF_HOSTED_DATABASE_URL: "postgres://postgres.brightos:p%40ss@127.0.0.1:55432/postgres?sslmode=disable",
+    },
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+
+  const databaseUrl = fs.readFileSync(envFile, "utf8").match(/^BRAI_DATABASE_URL='([^']+)'$/m)?.[1];
+  const parsed = new URL(databaseUrl);
+  assert.equal(parsed.username, "postgres.brightos-nonprod");
+  assert.equal(parsed.password, "p%40ss");
+  assert.equal(parsed.searchParams.get("sslmode"), "disable");
+  assert.equal(parsed.searchParams.get("options"), "-c search_path=brai_dev,public");
+});
+
 test("preview environment preserves its user-provider encryption key", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "brai-supabase-key-env-"));
   const envFile = path.join(dir, "brai-api.env");

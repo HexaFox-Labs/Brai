@@ -78,8 +78,10 @@ export async function createFixture(times, options = {}) {
       testEmailLogin: options.testEmailLogin,
       goalAgentsEnabled: options.goalAgentsEnabled ?? true,
       shutdownGraceMs: options.shutdownGraceMs,
+      authBackendTimeoutMs: options.authBackendTimeoutMs,
       now: () => new Date(times[Math.min(index++, times.length - 1)]),
-      logger: options.logger ?? { error: () => {} }
+      logger: options.logger ?? { error: () => {} },
+      createAuth: options.createAuth
     });
     runtime.store.configureGoalAgentEnvironment(options.goalAgentEnvironment ?? 'prod');
     runtime.store.syncGoalAgentCatalog(await loadGoalAgentManifests(), times[0]);
