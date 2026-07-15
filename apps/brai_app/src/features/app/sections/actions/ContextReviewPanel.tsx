@@ -117,8 +117,8 @@ function GoalDiscoveryDraftReview({ decision, busy, onResolve }: ReviewProps) {
         <strong className="text-sm">Новая цель</strong>
         {decision.rationale ? <p className="m-0 mt-1 text-sm text-muted-foreground">{decision.rationale}</p> : null}
       </div>
-      <Input value={title} maxLength={80} aria-label="Название предложенной цели" onChange={(event) => setTitle(event.target.value)} />
-      <Textarea value={description} maxLength={8000} aria-label="Описание предложенной цели" className="min-h-20" onChange={(event) => setDescription(event.target.value)} />
+      <Input name="goal-discovery-title" value={title} maxLength={80} aria-label="Название предложенной цели" onChange={(event) => setTitle(event.target.value)} />
+      <Textarea name="goal-discovery-description" value={description} maxLength={8000} aria-label="Описание предложенной цели" className="min-h-20" onChange={(event) => setDescription(event.target.value)} />
       <div className="grid gap-1" aria-label="Пункты предложенной цели">
         {members.map((memberId, index) => (
           <div key={memberId} className="grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-lg bg-background px-2 py-1">
@@ -165,8 +165,8 @@ function PlanDraftReview({ decision, busy, onResolve }: ReviewProps) {
         {steps.map((step, index) => (
           <div key={index} className="grid grid-cols-[minmax(0,1fr)_auto] gap-1 rounded-lg bg-background p-2">
             <div className="grid gap-1">
-              <Input value={step.title} maxLength={80} aria-label={`Шаг ${index + 1}`} onChange={(event) => setSteps((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, title: event.target.value } : item))} />
-              <Textarea value={step.description_md} maxLength={8000} aria-label={`Описание шага ${index + 1}`} className="min-h-16" onChange={(event) => setSteps((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, description_md: event.target.value } : item))} />
+              <Input name={`goal-plan-step-${index + 1}-title`} value={step.title} maxLength={80} aria-label={`Шаг ${index + 1}`} onChange={(event) => setSteps((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, title: event.target.value } : item))} />
+              <Textarea name={`goal-plan-step-${index + 1}-description`} value={step.description_md} maxLength={8000} aria-label={`Описание шага ${index + 1}`} className="min-h-16" onChange={(event) => setSteps((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, description_md: event.target.value } : item))} />
             </div>
             <div className="grid content-start gap-1">
               <Button type="button" variant="ghost" size="icon-xs" aria-label={`Поднять шаг ${index + 1}`} disabled={index === 0} onClick={() => move(index, -1)}><ArrowUp aria-hidden="true" /></Button>

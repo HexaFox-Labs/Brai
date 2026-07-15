@@ -95,8 +95,8 @@ export function GoalWorkspaceHeader({
     <section className="mb-4 grid gap-3 rounded-xl border border-border bg-card p-4 max-[860px]:[&_button]:min-h-11 max-[860px]:[&_button]:min-w-11 max-[860px]:[&_[data-slot=input]]:min-h-11" aria-labelledby="selected-goal-title">
       {editing ? (
         <form className="grid gap-3" onSubmit={save}>
-          <Input value={title} maxLength={TITLE_MAX_LENGTH} aria-label="Название цели" onChange={(event) => setTitle(event.target.value)} />
-          <Textarea value={description} aria-label="Описание цели в Markdown" placeholder="Описание цели" onChange={(event) => setDescription(event.target.value)} />
+          <Input name="goal-title" value={title} maxLength={TITLE_MAX_LENGTH} aria-label="Название цели" onChange={(event) => setTitle(event.target.value)} />
+          <Textarea name="goal-description" value={description} aria-label="Описание цели в Markdown" placeholder="Описание цели" onChange={(event) => setDescription(event.target.value)} />
           <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(false)}>Отмена</Button>
             <Button type="submit" size="sm" disabled={!title.trim()}>Сохранить</Button>

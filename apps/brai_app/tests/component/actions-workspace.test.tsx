@@ -243,7 +243,10 @@ describe("Actions Goal workspace UI", () => {
     state.decisions = [planDecision()];
     render(<ContextReviewPanel state={state} onResolve={onResolve} />);
 
-    fireEvent.change(screen.getByRole("textbox", { name: "Шаг 1" }), { target: { value: "Исправленный шаг" } });
+    const firstStep = screen.getByRole("textbox", { name: "Шаг 1" });
+    expect(firstStep).toHaveAttribute("name", "goal-plan-step-1-title");
+    expect(screen.getByRole("textbox", { name: "Описание шага 1" })).toHaveAttribute("name", "goal-plan-step-1-description");
+    fireEvent.change(firstStep, { target: { value: "Исправленный шаг" } });
     fireEvent.click(screen.getByRole("button", { name: "Принять план" }));
     expect(onResolve).toHaveBeenCalledWith(state.decisions[0], "accept", expect.objectContaining({
       steps: expect.arrayContaining([expect.objectContaining({ title: "Исправленный шаг", position: 0 })]),
@@ -256,7 +259,10 @@ describe("Actions Goal workspace UI", () => {
     state.decisions = [discoveryDecision()];
     render(<ContextReviewPanel state={state} onResolve={onResolve} />);
 
-    fireEvent.change(screen.getByRole("textbox", { name: "Название предложенной цели" }), { target: { value: "Лунная база" } });
+    const title = screen.getByRole("textbox", { name: "Название предложенной цели" });
+    expect(title).toHaveAttribute("name", "goal-discovery-title");
+    expect(screen.getByRole("textbox", { name: "Описание предложенной цели" })).toHaveAttribute("name", "goal-discovery-description");
+    fireEvent.change(title, { target: { value: "Лунная база" } });
     fireEvent.click(screen.getByRole("button", { name: "Удалить пункт 3" }));
     fireEvent.click(screen.getByRole("button", { name: "Создать цель" }));
 
