@@ -22,6 +22,19 @@ test("tenant rewrite changes only the Supavisor tenant", () => {
   assert.equal(rewritten.searchParams.get("sslmode"), source.searchParams.get("sslmode"));
 });
 
+test("tenant rewrite replaces every legacy BrightOS suffix and rejects it as a target", () => {
+  for (const legacyTenant of ["brightos", "brightos-prod", "brightos-nonprod"]) {
+    const source = `postgres://postgres.${legacyTenant}:secret@127.0.0.1:55432/postgres`;
+    const rewritten = new URL(databaseUrlForSupavisorTenant(source, "brai-nonprod"));
+    assert.equal(rewritten.username, "postgres.brai-nonprod");
+  }
+
+  assert.throws(
+    () => databaseUrlForSupavisorTenant("postgres://postgres:secret@127.0.0.1:55432/postgres", "brightos-prod"),
+    /Unsupported Supavisor tenant/,
+  );
+});
+
 test("tenant assertion is staged and then fail-closed by environment", () => {
   const legacy = "postgres://postgres.brightos:secret@127.0.0.1:55432/postgres";
   assert.doesNotThrow(() => assertDatabaseUrlTenant(legacy, "prod", {}));
