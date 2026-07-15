@@ -1,9 +1,9 @@
 "use client";
 
-import type { KeyboardEvent, PointerEvent, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { Archive, ArchiveRestore, Boxes, FileCode2, LockKeyhole, Pencil, Plus, Search, X } from "lucide-react";
+import { Archive, ArchiveRestore, BookOpen, Code2, Eye, LockKeyhole, Pencil, Plus, Search, X } from "lucide-react";
 import { BraiChatApi } from "@/shared/api/braiChatApi";
 import { defaultApiBase } from "@/shared/config/runtime";
 import type { BraiChatEvent, BraiChatMessage, BraiChatModel, BraiChatSearchHit, BraiChatThread } from "@/shared/types/braiChat";
@@ -14,14 +14,18 @@ import { ScrollArea } from "@/shared/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 import { cx } from "../../appUtils";
 import { MobileContextSheet } from "../../chrome/AppChrome";
+import type { ThemeMode } from "../../appModel";
 import { requestMobileProfileDrawerClose } from "../../navigation/MobileProfileDrawer";
 import { useMobileNavigationViewport } from "../../navigation/useSectionSwipeNavigation";
-import { BraiChatInspector, inspectorEventAnchorId, type InspectorInstance, type InspectorSelection } from "./BraiChatInspector";
-import { projectBraiChatArtifacts, splitSearchSnippet } from "./braiChatModel";
+import { BraiChatWorkspace } from "./BraiChatInspector";
+import {
+  artifactWorkspaceMode,
+  projectBraiChatArtifacts,
+  splitSearchSnippet,
+  type BraiChatArtifact,
+  type BraiWorkspaceMode,
+} from "./braiChatModel";
 
-const MIN_INSPECTOR_WIDTH = 280;
-const MAX_INSPECTOR_WIDTH = 480;
-const THREAD_RAIL_WIDTH = 256;
 const LIVE_EVENT_POLL_MS = 1_000;
 type PendingAnchor = { kind: "message" | "event"; id: string; threadId: string };
 type RetryLast = () => Promise<void>;
@@ -31,9 +35,11 @@ const BraiCopilotSurface = dynamic(() => import("./BraiCopilotSurface").then((mo
 });
 
 export function BraiChatSection({
+  theme = "dark",
   userId,
   onRailContent,
 }: {
+  theme?: ThemeMode;
   userId?: string | null;
   onRailContent?: (content: ReactNode | null) => void;
 }) {
@@ -50,38 +56,16 @@ export function BraiChatSection({
   const [retryableError, setRetryableError] = useState(false);
   const [retryAvailable, setRetryAvailable] = useState(false);
   const [runActive, setRunActive] = useState(false);
-  const [selection, setSelection] = useState<InspectorSelection | null>(null);
   const [pendingAnchor, setPendingAnchor] = useState<PendingAnchor | null>(null);
-  const [inspectorWidth, setInspectorWidth] = useState(360);
-  const [maxInspectorWidth, setMaxInspectorWidth] = useState(MAX_INSPECTOR_WIDTH);
-  const workspaceRef = useRef<HTMLDivElement | null>(null);
-  const inspectorRef = useRef<HTMLElement | null>(null);
-  const desktopInspectorFocusRef = useRef<HTMLElement | null>(null);
-  const mobileInspectorFocusRef = useRef<HTMLElement | null>(null);
-  const inspectorOpenerRef = useRef<HTMLElement | null>(null);
-  const inspectorWasOpen = useRef(false);
-  const dragStart = useRef<{ x: number; width: number } | null>(null);
+  const [workspaceMode, setWorkspaceMode] = useState<BraiWorkspaceMode>("preview");
+  const [workspaceTargetId, setWorkspaceTargetId] = useState<string | null>(null);
+  const [mobileWorkspaceOpen, setMobileWorkspaceOpen] = useState(false);
   const activeThreadIdRef = useRef<string | null>(null);
   const eventsRef = useRef<BraiChatEvent[]>([]);
   const retryLastRef = useRef<RetryLast | null>(null);
   const mobileViewport = useMobileNavigationViewport();
   const activeThread = threads.find((thread) => thread.id === activeThreadId) ?? null;
   const artifacts = useMemo(() => projectBraiChatArtifacts(messages, events), [events, messages]);
-
-  const openInspector = useCallback((next: InspectorSelection) => {
-    setSelection((current) => {
-      if (!current && document.activeElement instanceof HTMLElement) inspectorOpenerRef.current = document.activeElement;
-      return next;
-    });
-  }, []);
-
-  const closeInspector = useCallback(() => {
-    setSelection(null);
-    window.requestAnimationFrame(() => {
-      if (inspectorOpenerRef.current?.isConnected) inspectorOpenerRef.current.focus();
-      inspectorOpenerRef.current = null;
-    });
-  }, []);
 
   const reportChatError = useCallback((message: string, retryable = false) => {
     setChatError(message);
@@ -101,8 +85,9 @@ export function BraiChatSection({
   const resetProjections = useCallback(() => {
     setMessages([]);
     setEvents([]);
-    setSelection(null);
     setPendingAnchor(null);
+    setWorkspaceTargetId(null);
+    setMobileWorkspaceOpen(false);
     retryLastRef.current = null;
     setRetryAvailable(false);
     setRunActive(false);
@@ -112,6 +97,17 @@ export function BraiChatSection({
     activeThreadIdRef.current = id;
     setActiveThreadId(id);
   }, []);
+
+  const chooseWorkspaceMode = useCallback((mode: BraiWorkspaceMode, targetId: string | null = null) => {
+    setWorkspaceMode(mode);
+    setWorkspaceTargetId(targetId);
+    if (mobileViewport) setMobileWorkspaceOpen(true);
+    requestMobileProfileDrawerClose();
+  }, [mobileViewport]);
+
+  const openArtifact = useCallback((artifact: BraiChatArtifact) => {
+    chooseWorkspaceMode(artifactWorkspaceMode(artifact), artifact.id);
+  }, [chooseWorkspaceMode]);
 
   const loadThreads = useCallback(async (showArchived: boolean) => {
     setStatus("Загрузка чатов");
@@ -152,13 +148,10 @@ export function BraiChatSection({
       if (cancelled) return;
       setMessages(nextMessages);
       setEvents(nextEvents);
-      setSelection((current) => reconcileSelection(current, nextMessages, nextEvents));
     }).catch(() => {
       if (!cancelled) reportChatError("Историю не удалось загрузить. Попробуйте переключить чат");
     });
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [activeThreadId, api, reportChatError]);
 
   useEffect(() => {
@@ -169,7 +162,6 @@ export function BraiChatSection({
     if (!activeThreadId || !runActive) return;
     let cancelled = false;
     let timer: number | null = null;
-
     const poll = async () => {
       const after = eventsRef.current.reduce((sequence, event) => Math.max(sequence, event.sequence), 0);
       try {
@@ -181,7 +173,6 @@ export function BraiChatSection({
         if (!cancelled) timer = window.setTimeout(() => void poll(), LIVE_EVENT_POLL_MS);
       }
     };
-
     void poll();
     return () => {
       cancelled = true;
@@ -192,24 +183,26 @@ export function BraiChatSection({
   useEffect(() => {
     if (!pendingAnchor || pendingAnchor.kind !== "event" || pendingAnchor.threadId !== activeThreadId) return;
     const event = events.find((item) => item.id === pendingAnchor.id);
-    if (event) openInspector({ kind: "event", event });
-  }, [activeThreadId, events, openInspector, pendingAnchor]);
+    if (!event) return;
+    const timeout = window.setTimeout(() => {
+      const artifact = artifacts.find((item) => item.sourceEventId === event.id);
+      if (artifact) {
+        openArtifact(artifact);
+        setPendingAnchor(null);
+      }
+      else if (event.message_id) setPendingAnchor({ kind: "message", id: event.message_id, threadId: activeThreadId });
+      else setPendingAnchor(null);
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [activeThreadId, artifacts, events, openArtifact, pendingAnchor]);
 
   useEffect(() => {
-    if (!pendingAnchor || pendingAnchor.threadId !== activeThreadId) return;
-    const ready = pendingAnchor.kind === "message"
-      ? messages.some((message) => message.id === pendingAnchor.id)
-      : selection?.kind === "event" && selection.event.id === pendingAnchor.id;
-    if (!ready) return;
-
+    if (!pendingAnchor || pendingAnchor.kind !== "message" || pendingAnchor.threadId !== activeThreadId) return;
+    if (!messages.some((message) => message.id === pendingAnchor.id)) return;
     const scroll = () => {
-      const id = pendingAnchor.kind === "message"
-        ? `brai-message-${pendingAnchor.id}`
-        : inspectorEventAnchorId(pendingAnchor.id, activeInspectorInstance());
-      const element = document.getElementById(id);
+      const element = document.getElementById(`brai-message-${pendingAnchor.id}`);
       if (!element) return false;
       element.scrollIntoView({ block: "center" });
-      if (pendingAnchor.kind === "event") element.focus();
       setPendingAnchor(null);
       return true;
     };
@@ -217,31 +210,7 @@ export function BraiChatSection({
     const observer = new MutationObserver(() => { if (scroll()) observer.disconnect(); });
     observer.observe(document.body, { childList: true, subtree: true });
     return () => observer.disconnect();
-  }, [activeThreadId, messages, pendingAnchor, selection]);
-
-  useEffect(() => {
-    if (selection && !inspectorWasOpen.current) {
-      window.requestAnimationFrame(() => {
-        const target = activeInspectorInstance() === "mobile" ? mobileInspectorFocusRef.current : desktopInspectorFocusRef.current;
-        target?.focus();
-      });
-    }
-    inspectorWasOpen.current = Boolean(selection);
-  }, [selection]);
-
-  useEffect(() => {
-    const update = () => {
-      const workspaceWidth = workspaceRef.current?.getBoundingClientRect().width || window.innerWidth;
-      const next = Math.max(200, Math.min(MAX_INSPECTOR_WIDTH, Math.floor((workspaceWidth - THREAD_RAIL_WIDTH) / 2)));
-      setMaxInspectorWidth(next);
-      setInspectorWidth((width) => clampInspectorWidth(width, next));
-    };
-    update();
-    window.addEventListener("resize", update);
-    const observer = typeof ResizeObserver === "undefined" || !workspaceRef.current ? null : new ResizeObserver(update);
-    observer?.observe(workspaceRef.current!);
-    return () => { window.removeEventListener("resize", update); observer?.disconnect(); };
-  }, []);
+  }, [activeThreadId, messages, pendingAnchor]);
 
   const createThread = useCallback(async () => {
     try {
@@ -309,7 +278,6 @@ export function BraiChatSection({
       setArchived(targetArchived);
       setThreads(nextThreads);
       if (hit.thread_id !== activeThreadId) resetProjections();
-      setSelection(null);
       activateThread(hit.thread_id);
       setPendingAnchor(hit.source_message_id
         ? { kind: "message", id: hit.source_message_id, threadId: hit.thread_id }
@@ -341,7 +309,6 @@ export function BraiChatSection({
       setMessages(nextMessages);
       setEvents(nextEvents);
       setThreads(nextThreads);
-      setSelection((current) => reconcileSelection(current, nextMessages, nextEvents));
       clearChatError();
     } catch {
       reportChatError("Ответ завершён, но историю не удалось обновить. Переключите чат для повтора");
@@ -353,24 +320,33 @@ export function BraiChatSection({
     await api.steer(activeThreadId, messageId, text);
   }, [activeThreadId, api]);
 
-  const navigateToSource = useCallback((current: InspectorSelection) => {
-    const messageId = current.kind === "artifact" ? current.artifact.sourceMessageId : current.event.message_id ?? undefined;
-    if (messageId && activeThreadId) {
-      setPendingAnchor({ kind: "message", id: messageId, threadId: activeThreadId });
-      return;
-    }
-    const eventId = current.kind === "artifact" ? current.artifact.sourceEventId : current.event.id;
-    const event = events.find((item) => item.id === eventId);
-    if (event && activeThreadId) {
-      setSelection({ kind: "event", event });
-      setPendingAnchor({ kind: "event", id: event.id, threadId: activeThreadId });
-    }
+  const navigateToSource = useCallback((artifact: BraiChatArtifact) => {
+    const messageId = artifact.sourceMessageId
+      ?? events.find((event) => event.id === artifact.sourceEventId)?.message_id
+      ?? undefined;
+    if (!messageId || !activeThreadId) return;
+    setMobileWorkspaceOpen(false);
+    setPendingAnchor({ kind: "message", id: messageId, threadId: activeThreadId });
   }, [activeThreadId, events]);
 
   const rail = useMemo(() => (
-    <BraiThreadRail activeThreadId={activeThreadId} archived={archived} searchResults={searchResults} status={status} threads={threads}
-      onArchive={toggleArchive} onArchived={setArchived} onCreate={createThread} onRename={renameThread} onSearch={search} onSearchHit={openSearchHit} onSelect={selectThread} />
-  ), [activeThreadId, archived, createThread, openSearchHit, renameThread, search, searchResults, selectThread, status, threads, toggleArchive]);
+    <BraiThreadRail
+      activeThreadId={activeThreadId}
+      archived={archived}
+      searchResults={searchResults}
+      status={status}
+      threads={threads}
+      workspaceMode={workspaceMode}
+      onArchive={toggleArchive}
+      onArchived={setArchived}
+      onCreate={createThread}
+      onRename={renameThread}
+      onSearch={search}
+      onSearchHit={openSearchHit}
+      onSelect={selectThread}
+      onWorkspaceMode={chooseWorkspaceMode}
+    />
+  ), [activeThreadId, archived, chooseWorkspaceMode, createThread, openSearchHit, renameThread, search, searchResults, selectThread, status, threads, toggleArchive, workspaceMode]);
 
   useEffect(() => {
     if (!onRailContent) return;
@@ -378,40 +354,16 @@ export function BraiChatSection({
     return () => onRailContent(null);
   }, [onRailContent, rail]);
 
-  function startResize(event: PointerEvent<HTMLButtonElement>) {
-    if (!inspectorRef.current) return;
-    dragStart.current = { x: event.clientX, width: inspectorRef.current.getBoundingClientRect().width };
-    event.currentTarget.setPointerCapture(event.pointerId);
-  }
-
-  function resize(event: PointerEvent<HTMLButtonElement>) {
-    if (!dragStart.current || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
-    setInspectorWidth(clampInspectorWidth(dragStart.current.width + dragStart.current.x - event.clientX, maxInspectorWidth));
-  }
-
-  function finishResize(event: PointerEvent<HTMLButtonElement>) {
-    dragStart.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-  }
-
-  function resizeWithKeyboard(event: KeyboardEvent<HTMLButtonElement>) {
-    if (event.key === "ArrowLeft") setInspectorWidth((width) => clampInspectorWidth(width + 8, maxInspectorWidth));
-    else if (event.key === "ArrowRight") setInspectorWidth((width) => clampInspectorWidth(width - 8, maxInspectorWidth));
-    else if (event.key === "Home") setInspectorWidth(Math.min(MIN_INSPECTOR_WIDTH, maxInspectorWidth));
-    else if (event.key === "End") setInspectorWidth(maxInspectorWidth);
-    else return;
-    event.preventDefault();
-  }
-
   const selectedModel = models.find((model) => model.id === activeThread?.model) ?? null;
   const reasoningEfforts = selectedModel?.reasoning_efforts ?? [];
   const providerHeaders = userId ? { "x-brai-expected-user-id": userId } : undefined;
+  const WorkspaceIcon = workspaceMode === "preview" ? Eye : workspaceMode === "code" ? Code2 : BookOpen;
 
   return (
-    <div ref={workspaceRef} className="brai-chat-workspace grid h-full min-h-0 grid-cols-[16rem_minmax(0,1fr)_auto] overflow-hidden border-t border-border max-[860px]:grid-cols-1" data-nav-swipe-exclusion>
-      <aside className="min-h-0 border-r border-border bg-card max-[860px]:hidden" aria-label="Чаты Брая">{rail}</aside>
+    <div className="brai-chat-workspace grid h-full min-h-0 grid-cols-[minmax(0,5fr)_minmax(0,7fr)] overflow-hidden border-t border-border max-[860px]:grid-cols-1" data-nav-swipe-exclusion>
       <section className="brai-chat-pane grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] bg-background" aria-label="Чат с Браем">
         <div className="flex min-h-12 flex-wrap items-center gap-2 border-b border-border px-3 py-2">
+          <p className="m-0 min-w-24 flex-1 truncate text-sm font-semibold">{activeThread?.title ?? "Брай"}</p>
           <Select value={activeThread?.model ?? ""} disabled={!activeThread || models.length === 0} onValueChange={(model) => void updateSettings({ model })}>
             <SelectTrigger size="sm" aria-label="Модель"><SelectValue placeholder="Модель" /></SelectTrigger>
             <SelectContent>{models.map((model) => <SelectItem key={model.id} value={model.id}>{model.display_name || model.id}</SelectItem>)}</SelectContent>
@@ -421,10 +373,9 @@ export function BraiChatSection({
             <SelectContent>{reasoningEfforts.map((effort) => <SelectItem key={effort} value={effort}>{effort}</SelectItem>)}</SelectContent>
           </Select>
           <Badge variant="secondary" className="gap-1"><LockKeyhole className="size-3" aria-hidden="true" />Только чтение</Badge>
-          <div className="ml-auto flex items-center gap-1">
-            <Button type="button" size="icon-sm" variant="ghost" disabled={artifacts.length === 0} aria-label="Открыть артефакты" title="Артефакты" onClick={() => artifacts[0] && openInspector({ kind: "artifact", artifact: artifacts[0] })}><Boxes aria-hidden="true" /></Button>
-            <Button type="button" size="icon-sm" variant="ghost" disabled={events.length === 0} aria-label="Открыть детали" title="Детали" onClick={() => events.at(-1) && openInspector({ kind: "event", event: events.at(-1)! })}><FileCode2 aria-hidden="true" /></Button>
-          </div>
+          <Button type="button" size="icon-sm" variant="ghost" className="min-[861px]:hidden" aria-label={`Открыть ${workspaceMode}`} onClick={() => setMobileWorkspaceOpen(true)}>
+            <WorkspaceIcon aria-hidden="true" />
+          </Button>
         </div>
         <div className="relative min-h-0 overflow-hidden">
           {chatError ? (
@@ -444,8 +395,15 @@ export function BraiChatSection({
           {activeThread ? (
             <BraiCopilotSurface
               key={activeThread.id}
-              runtimeUrl={api.runtimeUrl()} threadId={activeThread.id} headers={providerHeaders}
-              onError={reportChatError} onRetryChange={handleRetryChange} onRunFinished={refreshAfterRun} onRunStateChange={setRunActive} onSteer={steer}
+              theme={theme}
+              runtimeUrl={api.runtimeUrl()}
+              threadId={activeThread.id}
+              headers={providerHeaders}
+              onError={reportChatError}
+              onRetryChange={handleRetryChange}
+              onRunFinished={refreshAfterRun}
+              onRunStateChange={setRunActive}
+              onSteer={steer}
               onDeleteAttachment={(id) => api.deleteUnlinkedAttachment(id)}
               onUpload={async (file) => {
                 const attachment = await api.uploadAttachment(activeThread.id, file);
@@ -458,64 +416,101 @@ export function BraiChatSection({
           )}
         </div>
       </section>
-      {selection ? (
-        <aside ref={inspectorRef} className="relative hidden min-h-0 border-l border-border bg-card min-[861px]:block" style={{ width: Math.min(inspectorWidth, maxInspectorWidth) }} aria-label="Инспектор чата">
-          <button type="button" className="absolute inset-y-0 left-0 z-10 w-2 -translate-x-1/2 cursor-ew-resize border-0 bg-transparent outline-none focus-visible:bg-primary/25"
-            role="slider" aria-label="Изменить ширину инспектора" aria-valuemin={Math.min(MIN_INSPECTOR_WIDTH, maxInspectorWidth)} aria-valuemax={maxInspectorWidth} aria-valuenow={Math.min(inspectorWidth, maxInspectorWidth)}
-            onPointerDown={startResize} onPointerMove={resize} onPointerUp={finishResize} onPointerCancel={finishResize} onKeyDown={resizeWithKeyboard} />
-          <BraiChatInspector instance="desktop" selection={selection} artifacts={artifacts} events={events} attachmentUrl={(id) => api.attachmentUrl(id)} focusRef={desktopInspectorFocusRef} onSelect={setSelection} onSource={navigateToSource} onClose={closeInspector} />
-        </aside>
-      ) : null}
-      {selection && mobileViewport ? (
-        <MobileContextSheet label={selection.kind === "artifact" ? "Артефакты" : "Детали"} variant="detail" scroll={false} onClose={closeInspector}>
-          <BraiChatInspector instance="mobile" mobile selection={selection} artifacts={artifacts} events={events} attachmentUrl={(id) => api.attachmentUrl(id)} focusRef={mobileInspectorFocusRef} onSelect={setSelection} onSource={navigateToSource} onClose={closeInspector} />
+      <aside className="hidden min-h-0 min-w-0 border-l border-border bg-card min-[861px]:block" aria-label="Рабочая область Брая">
+        <BraiChatWorkspace
+          instance="desktop"
+          mode={workspaceMode}
+          artifacts={artifacts}
+          targetId={workspaceTargetId}
+          attachmentUrl={(id) => api.attachmentUrl(id)}
+          onSource={navigateToSource}
+        />
+      </aside>
+      {mobileWorkspaceOpen && mobileViewport ? (
+        <MobileContextSheet label={`Рабочая область: ${workspaceMode}`} variant="detail" scroll={false} onClose={() => setMobileWorkspaceOpen(false)}>
+          <BraiChatWorkspace
+            instance="mobile"
+            mode={workspaceMode}
+            artifacts={artifacts}
+            targetId={workspaceTargetId}
+            attachmentUrl={(id) => api.attachmentUrl(id)}
+            onSource={navigateToSource}
+          />
         </MobileContextSheet>
       ) : null}
     </div>
   );
 }
 
-function BraiThreadRail({ activeThreadId, archived, searchResults, status, threads, onArchive, onArchived, onCreate, onRename, onSearch, onSearchHit, onSelect }: {
-  activeThreadId: string | null; archived: boolean; searchResults: BraiChatSearchHit[]; status: string; threads: BraiChatThread[];
-  onArchive: (thread: BraiChatThread) => Promise<void>; onArchived: (archived: boolean) => void; onCreate: () => Promise<void>;
-  onRename: (id: string, title: string) => Promise<void>; onSearch: (query: string, includeArchived: boolean) => Promise<void>;
-  onSearchHit: (hit: BraiChatSearchHit) => Promise<void>; onSelect: (id: string) => void;
+function BraiThreadRail({ activeThreadId, archived, searchResults, status, threads, workspaceMode, onArchive, onArchived, onCreate, onRename, onSearch, onSearchHit, onSelect, onWorkspaceMode }: {
+  activeThreadId: string | null;
+  archived: boolean;
+  searchResults: BraiChatSearchHit[];
+  status: string;
+  threads: BraiChatThread[];
+  workspaceMode: BraiWorkspaceMode;
+  onArchive: (thread: BraiChatThread) => Promise<void>;
+  onArchived: (archived: boolean) => void;
+  onCreate: () => Promise<void>;
+  onRename: (id: string, title: string) => Promise<void>;
+  onSearch: (query: string, includeArchived: boolean) => Promise<void>;
+  onSearchHit: (hit: BraiChatSearchHit) => Promise<void>;
+  onSelect: (id: string) => void;
+  onWorkspaceMode: (mode: BraiWorkspaceMode) => void;
 }) {
   const [query, setQuery] = useState("");
   const [includeArchived, setIncludeArchived] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
 
   return (
-    <div className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)]">
+    <div className="grid h-full min-h-0 grid-rows-[auto_auto_auto_minmax(0,1fr)]">
       <div className="flex items-center gap-2 border-b border-border p-3">
         <Button type="button" className="flex-1" size="sm" onClick={() => void onCreate()}><Plus aria-hidden="true" />Новый чат</Button>
         <Button type="button" size="icon-sm" variant={archived ? "secondary" : "ghost"} aria-label={archived ? "Показать активные чаты" : "Показать архив чатов"} onClick={() => onArchived(!archived)}><Archive aria-hidden="true" /></Button>
       </div>
+      <section className="grid gap-2 border-b border-border p-3" aria-labelledby="brai-workspace-view-label">
+        <h2 id="brai-workspace-view-label" className="m-0 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Вид</h2>
+        <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted p-1" role="tablist" aria-label="Режим правой рабочей области">
+          <WorkspaceModeButton icon={Eye} label="Preview" mode="preview" selected={workspaceMode} onSelect={onWorkspaceMode} />
+          <WorkspaceModeButton icon={Code2} label="Code" mode="code" selected={workspaceMode} onSelect={onWorkspaceMode} />
+          <WorkspaceModeButton icon={BookOpen} label="Docs" mode="docs" selected={workspaceMode} onSelect={onWorkspaceMode} />
+        </div>
+      </section>
       <form className="grid gap-2 border-b border-border p-3" onSubmit={(event) => { event.preventDefault(); void onSearch(query, includeArchived); }}>
         <div className="flex gap-1"><Input id="brai-chat-search" name="query" type="search" value={query} aria-label="Поиск по чатам" placeholder="Поиск" onChange={(event) => setQuery(event.target.value)} /><Button type="submit" size="icon-sm" variant="ghost" aria-label="Найти"><Search aria-hidden="true" /></Button></div>
         <label className="flex items-center gap-2 text-xs text-muted-foreground"><input type="checkbox" checked={includeArchived} onChange={(event) => setIncludeArchived(event.target.checked)} />Искать в архиве</label>
       </form>
-      <ScrollArea className="min-h-0" contentInset="none"><div className="grid gap-1 p-2">
-        {searchResults.length > 0 ? searchResults.map((hit) => (
-          <button key={hit.id} type="button" className="rounded-md px-3 py-2 text-left hover:bg-accent" onClick={() => void onSearchHit(hit)}><span className="block truncate text-sm font-medium">{hit.thread_title}</span><SearchSnippet snippet={hit.snippet} /></button>
-        )) : threads.map((thread) => (
-          <div key={thread.id} className={cx("group grid grid-cols-[minmax(0,1fr)_auto] items-center rounded-md", activeThreadId === thread.id && "bg-accent") }>
-            {editing === thread.id ? <Input autoFocus defaultValue={thread.title} aria-label={`Название чата: ${thread.title}`} className="m-1" onBlur={(event) => { void onRename(thread.id, event.target.value); setEditing(null); }} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); if (event.key === "Escape") setEditing(null); }} /> : <button type="button" className="min-w-0 truncate px-3 py-2 text-left text-sm" onClick={() => onSelect(thread.id)}>{thread.title}</button>}
-            <div className="flex pr-1"><Button type="button" size="icon-xs" variant="ghost" aria-label={`Переименовать: ${thread.title}`} onClick={() => setEditing(thread.id)}><Pencil aria-hidden="true" /></Button><Button type="button" size="icon-xs" variant="ghost" aria-label={`${archived ? "Восстановить" : "Архивировать"}: ${thread.title}`} onClick={() => void onArchive(thread)}>{archived ? <ArchiveRestore aria-hidden="true" /> : <Archive aria-hidden="true" />}</Button></div>
-          </div>
-        ))}
-        {searchResults.length === 0 && threads.length === 0 ? <p className="px-3 py-4 text-sm text-muted-foreground">{status}</p> : null}
-      </div></ScrollArea>
+      <section className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)]" aria-labelledby="brai-thread-list-label">
+        <h2 id="brai-thread-list-label" className="m-0 px-4 pb-1 pt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Чаты</h2>
+        <ScrollArea className="min-h-0" contentInset="none"><div className="grid gap-1 p-2">
+          {searchResults.length > 0 ? searchResults.map((hit) => (
+            <button key={hit.id} type="button" className="rounded-md px-3 py-2 text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => void onSearchHit(hit)}><span className="block truncate text-sm font-medium">{hit.thread_title}</span><SearchSnippet snippet={hit.snippet} /></button>
+          )) : threads.map((thread) => (
+            <div key={thread.id} className={cx("group grid grid-cols-[minmax(0,1fr)_auto] items-center rounded-md", activeThreadId === thread.id && "bg-accent") }>
+              {editing === thread.id ? <Input autoFocus defaultValue={thread.title} aria-label={`Название чата: ${thread.title}`} className="m-1" onBlur={(event) => { void onRename(thread.id, event.target.value); setEditing(null); }} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); if (event.key === "Escape") setEditing(null); }} /> : <button type="button" className="min-w-0 truncate px-3 py-2 text-left text-sm" onClick={() => onSelect(thread.id)}>{thread.title}</button>}
+              <div className="flex pr-1"><Button type="button" size="icon-xs" variant="ghost" aria-label={`Переименовать: ${thread.title}`} onClick={() => setEditing(thread.id)}><Pencil aria-hidden="true" /></Button><Button type="button" size="icon-xs" variant="ghost" aria-label={`${archived ? "Восстановить" : "Архивировать"}: ${thread.title}`} onClick={() => void onArchive(thread)}>{archived ? <ArchiveRestore aria-hidden="true" /> : <Archive aria-hidden="true" />}</Button></div>
+            </div>
+          ))}
+          {searchResults.length === 0 && threads.length === 0 ? <p className="px-3 py-4 text-sm text-muted-foreground">{status}</p> : null}
+        </div></ScrollArea>
+      </section>
     </div>
   );
 }
 
-function clampInspectorWidth(width: number, max: number): number {
-  return Math.round(Math.max(Math.min(MIN_INSPECTOR_WIDTH, max), Math.min(max, width)));
-}
-
-function activeInspectorInstance(): InspectorInstance {
-  return typeof window.matchMedia === "function" && window.matchMedia("(max-width: 860px)").matches ? "mobile" : "desktop";
+function WorkspaceModeButton({ icon: Icon, label, mode, selected, onSelect }: {
+  icon: typeof Eye;
+  label: string;
+  mode: BraiWorkspaceMode;
+  selected: BraiWorkspaceMode;
+  onSelect: (mode: BraiWorkspaceMode) => void;
+}) {
+  const active = mode === selected;
+  return (
+    <Button type="button" role="tab" size="sm" variant={active ? "secondary" : "ghost"} className="min-w-0 gap-1 px-2" aria-selected={active} onClick={() => onSelect(mode)}>
+      <Icon className="size-3" aria-hidden="true" /><span className="truncate">{label}</span>
+    </Button>
+  );
 }
 
 function SearchSnippet({ snippet }: { snippet: string }) {
@@ -524,16 +519,6 @@ function SearchSnippet({ snippet }: { snippet: string }) {
       {splitSearchSnippet(snippet).map((part, index) => part.highlighted ? <mark key={index} className="bg-accent text-accent-foreground">{part.text}</mark> : part.text)}
     </span>
   );
-}
-
-function reconcileSelection(current: InspectorSelection | null, messages: BraiChatMessage[], events: BraiChatEvent[]): InspectorSelection | null {
-  if (!current) return null;
-  if (current.kind === "event") {
-    const event = events.find((item) => item.id === current.event.id);
-    return event ? { kind: "event", event } : null;
-  }
-  const artifact = projectBraiChatArtifacts(messages, events).find((item) => item.id === current.artifact.id);
-  return artifact ? { kind: "artifact", artifact } : null;
 }
 
 function mergeEvents(current: BraiChatEvent[], incoming: BraiChatEvent[]): BraiChatEvent[] {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { attachmentReservationError, projectBraiChatArtifacts, splitSearchSnippet } from "@/features/app/sections/brai/braiChatModel";
+import { artifactWorkspaceMode, attachmentReservationError, projectBraiChatArtifacts, splitSearchSnippet, workspaceArtifacts } from "@/features/app/sections/brai/braiChatModel";
 import type { BraiChatEvent, BraiChatMessage } from "@/shared/types/braiChat";
 
 describe("projectBraiChatArtifacts", () => {
@@ -42,6 +42,10 @@ describe("projectBraiChatArtifacts", () => {
       { kind: "tool", sourceMessageId: undefined, sourceEventId: "event-5" },
     ]);
     expect(artifacts.find((artifact) => artifact.kind === "tool")?.content).toContain('"status": "completed"');
+    expect(workspaceArtifacts(artifacts, "preview").map((artifact) => artifact.kind)).toEqual(["image"]);
+    expect(workspaceArtifacts(artifacts, "code").map((artifact) => artifact.kind)).toEqual(["code", "diff", "tool"]);
+    expect(workspaceArtifacts(artifacts, "docs").map((artifact) => artifact.kind)).toEqual(["markdown"]);
+    expect(artifacts.map(artifactWorkspaceMode)).toEqual(["preview", "code", "docs", "code", "code"]);
   });
 
   it("enforces five files and 50 MiB across the composed message", () => {

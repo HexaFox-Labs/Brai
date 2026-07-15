@@ -10,7 +10,7 @@ import type { SectionId } from "../appModel";
 const DEFAULT_WIDTH = 256;
 const MIN_WIDTH = 192;
 const MAX_WIDTH = 512;
-const SUPPORTED = new Set<SectionId>(["actions", "inbox", "factory", "draws", "archive"]);
+const SUPPORTED = new Set<SectionId>(["brai", "actions", "inbox", "factory", "draws", "archive"]);
 
 export function isContextualRailSection(section: SectionId): boolean {
   return SUPPORTED.has(section);

@@ -11,7 +11,7 @@ test("opens Brai at the canonical root with the exact brand mark", async ({ page
     : ["Брай", "Действия", "Inbox", "Фокус", "Factory", "Draws"];
   await expect(items).toHaveCount(expectedLabels.length);
   expect(await items.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("aria-label")))).toEqual(expectedLabels);
-  await expect(items.first().locator('img[src="/favicon.png"]')).toHaveCount(1);
+  await expect(items.first().locator('svg image[href="/brand/brai-logo-transparent.svg"]')).toHaveCount(1);
 });
 
 test("renders mobile and desktop navigation without starter content", async ({ page }, testInfo) => {

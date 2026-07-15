@@ -1,4 +1,4 @@
-import type { ComponentType, ReactNode } from "react";
+import type { ComponentType, CSSProperties, ReactNode } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BraiCopilotSurface } from "@/features/app/sections/brai/BraiCopilotSurface";
@@ -24,6 +24,7 @@ type FakeChatProps = {
   attachments?: Record<string, unknown>;
   chatView: ComponentType<FakeViewProps>;
   messageView?: FakeViewProps["messageView"];
+  style?: CSSProperties & Record<`--${string}`, string>;
 };
 
 const fake = vi.hoisted(() => ({
@@ -34,6 +35,7 @@ const fake = vi.hoisted(() => ({
   },
   attachments: [] as FakeAttachment[],
   chatProps: null as FakeChatProps | null,
+  configureSuggestions: vi.fn(),
   finishRun: null as (() => void) | null,
   inputChange: vi.fn(),
   removeAttachment: vi.fn(),
@@ -97,6 +99,7 @@ vi.mock("@copilotkit/react-core/v2", async () => {
     CopilotKit: ({ children }: { children: ReactNode }) => children,
     UseAgentUpdate: { OnRunStatusChanged: "OnRunStatusChanged" },
     useAgent: () => ({ agent: fake.agent }),
+    useConfigureSuggestions: fake.configureSuggestions,
     useCopilotKit: () => ({ copilotkit: { runAgent: fake.runAgent } }),
   };
 });
@@ -109,6 +112,7 @@ describe("BraiCopilotSurface", () => {
     fake.agent.addMessage.mockImplementation((message) => fake.agent.messages.push(message));
     fake.attachments = [];
     fake.chatProps = null;
+    fake.configureSuggestions.mockReset();
     fake.finishRun = null;
     fake.inputChange.mockReset();
     fake.removeAttachment.mockReset();
@@ -125,6 +129,25 @@ describe("BraiCopilotSurface", () => {
       sendButton: { "aria-label": "Отправить сообщение" },
       textArea: { id: "brai-chat-message", name: "message", "aria-label": "Сообщение Браю" },
     });
+  });
+
+  it("keeps the stock chat while inheriting every semantic Brai theme token", () => {
+    const { container } = renderSurface();
+
+    expect(container.querySelector(".dark")).toBeInTheDocument();
+    expect(fake.chatProps?.style).toMatchObject({
+      "--background": "inherit",
+      "--foreground": "inherit",
+      "--card": "inherit",
+      "--primary": "inherit",
+      "--border": "inherit",
+      "--cpk-default-font-family": "var(--font-app-sans)",
+    });
+    expect(fake.configureSuggestions).toHaveBeenCalledWith(expect.objectContaining({
+      available: "before-first-message",
+      consumerAgentId: "brai-codex",
+      suggestions: expect.arrayContaining([expect.objectContaining({ title: "Помоги с кодом" })]),
+    }));
   });
 
   it("steers an active run with one stable optimistic user-message id", async () => {
@@ -222,6 +245,7 @@ function surface(overrides: {
   return (
     <BraiCopilotSurface
       runtimeUrl="/api/v1/brai-chat/runtime"
+      theme="dark"
       threadId="thread-1"
       onDeleteAttachment={overrides.onDeleteAttachment ?? vi.fn(async () => undefined)}
       onError={overrides.onError ?? vi.fn()}

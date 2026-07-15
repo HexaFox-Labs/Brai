@@ -1,6 +1,6 @@
 "use client";
 
-import type { ComponentProps } from "react";
+import type { ComponentProps, CSSProperties } from "react";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef } from "react";
 import {
   CopilotChat,
@@ -9,12 +9,40 @@ import {
   CopilotKit,
   UseAgentUpdate,
   useAgent,
+  useConfigureSuggestions,
   useCopilotKit,
 } from "@copilotkit/react-core/v2";
+import type { ThemeMode } from "../../appModel";
 import { attachmentReservationError } from "./braiChatModel";
 
 const BRAI_AGENT_ID = "brai-codex";
 const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;
+type CopilotThemeStyle = CSSProperties & Record<`--${string}`, string>;
+
+const BRAI_COPILOT_THEME: CopilotThemeStyle = {
+  "--accent": "inherit",
+  "--accent-foreground": "inherit",
+  "--background": "inherit",
+  "--border": "inherit",
+  "--card": "inherit",
+  "--card-foreground": "inherit",
+  "--cpk-default-font-family": "var(--font-app-sans)",
+  "--cpk-default-mono-font-family": "var(--font-app-mono)",
+  "--destructive": "inherit",
+  "--destructive-foreground": "inherit",
+  "--foreground": "inherit",
+  "--input": "inherit",
+  "--muted": "inherit",
+  "--muted-foreground": "inherit",
+  "--popover": "inherit",
+  "--popover-foreground": "inherit",
+  "--primary": "inherit",
+  "--primary-foreground": "inherit",
+  "--radius": "inherit",
+  "--ring": "inherit",
+  "--secondary": "inherit",
+  "--secondary-foreground": "inherit",
+};
 
 type BraiCopilotContextValue = {
   onError: (message: string, retryable?: boolean) => void;
@@ -38,6 +66,7 @@ export function BraiCopilotSurface({
   onSteer,
   onUpload,
   runtimeUrl,
+  theme,
   threadId,
 }: {
   headers?: Record<string, string>;
@@ -49,6 +78,7 @@ export function BraiCopilotSurface({
   onSteer: (messageId: string, text: string) => Promise<void>;
   onUpload: (file: File) => Promise<{ id: string; mediaType: string; url: string }>;
   runtimeUrl: string;
+  theme: ThemeMode;
   threadId: string;
 }) {
   const reservations = useRef(new Map<string, number>());
@@ -75,57 +105,74 @@ export function BraiCopilotSurface({
       onError={() => onError("Брай временно недоступен", true)}
     >
       <BraiCopilotContext.Provider value={context}>
-        <CopilotChat
-          agentId={BRAI_AGENT_ID}
-          threadId={threadId}
-          className="h-full min-h-0"
-          chatView={BraiChatView}
-          labels={{
-            chatInputPlaceholder: "Напишите Браю…",
-            welcomeMessageText: "Чем помочь? Среда изолирована и доступна только для чтения.",
-            chatDisclaimerText: "Брай на базе Codex не имеет доступа к данным и проектам Brai.",
-            assistantMessageToolbarRegenerateLabel: "Повторить ответ",
-          }}
-          messageView={{ assistantMessage: AnchoredAssistantMessage, userMessage: AnchoredUserMessage }}
-          attachments={{
-            enabled: true,
-            accept: "image/jpeg,image/png,image/webp",
-            maxSize: MAX_ATTACHMENT_BYTES,
-            onUpload: async (file) => {
-              const limit = attachmentReservationError(reservations.current.values(), file.size);
-              if (limit) {
-                onError(limit === "count" ? "К одному сообщению можно прикрепить не больше 5 изображений" : "Общий размер изображений в сообщении не должен превышать 50 МиБ");
-                throw new Error(`attachment_${limit}_limit`);
-              }
-              const reservationId = crypto.randomUUID();
-              reservations.current.set(reservationId, file.size);
-              fileReservations.current.set(file, reservationId);
-              try {
-                const attachment = await onUpload(file);
-                return {
-                  type: "url" as const,
-                  value: attachment.url,
-                  mimeType: attachment.mediaType,
-                  metadata: { attachment_id: attachment.id, reservation_id: reservationId },
-                };
-              } catch {
-                releaseReservations([reservationId]);
-                throw new Error("attachment_upload_failed");
-              }
-            },
-            onUploadFailed: ({ file, message, reason }) => {
-              const reservationId = fileReservations.current.get(file);
-              if (reservationId) releaseReservations([reservationId]);
-              if (message === "attachment_count_limit") onError("К одному сообщению можно прикрепить не больше 5 изображений");
-              else if (message === "attachment_size_limit" || reason === "file-too-large") onError("Общий размер изображений в сообщении не должен превышать 50 МиБ");
-              else if (reason === "invalid-type") onError("Поддерживаются только изображения JPEG, PNG и WebP");
-              else onError("Изображение не загружено. Попробуйте ещё раз");
-            },
-          }}
-        />
+        <BraiChatSuggestions />
+        <div className={theme === "dark" ? "dark h-full min-h-0" : "h-full min-h-0"}>
+          <CopilotChat
+            agentId={BRAI_AGENT_ID}
+            threadId={threadId}
+            className="h-full min-h-0 bg-background text-foreground"
+            style={BRAI_COPILOT_THEME}
+            chatView={BraiChatView}
+            labels={{
+              chatInputPlaceholder: "Напишите Браю…",
+              welcomeMessageText: "Чем помочь? Среда изолирована и доступна только для чтения.",
+              chatDisclaimerText: "Брай на базе Codex не имеет доступа к данным и проектам Brai.",
+              assistantMessageToolbarRegenerateLabel: "Повторить ответ",
+            }}
+            messageView={{ assistantMessage: AnchoredAssistantMessage, userMessage: AnchoredUserMessage }}
+            attachments={{
+              enabled: true,
+              accept: "image/jpeg,image/png,image/webp",
+              maxSize: MAX_ATTACHMENT_BYTES,
+              onUpload: async (file) => {
+                const limit = attachmentReservationError(reservations.current.values(), file.size);
+                if (limit) {
+                  onError(limit === "count" ? "К одному сообщению можно прикрепить не больше 5 изображений" : "Общий размер изображений в сообщении не должен превышать 50 МиБ");
+                  throw new Error(`attachment_${limit}_limit`);
+                }
+                const reservationId = crypto.randomUUID();
+                reservations.current.set(reservationId, file.size);
+                fileReservations.current.set(file, reservationId);
+                try {
+                  const attachment = await onUpload(file);
+                  return {
+                    type: "url" as const,
+                    value: attachment.url,
+                    mimeType: attachment.mediaType,
+                    metadata: { attachment_id: attachment.id, reservation_id: reservationId },
+                  };
+                } catch {
+                  releaseReservations([reservationId]);
+                  throw new Error("attachment_upload_failed");
+                }
+              },
+              onUploadFailed: ({ file, message, reason }) => {
+                const reservationId = fileReservations.current.get(file);
+                if (reservationId) releaseReservations([reservationId]);
+                if (message === "attachment_count_limit") onError("К одному сообщению можно прикрепить не больше 5 изображений");
+                else if (message === "attachment_size_limit" || reason === "file-too-large") onError("Общий размер изображений в сообщении не должен превышать 50 МиБ");
+                else if (reason === "invalid-type") onError("Поддерживаются только изображения JPEG, PNG и WebP");
+                else onError("Изображение не загружено. Попробуйте ещё раз");
+              },
+            }}
+          />
+        </div>
       </BraiCopilotContext.Provider>
     </CopilotKit>
   );
+}
+
+function BraiChatSuggestions() {
+  useConfigureSuggestions({
+    consumerAgentId: BRAI_AGENT_ID,
+    available: "before-first-message",
+    suggestions: [
+      { title: "Помоги с кодом", message: "Помоги разобраться с кодом и предложи следующий шаг." },
+      { title: "Найди проблему", message: "Проанализируй проблему и объясни вероятную причину." },
+      { title: "Составь план", message: "Составь короткий пошаговый план решения задачи." },
+    ],
+  });
+  return null;
 }
 
 function BraiChatViewComponent(props: ComponentProps<typeof CopilotChat.View>) {

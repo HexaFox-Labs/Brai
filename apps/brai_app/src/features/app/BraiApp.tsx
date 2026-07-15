@@ -354,7 +354,21 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
             syncStatus={app.displaySyncStatus}
             pendingCount={app.totalPendingCount}
             leading={isPrimarySection(screenSection) || isContextualRailSection(screenSection) ? <MobileMenuButton onClick={openMobileMenu} /> : null}
-            desktopLeading={screenSection === "brai" ? <BraiBrandIcon /> : isContextualRailSection(screenSection) ? (
+            desktopLeading={screenSection === "brai" ? (
+              <div className="flex items-center gap-2">
+                <BraiBrandIcon />
+                <button
+                  type="button"
+                  className="grid size-7 place-items-center rounded-md border-0 bg-transparent text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label={contextualRail.open ? "Закрыть панель чатов" : "Открыть панель чатов"}
+                  title={contextualRail.open ? "Закрыть панель чатов" : "Открыть панель чатов"}
+                  aria-pressed={contextualRail.open}
+                  onClick={() => contextualRail.setOpen(!contextualRail.open)}
+                >
+                  {contextualRail.open ? <PanelLeftClose className="size-5" aria-hidden="true" /> : <PanelLeftOpen className="size-5" aria-hidden="true" />}
+                </button>
+              </div>
+            ) : isContextualRailSection(screenSection) ? (
               <button
                 type="button"
                 className="grid size-7 place-items-center rounded-md border-0 bg-transparent text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -392,7 +406,7 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
             onVerifyOtp={app.onVerifyOtp}
           />
         ) : screenSection === "brai" ? (
-          <BraiChatSection userId={app.authUser?.id} onRailContent={isActivePage ? registerBraiRail : undefined} />
+          <BraiChatSection theme={app.theme} userId={app.authUser?.id} onRailContent={isActivePage ? registerBraiRail : undefined} />
         ) : screenSection === "actions" ? (
           <ActionsSection
             state={app.actions}

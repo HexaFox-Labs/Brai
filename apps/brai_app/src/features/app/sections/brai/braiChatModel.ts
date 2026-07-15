@@ -10,6 +10,20 @@ export type BraiChatArtifact = {
   sourceEventId?: string;
 };
 
+export type BraiWorkspaceMode = "preview" | "code" | "docs";
+
+/** Assigns each persisted artifact projection to its Dojo workspace view. */
+export function artifactWorkspaceMode(artifact: BraiChatArtifact): BraiWorkspaceMode {
+  if (artifact.kind === "image") return "preview";
+  if (artifact.kind === "markdown") return "docs";
+  return "code";
+}
+
+/** Returns the artifacts visible in one Dojo workspace view. */
+export function workspaceArtifacts(artifacts: BraiChatArtifact[], mode: BraiWorkspaceMode): BraiChatArtifact[] {
+  return artifacts.filter((artifact) => artifactWorkspaceMode(artifact) === mode);
+}
+
 /** Derives the stable artifact inspector projection from persisted chat sources. */
 export function projectBraiChatArtifacts(messages: BraiChatMessage[], events: BraiChatEvent[]): BraiChatArtifact[] {
   const artifacts = new Map<string, BraiChatArtifact>();

@@ -1,148 +1,125 @@
 "use client";
 
-import type { Ref } from "react";
+import { useEffect, useMemo } from "react";
 import Image from "next/image";
-import { CornerUpLeft, X } from "lucide-react";
-import type { BraiChatEvent } from "@/shared/types/braiChat";
+import { BookOpen, Code2, CornerUpLeft, Eye } from "lucide-react";
 import { Button } from "@/shared/ui/button";
+import { MarkdownContent } from "@/shared/ui/markdown-content";
 import { ScrollArea } from "@/shared/ui/scroll-area";
 import { cx } from "../../appUtils";
-import { eventLabel, eventPayloadText, type BraiChatArtifact } from "./braiChatModel";
+import { workspaceArtifacts, type BraiChatArtifact, type BraiWorkspaceMode } from "./braiChatModel";
 
-export type InspectorSelection = { kind: "artifact"; artifact: BraiChatArtifact } | { kind: "event"; event: BraiChatEvent };
-export type InspectorInstance = "desktop" | "mobile";
+export type WorkspaceInstance = "desktop" | "mobile";
 
-export function BraiChatInspector({
+const MODE_COPY: Record<BraiWorkspaceMode, { empty: string; label: string; icon: typeof Eye }> = {
+  preview: { empty: "Изображения и визуальные результаты появятся здесь", label: "Preview", icon: Eye },
+  code: { empty: "Код, diff и результаты инструментов появятся здесь", label: "Code", icon: Code2 },
+  docs: { empty: "Большие Markdown-документы появятся здесь", label: "Docs", icon: BookOpen },
+};
+
+export function BraiChatWorkspace({
   artifacts,
   attachmentUrl,
-  events,
-  focusRef,
   instance,
-  mobile = false,
-  onClose,
-  onSelect,
+  mode,
   onSource,
-  selection,
+  targetId,
 }: {
   artifacts: BraiChatArtifact[];
   attachmentUrl: (id: string) => string;
-  events: BraiChatEvent[];
-  focusRef?: Ref<HTMLElement>;
-  instance: InspectorInstance;
-  mobile?: boolean;
-  onClose: () => void;
-  onSelect: (selection: InspectorSelection) => void;
-  onSource: (selection: InspectorSelection) => void;
-  selection: InspectorSelection;
+  instance: WorkspaceInstance;
+  mode: BraiWorkspaceMode;
+  onSource: (artifact: BraiChatArtifact) => void;
+  targetId?: string | null;
 }) {
-  const tabId = `brai-inspector-${selection.kind}-tab-${instance}`;
-  const panelId = `brai-inspector-${selection.kind}-panel-${instance}`;
-  const title = selection.kind === "artifact" ? selection.artifact.label : eventLabel(selection.event);
-  const content = selection.kind === "artifact" ? selection.artifact.content : eventPayloadText(selection.event.safe_payload);
-  const hasSource = selection.kind === "event" || Boolean(selection.artifact.sourceMessageId || selection.artifact.sourceEventId);
+  const visibleArtifacts = useMemo(() => workspaceArtifacts(artifacts, mode), [artifacts, mode]);
+  const copy = MODE_COPY[mode];
+  const Icon = copy.icon;
+
+  useEffect(() => {
+    if (!targetId) return;
+    const frame = window.requestAnimationFrame(() => {
+      const target = document.getElementById(workspaceArtifactAnchorId(targetId, instance));
+      target?.scrollIntoView({ block: "center" });
+      target?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [instance, mode, targetId, visibleArtifacts]);
 
   return (
-    <div className="grid h-full min-h-0 grid-rows-[auto_minmax(6rem,auto)_minmax(0,1fr)]">
-      <header className="flex min-h-12 items-center gap-2 border-b border-border px-3">
-        <div className="flex gap-1" role="tablist" aria-label="Разделы инспектора">
-          <Button
-            id={`brai-inspector-artifact-tab-${instance}`}
-            type="button"
-            role="tab"
-            size="sm"
-            variant={selection.kind === "artifact" ? "secondary" : "ghost"}
-            aria-selected={selection.kind === "artifact"}
-            aria-controls={`brai-inspector-artifact-panel-${instance}`}
-            disabled={artifacts.length === 0}
-            onClick={() => artifacts[0] && onSelect({ kind: "artifact", artifact: artifacts[0] })}
-          >
-            Артефакты
-          </Button>
-          <Button
-            id={`brai-inspector-event-tab-${instance}`}
-            type="button"
-            role="tab"
-            size="sm"
-            variant={selection.kind === "event" ? "secondary" : "ghost"}
-            aria-selected={selection.kind === "event"}
-            aria-controls={`brai-inspector-event-panel-${instance}`}
-            disabled={events.length === 0}
-            onClick={() => events.at(-1) && onSelect({ kind: "event", event: events.at(-1)! })}
-          >
-            Детали
-          </Button>
-        </div>
-        {!mobile ? <Button type="button" className="ml-auto" size="icon-sm" variant="ghost" aria-label="Закрыть инспектор" onClick={onClose}><X aria-hidden="true" /></Button> : null}
+    <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] bg-card">
+      <header className="flex min-h-12 items-center gap-3 border-b border-border px-4">
+        <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
+        <h2 className="m-0 text-sm font-semibold">{copy.label}</h2>
+        <span className="text-xs text-muted-foreground">{visibleArtifacts.length || ""}</span>
       </header>
-
-      <ScrollArea className="min-h-0 border-b border-border" contentInset="none">
-        <div className="grid gap-1 p-2" role="listbox" aria-label={selection.kind === "artifact" ? "Коллекция артефактов" : "Коллекция деталей"}>
-          {selection.kind === "artifact" ? artifacts.map((artifact) => (
-            <button
-              key={artifact.id}
-              id={inspectorArtifactAnchorId(artifact.id, instance)}
-              type="button"
-              role="option"
-              aria-selected={selection.artifact.id === artifact.id}
-              className={cx("rounded-md px-3 py-2 text-left text-sm hover:bg-accent focus-visible:outline-0 focus-visible:ring-2 focus-visible:ring-ring", selection.artifact.id === artifact.id && "bg-accent")}
-              onClick={() => onSelect({ kind: "artifact", artifact })}
-            >
-              <span className="block truncate font-medium">{artifact.label}</span>
-              <span className="block text-xs text-muted-foreground">{artifact.kind}</span>
-            </button>
-          )) : events.map((event) => (
-            <button
-              key={event.id}
-              id={inspectorEventAnchorId(event.id, instance)}
-              type="button"
-              role="option"
-              aria-selected={selection.event.id === event.id}
-              className={cx("rounded-md px-3 py-2 text-left text-sm hover:bg-accent focus-visible:outline-0 focus-visible:ring-2 focus-visible:ring-ring", selection.event.id === event.id && "bg-accent")}
-              onClick={() => onSelect({ kind: "event", event })}
-            >
-              <span className="block truncate font-medium">{eventLabel(event)}</span>
-              <span className="block truncate text-xs text-muted-foreground">{event.type} · {event.sequence}</span>
-            </button>
-          ))}
+      {visibleArtifacts.length === 0 ? (
+        <div className="grid min-h-0 place-items-center p-8 text-center">
+          <div className="grid max-w-sm justify-items-center gap-3 text-muted-foreground">
+            <Icon className="size-8" aria-hidden="true" />
+            <p className="m-0 text-sm">{copy.empty}</p>
+          </div>
         </div>
-      </ScrollArea>
-
-      <section ref={focusRef} id={panelId} role="tabpanel" aria-labelledby={tabId} tabIndex={-1} className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] outline-none">
-        <div className="flex min-h-12 items-center gap-2 border-b border-border px-4 py-2">
-          <h2 className="m-0 min-w-0 flex-1 truncate text-sm font-semibold">{title}</h2>
-          {hasSource ? (
-            <Button type="button" size="sm" variant="ghost" onClick={() => onSource(selection)}>
-              <CornerUpLeft aria-hidden="true" />К источнику
-            </Button>
-          ) : null}
-        </div>
-        <ScrollArea className="min-h-0" contentInset="none">
-          {selection.kind === "artifact" && selection.artifact.kind === "image" && selection.artifact.attachmentId ? (
-            <div className="grid gap-3 p-4">
-              <Image
-                unoptimized
-                src={attachmentUrl(selection.artifact.attachmentId)}
-                alt={selection.artifact.label}
-                width={1200}
-                height={900}
-                className="h-auto max-h-[70dvh] w-full object-contain"
-              />
-              <pre className="m-0 whitespace-pre-wrap break-words font-mono text-sm">{content}</pre>
-            </div>
-          ) : (
-            <pre className="m-0 whitespace-pre-wrap break-words p-4 font-mono text-sm">{content}</pre>
-          )}
+      ) : (
+        <ScrollArea className="min-h-0" contentInset="balanced">
+          <div className="grid gap-4 p-4">
+            {visibleArtifacts.map((artifact) => (
+              <article
+                key={artifact.id}
+                id={workspaceArtifactAnchorId(artifact.id, instance)}
+                tabIndex={-1}
+                className={cx(
+                  "min-w-0 overflow-hidden rounded-lg border border-border bg-background outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  targetId === artifact.id && "ring-2 ring-ring",
+                )}
+              >
+                <header className="flex min-h-11 items-center gap-2 border-b border-border px-3 py-2">
+                  <h3 className="m-0 min-w-0 flex-1 truncate text-sm font-medium">{artifact.label}</h3>
+                  {artifact.sourceMessageId || artifact.sourceEventId ? (
+                    <Button type="button" size="sm" variant="ghost" onClick={() => onSource(artifact)}>
+                      <CornerUpLeft aria-hidden="true" />К сообщению
+                    </Button>
+                  ) : null}
+                </header>
+                <WorkspaceArtifactContent artifact={artifact} attachmentUrl={attachmentUrl} />
+              </article>
+            ))}
+          </div>
         </ScrollArea>
-      </section>
+      )}
     </div>
   );
 }
 
-/** Returns the per-renderer DOM anchor for an inspector event row. */
-export function inspectorEventAnchorId(eventId: string, instance: InspectorInstance): string {
-  return `brai-event-${eventId}-${instance}`;
+function WorkspaceArtifactContent({ artifact, attachmentUrl }: {
+  artifact: BraiChatArtifact;
+  attachmentUrl: (id: string) => string;
+}) {
+  if (artifact.kind === "image" && artifact.attachmentId) {
+    return (
+      <div className="grid place-items-center p-4">
+        <Image
+          unoptimized
+          src={attachmentUrl(artifact.attachmentId)}
+          alt={artifact.label}
+          width={1200}
+          height={900}
+          className="h-auto max-h-[70dvh] w-full object-contain"
+        />
+      </div>
+    );
+  }
+  if (artifact.kind === "markdown") {
+    return <MarkdownContent source={artifact.content} className="p-4" />;
+  }
+  return (
+    <div className="max-h-[70dvh] min-h-24 overflow-auto">
+      <pre className="m-0 min-w-max whitespace-pre p-4 font-mono text-sm leading-relaxed">{artifact.content}</pre>
+    </div>
+  );
 }
 
-function inspectorArtifactAnchorId(artifactId: string, instance: InspectorInstance): string {
-  return `brai-artifact-${artifactId}-${instance}`;
+/** Returns the stable DOM anchor for a projected workspace artifact. */
+export function workspaceArtifactAnchorId(artifactId: string, instance: WorkspaceInstance): string {
+  return `brai-workspace-${artifactId}-${instance}`;
 }
