@@ -245,13 +245,8 @@ export function ActionsSection({
     });
   }, [closeMobileCreate, mobileCreateOpen]);
 
-  function renderMemberships(item: WorkspaceWorkItem) {
-    return (
-      <div className="flex min-w-0 items-center justify-between gap-2">
-        <GoalBadges item={item} onSelect={onSelectWorkspaceFilter} />
-        <GoalMembershipPicker item={item} goals={[...workspace.activeGoals, ...workspace.completedGoals]} onAdd={onAddToGoals} onRemove={onRemoveFromGoal} />
-      </div>
-    );
+  function renderMembershipControl(item: WorkspaceWorkItem) {
+    return <GoalMembershipPicker item={item} goals={[...workspace.activeGoals, ...workspace.completedGoals]} onAdd={onAddToGoals} onRemove={onRemoveFromGoal} />;
   }
 
   async function reorderGoalGroup(status: ActivityStatus, orderedIds: string[]) {
@@ -361,9 +356,13 @@ export function ActionsSection({
                 activeActivityElapsedSeconds={activeActivityElapsedSeconds}
                 onStartFocus={(action) => onStartActionFocus(action.id)}
                 onStopFocus={(action) => onStopActionFocus(action.id)}
+                renderControl={(action) => {
+                  const item = newItems.find((entry) => entry.id === action.id);
+                  return item ? renderMembershipControl(item) : null;
+                }}
                 renderAfter={(action) => {
                   const item = newItems.find((entry) => entry.id === action.id);
-                  return item ? renderMemberships(item) : null;
+                  return item ? <GoalBadges item={item} onSelect={onSelectWorkspaceFilter} /> : null;
                 }}
               />
             ) : (

@@ -76,13 +76,15 @@ class NetworkClientErrorRegression1Test {
     @Test
     fun activatesAccountAccessWithoutReturningTokenToWebLayer() {
         server.response = 200 to """{"token":"actual-account-device-token","account_user_id":"user-a"}"""
+        config.authToken = ""
 
         val response = client.activateAccountAccess("one-time-link-token")
 
         assertEquals("actual-account-device-token", response.token)
         assertEquals("user-a", response.accountUserId)
         assertEquals("POST /v1/brai-cmd/account-access/activate HTTP/1.1", server.requests.single().line)
-        assertEquals("Bearer fixture-device-token", server.requests.single().headers["authorization"])
+        assertEquals(null, server.requests.single().headers["authorization"])
+        assertEquals(config.installId, server.requests.single().headers["x-brai-cmd-device-id"])
         assertEquals("one-time-link-token", JSONObject(server.requests.single().body).getString("link_token"))
     }
 

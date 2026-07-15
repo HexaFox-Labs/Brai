@@ -1,8 +1,9 @@
 import { render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ActionsWorkspaceNavigation } from "@/features/app/sections/actions/ActionsWorkspaceNavigation";
+import { SortableActionList } from "@/features/app/sections/actions/ActionList";
 import { ContextReviewPanel } from "@/features/app/sections/actions/ContextReviewPanel";
-import { GoalBadges } from "@/features/app/sections/actions/GoalMembershipControls";
+import { GoalBadges, GoalMembershipPicker } from "@/features/app/sections/actions/GoalMembershipControls";
 import { GoalWorkspaceHeader } from "@/features/app/sections/actions/GoalWorkspaceHeader";
 import { WorkspaceWorkList } from "@/features/app/sections/actions/WorkspaceWorkList";
 import { buildActionsWorkspace, type WorkspaceWorkItem } from "@/features/app/sections/actions/actionsWorkspaceModel";
@@ -76,16 +77,12 @@ describe("Actions workspace accessibility", () => {
 
   it("keeps Goal membership inside the action row as the third swipe control", () => {
     const item = workItem();
-    item.memberships = [];
-    item.selectedRelation = null;
     const { container } = render(
-      <WorkspaceWorkList
-        items={[item]}
-        goals={[goal()]}
-        filter="all"
-        selectedId={null}
+      <SortableActionList
+        actions={[item.activity!]}
+        selectedActionId={null}
         titleDrafts={{}}
-        openDeleteActionId="action-1"
+        openDeleteActionId={item.id}
         activeActivityId={null}
         activeActivityElapsedSeconds={0}
         onSelect={vi.fn()}
@@ -96,11 +93,10 @@ describe("Actions workspace accessibility", () => {
         onDelete={vi.fn()}
         onOpenDelete={vi.fn()}
         onCloseDelete={vi.fn()}
+        onReorder={vi.fn()}
         onStartFocus={vi.fn()}
         onStopFocus={vi.fn()}
-        onSelectFilter={vi.fn()}
-        onAddToGoals={vi.fn()}
-        onRemoveFromGoal={vi.fn()}
+        renderControl={() => <GoalMembershipPicker item={item} goals={[goal()]} onAdd={vi.fn()} onRemove={vi.fn()} />}
       />,
     );
 
@@ -109,7 +105,7 @@ describe("Actions workspace accessibility", () => {
     const membership = controls.querySelector(".action-membership-control")!;
     const remove = controls.querySelector(".action-delete-button")!;
     const focus = controls.querySelector(".action-focus-button")!;
-    expect(row.parentElement?.children).toHaveLength(1);
+    expect(row.parentElement?.querySelector(":scope > .action-membership-control")).toBeNull();
     expect(membership.compareDocumentPosition(remove) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(remove.compareDocumentPosition(focus) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByRole("button", { name: "Добавить в список: Первый шаг" })).toBeInTheDocument();

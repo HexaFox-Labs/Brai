@@ -51,7 +51,7 @@ describe("BraiApp shell", () => {
     await waitFor(() => expect(cmdPlugin.setVoiceOnlyMode).toHaveBeenCalledWith({ enabled: false }));
     expect(cmdPlugin.setQueuePausedMode).toHaveBeenCalledWith({ enabled: false });
     await waitFor(() => expect(cmdPlugin.setAccessKey).toHaveBeenCalledWith({ token: "authenticated-device-token", displayName: "Test", userId: "test-user" }));
-    expect(cmdPlugin.ensureAccess).toHaveBeenCalledWith({ displayName: "Test" });
+    expect(cmdPlugin.ensureAccess).not.toHaveBeenCalled();
     expect(cmdPlugin.syncProviderCredentials.mock.invocationCallOrder[0]).toBeLessThan(
       cmdPlugin.setOverlayEnabled.mock.invocationCallOrder.find((order) => order > cmdPlugin.syncProviderCredentials.mock.invocationCallOrder[0]) ?? 0,
     );
@@ -77,26 +77,18 @@ describe("BraiApp shell", () => {
     expect(cmdPlugin.setQueuePausedMode).toHaveBeenCalledWith({ enabled: false });
   });
 
-  it("waits for native device access before activating account access", async () => {
+  it("activates account access without anonymous device registration", async () => {
     stubAndroidCapacitor();
-    let finishAccess: ((state: { accessGranted: true }) => void) | undefined;
-    cmdPlugin.ensureAccess.mockImplementation(() => new Promise((resolve) => {
-      finishAccess = resolve;
-    }));
 
     render(<BraiApp />);
-
-    await waitFor(() => expect(cmdPlugin.ensureAccess).toHaveBeenCalledWith({ displayName: "Test" }));
-    expect(deviceTokenRequestCount()).toBe(0);
-    expect(cmdPlugin.setAccessKey).not.toHaveBeenCalledWith(expect.objectContaining({ token: "authenticated-device-token" }));
-
-    act(() => finishAccess?.({ accessGranted: true }));
 
     await waitFor(() => expect(cmdPlugin.setAccessKey).toHaveBeenCalledWith({
       token: "authenticated-device-token",
       displayName: "Test",
       userId: "test-user",
     }));
+    expect(cmdPlugin.ensureAccess).not.toHaveBeenCalled();
+    expect(deviceTokenRequestCount()).toBe(1);
     await waitFor(() => expect(cmdPlugin.setOverlayEnabled).toHaveBeenCalledWith({ enabled: true }));
   });
 
