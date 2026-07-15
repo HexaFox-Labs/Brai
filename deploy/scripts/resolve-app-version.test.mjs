@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -11,6 +12,29 @@ import { resolveAppVersion, resolveAppVersionAsync } from "./resolve-app-version
 test("explicit versions resolve without database access", () => {
   assert.equal(resolveAppVersion({ explicit: "1.2.3" }), "1.2.3");
   assert.equal(resolveAppVersion({ kind: "apk", explicit: "7" }), "7");
+});
+
+test("client artifact detection imports without API dependencies", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "brai-version-import-"));
+  try {
+    const scriptDir = path.join(tmp, "deploy/scripts");
+    const apiDir = path.join(tmp, "services/brai_api");
+    fs.mkdirSync(scriptDir, { recursive: true });
+    fs.mkdirSync(apiDir, { recursive: true });
+    fs.copyFileSync(path.join(import.meta.dirname, "resolve-app-version.mjs"), path.join(scriptDir, "resolve-app-version.mjs"));
+    fs.writeFileSync(path.join(apiDir, "package.json"), '{"type":"module"}\n');
+
+    const result = spawnSync(process.execPath, [
+      "--input-type=module",
+      "-e",
+      "const { clientArtifactChanged } = await import('./deploy/scripts/resolve-app-version.mjs'); console.log(clientArtifactChanged({ baseCommit: '' }));",
+    ], { cwd: tmp, encoding: "utf8" });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trim(), "false");
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });
 
 test("OTA version resolution fails without published artifact metadata", async () => {

@@ -8,7 +8,6 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(import.meta.dirname, "../..");
 const requireFromApi = createRequire(path.join(repoRoot, "services/brai_api/package.json"));
-const { Pool } = requireFromApi("pg");
 
 if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
   const args = parseArgs(process.argv.slice(2));
@@ -78,6 +77,7 @@ export async function resolveAppVersionAsync(options = {}) {
 
 async function resolveApkVersionPg(databaseUrl, { nextApk = false, targetBranch = "", targetCommit = "" } = {}) {
   if (!databaseUrl) throw new Error("BRAI_DATABASE_URL is required to resolve Brai APK version");
+  const { Pool } = requireFromApi("pg");
   const pool = new Pool({ connectionString: databaseUrl, ssl: postgresSsl(databaseUrl) });
   try {
     const latest = await pool.query("SELECT COALESCE(MAX(version), 0) AS apk FROM build_versions WHERE version_type_id = 'apk'");
