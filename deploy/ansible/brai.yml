@@ -1117,6 +1117,39 @@
         - brai-storage-maintenance
         - targeted-infra-apply
 
+    - name: Install managed Supavisor tenant bootstrap
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../supabase/pooler.exs"
+        dest: "{{ brai_supavisor_managed_config }}"
+        owner: root
+        group: root
+        mode: "0644"
+      tags:
+        - brai-supavisor-maintenance
+        - targeted-infra-apply
+
+    - name: Install Supavisor tenant URL tool
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../scripts/supavisor-tenants.mjs"
+        dest: "{{ brai_supavisor_tenant_tool }}"
+        owner: root
+        group: root
+        mode: "0755"
+      tags:
+        - brai-supavisor-maintenance
+        - targeted-infra-apply
+
+    - name: Install guarded Supabase maintenance command
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../scripts/supabase-maintenance.sh"
+        dest: "{{ brai_supabase_maintenance }}"
+        owner: root
+        group: root
+        mode: "0755"
+      tags:
+        - brai-supavisor-maintenance
+        - targeted-infra-apply
+
     - name: Install Brai storage maintenance systemd units
       ansible.builtin.copy:
         src: "{{ playbook_dir }}/../systemd/{{ item }}"
@@ -1412,6 +1445,7 @@
         - brai-caddy
         - brai-goal-agents
         - brai-storage-maintenance
+        - brai-supavisor-maintenance
         - targeted-infra-apply
 
   handlers:

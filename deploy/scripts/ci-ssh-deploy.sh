@@ -717,6 +717,7 @@ else
   TARGET_DATABASE_URL="$(env_database_url "$ENVS_ROOT/$ENV_PATH/brai-api.env")"
 fi
 [[ -n "$TARGET_DATABASE_URL" ]] || { echo "Target BRAI_DATABASE_URL is required after data setup" >&2; exit 1; }
+BRAI_DATABASE_URL="$TARGET_DATABASE_URL" node deploy/scripts/supavisor-tenants.mjs assert-url --environment "$ENVIRONMENT"
 if [[ "$ENVIRONMENT" != "prod" ]]; then
   BRAI_DATABASE_URL="$TARGET_DATABASE_URL" node deploy/scripts/postgres-smoke.mjs "$TARGET_DATABASE_URL"
 fi

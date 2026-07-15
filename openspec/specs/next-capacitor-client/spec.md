@@ -610,3 +610,19 @@ Navigation controls SHALL accept an arbitrary supplementary React node positione
 - **WHEN** Engine in the mobile overflow menu has an update
 - **THEN** the three-dot button displays an aggregate yellow indicator at bottom-center
 - **AND** the three-dot icon does not move
+
+### Requirement: Transient authentication outages preserve local account scope
+
+The Brai client SHALL distinguish an unavailable auth backend from an authoritative anonymous session.
+
+#### Scenario: Session revalidation receives a transient backend failure
+
+- **WHEN** session revalidation or a protected request receives a network failure or `5xx`
+- **THEN** the client preserves the current user id, IndexedDB snapshots, pending outbox, and current screen
+- **AND** it exposes a recoverable offline or sync-failed state
+- **AND** it does not navigate to `/auth`
+
+#### Scenario: Session absence is authoritative
+
+- **WHEN** session revalidation succeeds with an authoritative anonymous result or a protected request returns a genuine `401`
+- **THEN** the client clears the authenticated account scope and navigates to the login flow
