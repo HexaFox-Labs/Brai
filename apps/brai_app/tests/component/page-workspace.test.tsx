@@ -66,5 +66,6 @@ describe("page workspace registry", () => {
     expect(hasMobilePageRail("brai-cmd", true)).toBe(true);
     expect(PAGE_WORKSPACE_REGISTRY.draws.fullscreenOverride).toBe(true);
     expect(PAGE_WORKSPACE_REGISTRY.focus.persistentPanels).toEqual(["goal", "history"]);
+    expect(PAGE_WORKSPACE_REGISTRY.engine.persistentPanels).toEqual(["history"]);
   });
 });

@@ -147,5 +147,6 @@ test("delivery records every PR lifecycle event and queues main promotions", () 
     assert.match(workflow, new RegExp(`- ${action}\\b`));
   }
   assert.match(workflow, /record-version-pr:[\s\S]*ci-ssh-record-version-pr\.sh/);
+  assert.match(workflow, /if \[\[ ! -x deploy\/scripts\/ci-ssh-record-version-pr\.sh \]\]; then/);
   assert.match(workflow, /cancel-in-progress: \$\{\{ github\.event_name == 'push' && startsWith\(github\.ref, 'refs\/heads\/codex\/'\) \}\}/);
 });

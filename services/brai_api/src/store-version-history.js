@@ -37,9 +37,10 @@ export const versionHistoryMethods = {
         JOIN release_works ON release_works.id = github_pull_requests.release_works_id
         WHERE repository = ? AND pull_number = ?
       `).get(repository, pullNumber);
-      if (existing && (existing.work_key !== input.workKey || existing.work_role !== role)) {
+      if (existing && existing.work_key !== input.workKey) {
         throw new Error(`PR ${repository}#${pullNumber} already belongs to ${existing.work_key} as ${existing.work_role}`);
       }
+      const effectiveRole = existing?.work_role ?? role;
       if (work.status === 'finalized') {
         if (!existing) throw new Error(`cannot register a new PR in finalized work ${input.workKey}`);
         return existing;
@@ -71,7 +72,7 @@ export const versionHistoryMethods = {
         RETURNING *
       `).get(
         work.id,
-        role,
+        effectiveRole,
         repository,
         pullNumber,
         requiredText(input.url, 'url'),

@@ -223,14 +223,14 @@ test('published stable APK is recorded after support work reconciliation and lat
       sizeBytes: artifact.length, publishedAt: releasedAtUtc,
     } } }));
 
-    const runRecorder = () => execFileSync(process.execPath, [
+    const runRecorder = (version = '12', versionCode = '142', releasedAt = releasedAtUtc) => execFileSync(process.execPath, [
       path.join(repoRoot, 'deploy/scripts/record-shipped-apk-version.mjs'),
       '--work-key', workKey,
-      '--version', '12',
-      '--version-code', '142',
+      '--version', version,
+      '--version-code', versionCode,
       '--target-branch', 'main',
       '--target-commit', 'apk-target',
-      '--released-at', releasedAtUtc,
+      '--released-at', releasedAt,
     ], { cwd: repoRoot, env: { ...process.env, BRAI_DATABASE_URL: dbUrl, BRAI_RELEASE_TARGET: tmp } });
 
     runRecorder();
@@ -255,7 +255,17 @@ test('published stable APK is recorded after support work reconciliation and lat
       pullNumbers: [601, 602], targetBranch: 'main', targetCommit: 'build-target',
       releasedAtUtc: '2026-07-14T14:05:00.000Z',
     });
-    runRecorder();
+    const newerArtifact = Buffer.from('newer-stable-apk-fixture');
+    const newerArtifactName = 'brai-v13.apk';
+    const newerReleasedAtUtc = '2026-07-14T15:00:00.000Z';
+    fs.writeFileSync(path.join(tmp, newerArtifactName), newerArtifact);
+    fs.writeFileSync(path.join(tmp, 'releases.json'), JSON.stringify({ sections: { production: {
+      apkBuildKind: 'stable', apkVersion: 13, versionCode: 143, file: newerArtifactName,
+      sha256: crypto.createHash('sha256').update(newerArtifact).digest('hex'),
+      sizeBytes: newerArtifact.length, publishedAt: newerReleasedAtUtc,
+    } } }));
+    const repeated = runRecorder('13', '143', newerReleasedAtUtc).toString();
+    assert.match(repeated, /apk 12 \(already recorded\)/);
     assert.equal(store.db.prepare('SELECT included_in_version_id FROM build_versions WHERE id=?').get(apk.id).included_in_version_id, build.id);
   } finally {
     store.close();

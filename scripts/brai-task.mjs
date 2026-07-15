@@ -714,7 +714,6 @@ function deliveryHandoff(branchArg) {
   }
   requireSocraticodeForHandoff(changedFiles);
   ensureTaskWorkIdentity();
-  const releaseNotes = readReleaseNotes({ nativeRequired: nativeApkBoundaryChanged(changedFiles) });
 
   if (git("status", "--porcelain").trim()) throw new Error("Working tree is not clean. Commit or remove local changes before handoff.");
   ensureTaskBranchPushed(branch, head);
@@ -722,13 +721,14 @@ function deliveryHandoff(branchArg) {
   if (marker?.base && !isAncestor(marker.base, head)) {
     throw new Error(`Task base ${marker.base} is not an ancestor of ${head}. Start a fresh task branch from ${acceptedBaseRef()}.`);
   }
+  const releaseNotes = readReleaseNotes({ nativeRequired: nativeApkBoundaryChanged(changedFiles) });
 
-  let pr = findInfraDocsPr(branch, head);
+  let pr = findInfraDocsPr(branch, head, taskRoot);
   if (pr?.state !== "MERGED") {
     ensureInfraDocsPr(branch);
   }
-  const run = waitForSuccessfulDeliveryRun(branch, head, ["public-guard", "checks", "temporal-worker-check", "auto-merge-infra-docs"]);
-  pr = findInfraDocsPr(branch, head) ?? pr;
+  const run = waitForSuccessfulDeliveryRun(branch, head, ["public-guard", "checks", "temporal-worker-check", "auto-merge-infra-docs"], taskRoot);
+  pr = findInfraDocsPr(branch, head, taskRoot) ?? pr;
   if (pr?.state !== "MERGED" || !pr?.number || !pr?.url || !pr?.mergedAt) throw new Error(infraDocsPrPendingMessage(pr, branch, head, run));
   const receipt = {
     receiptType: DELIVERY_RECEIPT_VERSION,
@@ -2350,15 +2350,15 @@ function writeGithubOutput(classification) {
   );
 }
 
-function findSuccessfulDeliveryRun(branch, sha, requiredJobs = ["public-guard", "checks", "temporal-worker-check", "deploy-preview"]) {
-  const runs = runJson(["gh", "run", "list", "--workflow", "Brai delivery", "--branch", branch, "--event", "push", "--limit", "20", "--json", "databaseId,headSha,status,conclusion,url"]);
+function findSuccessfulDeliveryRun(branch, sha, requiredJobs = ["public-guard", "checks", "temporal-worker-check", "deploy-preview"], cwd = null) {
+  const runs = runJson(["gh", "run", "list", "--workflow", "Brai delivery", "--branch", branch, "--event", "push", "--limit", "20", "--json", "databaseId,headSha,status,conclusion,url"], cwd);
   const run = runs.find((candidate) => candidate.headSha === sha);
   if (!run) throw new Error(`No Brai delivery push run found for ${branch}@${sha}.`);
   if (run.status !== "completed" || run.conclusion !== "success") {
     throw new Error(`Delivery run ${run.databaseId} is ${run.status}/${run.conclusion}. Wait or fix CI before handoff.`);
   }
 
-  const details = runJson(["gh", "run", "view", String(run.databaseId), "--json", "jobs"]);
+  const details = runJson(["gh", "run", "view", String(run.databaseId), "--json", "jobs"], cwd);
   const jobs = new Map((details.jobs ?? []).map((job) => [job.name, job.conclusion]));
   for (const job of requiredJobs) {
     if (jobs.get(job) !== "success") throw new Error(`Delivery job ${job} is ${jobs.get(job) ?? "missing"} for run ${run.databaseId}.`);
@@ -2634,8 +2634,8 @@ function ensureInfraDocsPr(branch) {
   if (result.status !== 0 || result.error) throw new Error(`Failed to create or enable no-preview PR for ${branch}: ${result.error?.message ?? `exit ${result.status}`}.`);
 }
 
-function findInfraDocsPr(branch, head) {
-  const prs = runJson(["gh", "pr", "list", "--base", acceptedBaseBranch(), "--head", branch, "--state", "all", "--json", "number,url,state,headRefOid,labels,mergedAt,mergeStateStatus,autoMergeRequest"]);
+function findInfraDocsPr(branch, head, cwd = null) {
+  const prs = runJson(["gh", "pr", "list", "--base", acceptedBaseBranch(), "--head", branch, "--state", "all", "--json", "number,url,state,headRefOid,labels,mergedAt,mergeStateStatus,autoMergeRequest"], cwd);
   return prs.find((pr) =>
     pr.headRefOid === head &&
     Array.isArray(pr.labels) &&
@@ -2664,8 +2664,8 @@ function findAcceptancePr(branch, head) {
   return prs.find((pr) => pr.headRefOid === head) ?? null;
 }
 
-function runJson(args) {
-  const result = spawnSync(args[0], args.slice(1), { cwd: git("rev-parse", "--show-toplevel"), encoding: "utf8", env: process.env });
+function runJson(args, cwd = null) {
+  const result = spawnSync(args[0], args.slice(1), { cwd: cwd ?? git("rev-parse", "--show-toplevel"), encoding: "utf8", env: process.env });
   if (result.status !== 0) {
     throw new Error(`${args.join(" ")} failed:\n${result.stderr || result.stdout || "(no output)"}`);
   }
@@ -2687,10 +2687,10 @@ function runJsonMaybe(args) {
   }
 }
 
-function waitForSuccessfulDeliveryRun(branch, sha, requiredJobs) {
+function waitForSuccessfulDeliveryRun(branch, sha, requiredJobs, cwd = null) {
   const waitMs = Number(process.env.BRAI_INFRA_DOCS_HANDOFF_WAIT_MS ?? DEFAULT_INFRA_DOCS_HANDOFF_WAIT_MS);
   const pollMs = Number(process.env.BRAI_INFRA_DOCS_HANDOFF_POLL_MS ?? DEFAULT_INFRA_DOCS_HANDOFF_POLL_MS);
-  return waitForCondition(() => findSuccessfulDeliveryRun(branch, sha, requiredJobs), waitMs, pollMs);
+  return waitForCondition(() => findSuccessfulDeliveryRun(branch, sha, requiredJobs, cwd), waitMs, pollMs);
 }
 
 function waitForSuccessfulPreviewRun(branch, sha, requiredJobs) {

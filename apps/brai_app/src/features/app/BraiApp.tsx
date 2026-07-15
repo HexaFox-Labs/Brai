@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, BookOpen, Crown, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { ArrowLeft, BookOpen, Crown, History, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import type { AuthOnboardingContext } from "@/shared/api/braiApi";
 import { beginBraiCmdAccountCredentialMode, ensureBraiCmdAccess, getBraiCmdState, listenBraiCmdCredentialRefreshRequired, retryBraiCmdPendingAccountRevocation, retryBraiCmdQueue, setBraiCmdAccessKey, setBraiCmdAuthenticatedMode, setBraiCmdOverlayEnabled, syncBraiCmdProviderCredentials } from "@/shared/platform/braiCmd";
 import { useAppVersion } from "@/shared/config/runtime";
@@ -18,7 +18,7 @@ import type { SectionId } from "./appModel";
 import { hasDesktopPageRail, hasMobilePageRail, sectionIcon, sectionTitle } from "./appModel";
 import { braiCmdBootstrapRetryDelay } from "./braiCmdBootstrap.model";
 import { cx } from "./appUtils";
-import { IconButton, ScreenHeader, ThemeButton } from "./chrome/AppChrome";
+import { IconButton, MobileContextSheet, ScreenHeader, ThemeButton } from "./chrome/AppChrome";
 import { PageWorkspace } from "./chrome/PageWorkspace";
 import { useActionsWorkspace } from "./hooks/useActionsWorkspace";
 import { useBraiAppState } from "./hooks/useBraiAppState";
@@ -33,6 +33,7 @@ import { BraiCmdSection } from "./sections/brai-cmd/BraiCmdSection";
 import { DrawsSection } from "./sections/draws/DrawsSection";
 import { EngineSection } from "./sections/engine/EngineSection";
 import { engineSectionView } from "./sections/engine/engineModel";
+import { VersionHistoryPanel } from "./sections/engine/VersionHistoryPanel";
 import { FactorySection } from "./sections/factory/FactorySection";
 import { FocusBackground, FocusContextPanelSheet, FocusSection } from "./sections/focus/FocusSection";
 import { InboxSection } from "./sections/inbox/InboxSection";
@@ -93,6 +94,7 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
   const [actionsMobileCreateDraft, setActionsMobileCreateDraft] = useStoredMobileCreateDraft(ACTIONS_MOBILE_CREATE_DRAFT_STORAGE_KEY);
   const [inboxMobileCreateDraft, setInboxMobileCreateDraft] = useStoredMobileCreateDraft(INBOX_MOBILE_CREATE_DRAFT_STORAGE_KEY);
   const mobileViewport = useMountedMobileNavigationViewport();
+  const engineMobileHistoryOpen = mobileViewport && visibleSection === "engine" && app.engineHistoryOpen;
   const [drawsFullScreen, setDrawsFullScreen] = useState(false);
   const { selectFilter: selectActionsWorkspaceFilter, workspace: actionsWorkspace } = useActionsWorkspace(app.actions, app.inbox, app.relations);
   const drawsFullscreenActive = visibleSection === "draws" && drawsFullScreen;
@@ -113,7 +115,7 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
       if (hasMobilePageRail(visibleSection, nativeAndroid)) app.setMobileMenuOpen(true);
       else setMobileDockLayer("left");
     },
-    !app.mobileMenuOpen && !mobileDockLayer && !app.mobilePanelOpen && !app.actionOverlayOpen,
+    !app.mobileMenuOpen && !mobileDockLayer && !app.mobilePanelOpen && !engineMobileHistoryOpen && !app.actionOverlayOpen,
   );
   const webAuthRequired = !nativeAndroid && app.displaySyncStatus === "auth_required";
 
@@ -376,6 +378,8 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
                   <IconButton icon={Crown} label="Цели фокусировки" active={app.focusGoalActive} onClick={() => app.toggleFocusContextPanel("goal")} />
                   <IconButton icon={BookOpen} label="История фокуса" active={app.focusHistoryActive} className="min-[861px]:mr-5 max-[860px]:mr-1.5" onClick={() => app.toggleFocusContextPanel("history")} />
                 </>
+              ) : screenSection === "engine" ? (
+                <IconButton icon={History} label="История версий" active={app.engineHistoryOpen} className="min-[861px]:mr-5 max-[860px]:mr-1.5" onClick={app.toggleEngineHistory} />
               ) : screenSection === "settings" ? (
                 <ThemeButton theme={app.theme} onTheme={app.setTheme} />
               ) : null
@@ -480,7 +484,7 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
             onRailContent={isActivePage ? registerDrawsRail : undefined}
           />} />
         ) : screenSection === "engine" ? (
-          <PageWorkspace main={<EngineSection
+          <PageWorkspace persistentPanel={app.engineHistoryOpen && !mobileViewport ? <VersionHistoryPanel api={app.api} /> : undefined} main={<EngineSection
             appVersionState={app.versionState}
             otaState={app.otaState}
             otaCheckedAt={app.otaCheckedAt}
@@ -690,6 +694,11 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
       ) : null}
       {mobileViewport && app.focusContextPanel === "history" && visibleSection === "focus" ? (
         <FocusContextPanelSheet panel="history" history={app.history} goal={app.goal} todayKey={app.todayKey} onClose={() => app.setFocusContextPanel("none")} onCloseStart={app.markMobileContextPanelClosing} onDeleteSession={app.onDeleteFocusSession} onEditInterval={app.onEditFocusInterval} onEditSession={app.onEditFocusSession} />
+      ) : null}
+      {engineMobileHistoryOpen ? (
+        <MobileContextSheet label="История версий" onClose={app.closeEngineHistory}>
+          <VersionHistoryPanel api={app.api} />
+        </MobileContextSheet>
       ) : null}
         </SidebarProvider>
       )}

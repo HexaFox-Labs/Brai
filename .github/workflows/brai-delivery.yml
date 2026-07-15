@@ -377,7 +377,12 @@ jobs:
         with:
           ref: ${{ github.event.repository.default_branch }}
       - name: Record version-history PR snapshot
-        run: deploy/scripts/ci-ssh-record-version-pr.sh
+        run: |
+          if [[ ! -x deploy/scripts/ci-ssh-record-version-pr.sh ]]; then
+            echo "Version-history PR recorder is not present on the default branch yet; skipped."
+            exit 0
+          fi
+          deploy/scripts/ci-ssh-record-version-pr.sh
         env:
           BRAI_DEPLOY_HOST: ${{ vars.BRAI_DEPLOY_HOST }}
           BRAI_DEPLOY_USER: ${{ vars.BRAI_DEPLOY_USER }}

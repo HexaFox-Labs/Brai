@@ -8,7 +8,7 @@ const REDACTIONS = [
   [/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, '[private key]'],
   [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g, '[credential]'],
   [/\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|AKIA[A-Z0-9]{16}|AIza[A-Za-z0-9_-]{35}|xox[baprs]-[A-Za-z0-9-]{10,})\b/g, '[credential]'],
-  [/\b(password|passwd|api[_-]?key|access[_-]?token|refresh[_-]?token|session[_-]?token|client[_-]?secret)\s*[:=]\s*([^\s,;"'<>]+)/gi, '$1=[credential]'],
+  [/(?:["']?)\b([A-Za-z0-9_.-]*(?:password|passwd|secret|token|credential|authorization|api[_-]?key|access[_-]?key|private[_-]?key|ssh[_-]?key)[A-Za-z0-9_.-]*)\b(?:["']?)\s*[:=]\s*(?!\[credential\])(?:"[^"\r\n]*"|'[^'\r\n]*'|`[^`\r\n]*`|[^\s,;"'<>]+)/giu, '$1=[credential]'],
   [new RegExp(['Ser', 'gey'].join(''), 'gi'), '[private name]'],
   [new RegExp(['Сер', 'гей'].join(''), 'giu'), '[private name]'],
 ];

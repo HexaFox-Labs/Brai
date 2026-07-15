@@ -1009,6 +1009,7 @@ test("preview deploy requires Postgres and preserves artifact setgid", () => {
   assert.doesNotMatch(ciDeploy, /postgres-smoke\.mjs "\$CURRENT_DATABASE_URL"/);
   assert.match(ciDeploy, /version-history-backfill\.mjs apply/);
   assert.match(ciDeploy, /postgres-smoke\.mjs "\$TARGET_DATABASE_URL"/);
+  assert.match(ciDeploy, /version-history-backfill\.mjs apply\nBRAI_DATABASE_URL="\$TARGET_DATABASE_URL" node deploy\/scripts\/postgres-smoke\.mjs "\$TARGET_DATABASE_URL"/);
   assert.ok(ciDeploy.indexOf("version-history-backfill.mjs apply") < ciDeploy.indexOf('postgres-smoke.mjs "$TARGET_DATABASE_URL"'));
   assert.match(script, /check_api_service_contract/);
   assert.match(script, /BRAI_INBOUND_STORAGE_ROOT/);
@@ -1966,6 +1967,7 @@ test("delivery workflow records PR updates without duplicate full checks", () =>
   assert.match(pullRequestTrigger, /\bsynchronize\b/);
   assert.match(pullRequestTrigger, /\bclosed\b/);
   assert.match(workflow, /public-guard:\n\s+if: github\.event_name != 'delete' && github\.event_name != 'pull_request'/);
+  assert.match(workflow, /if \[\[ ! -x deploy\/scripts\/ci-ssh-record-version-pr\.sh \]\]; then[\s\S]*Version-history PR recorder is not present on the default branch yet; skipped\./);
   assert.match(workflow, /record-version-pr:[\s\S]*ci-ssh-record-version-pr\.sh/);
 });
 

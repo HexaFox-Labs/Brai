@@ -15,6 +15,10 @@ test('public version history is normalized, filtered, cursor-paginated, and safe
       'Authorization: Bearer abc.def.ghi',
       'Cookie: sid=private',
       'password=hunter2',
+      'api_key: "topsecret123"',
+      "client_secret = 'topsecret123'",
+      'AWS_SECRET_ACCESS_KEY=abc123secret',
+      'BRAI_DEPLOY_SSH_KEY=abc123secret',
       `-----BEGIN ${'PRIVATE'} KEY-----\nprivate\n-----END ${'PRIVATE'} KEY-----`,
       ['gh', 'p_abcdefghijklmnopqrstuvwxyz123456'].join(''),
       ['Ser', 'gey'].join(''),
@@ -34,6 +38,10 @@ test('public version history is normalized, filtered, cursor-paginated, and safe
     assert.match(publicBody, /Authorization: \[credential\]/);
     assert.match(publicBody, /Cookie: \[credential\]/);
     assert.match(publicBody, /password=\[credential\]/);
+    assert.match(publicBody, /api_key=\[credential\]/);
+    assert.match(publicBody, /client_secret=\[credential\]/);
+    assert.match(publicBody, /AWS_SECRET_ACCESS_KEY=\[credential\]/);
+    assert.match(publicBody, /BRAI_DEPLOY_SSH_KEY=\[credential\]/);
     assert.match(publicBody, /\[private key\]/);
     assert.equal(publicBody.match(/\[private name\]/g)?.length, 2);
     assert.equal(first.body.items[0].refs[0].target_commit, 'target-303');
@@ -94,6 +102,8 @@ test('public version history is normalized, filtered, cursor-paginated, and safe
     assert.equal(serialized.includes('ghp_'), false);
     assert.equal(serialized.includes('user:pass'), false);
     assert.equal(serialized.includes('hunter2'), false);
+    assert.equal(serialized.includes('topsecret123'), false);
+    assert.equal(serialized.includes('abc123secret'), false);
     assert.equal(serialized.includes('PRIVATE KEY'), false);
   } finally {
     await fixture.close();
@@ -221,6 +231,11 @@ test('ownership transfer, support-only finalization, and cancellation keep work 
     assert.deepEqual(
       fixture.store.db.prepare('SELECT pull_number, work_role FROM github_pull_requests WHERE release_works_id=(SELECT id FROM release_works WHERE work_key=?) ORDER BY pull_number').all('work_transfer'),
       [{ pull_number: 471, work_role: 'support' }, { pull_number: 472, work_role: 'owner' }],
+    );
+    fixture.store.upsertGithubPullRequest({ ...pullSnapshot(471, 'work_transfer', 'owner', 'CLOSED'), title: 'Старый marker не возвращает ownership' });
+    assert.equal(
+      fixture.store.db.prepare('SELECT work_role FROM github_pull_requests WHERE pull_number = 471').get().work_role,
+      'support',
     );
 
     fixture.store.upsertReleaseWork({ workKey: 'work_support_only' });

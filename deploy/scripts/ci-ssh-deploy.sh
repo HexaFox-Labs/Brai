@@ -726,9 +726,7 @@ fi
 [[ -n "$TARGET_DATABASE_URL" ]] || { echo "Target BRAI_DATABASE_URL is required after data setup" >&2; exit 1; }
 BRAI_DATABASE_URL="$TARGET_DATABASE_URL" node deploy/scripts/supavisor-tenants.mjs assert-url --environment "$ENVIRONMENT"
 BRAI_DATABASE_URL="$TARGET_DATABASE_URL" node deploy/scripts/version-history-backfill.mjs apply
-if [[ "$ENVIRONMENT" != "prod" ]]; then
-  BRAI_DATABASE_URL="$TARGET_DATABASE_URL" node deploy/scripts/postgres-smoke.mjs "$TARGET_DATABASE_URL"
-fi
+BRAI_DATABASE_URL="$TARGET_DATABASE_URL" node deploy/scripts/postgres-smoke.mjs "$TARGET_DATABASE_URL"
 run_goal_agent_drain_check "$TARGET_DATABASE_URL" "after-data-setup"
 if [[ -n "$PRE_DRAIN_STATE_DIGEST" && "$DRAIN_STATE_DIGEST" != "$PRE_DRAIN_STATE_DIGEST" ]]; then
   echo "Goal-agent nonterminal state changed after the API drain barrier" >&2

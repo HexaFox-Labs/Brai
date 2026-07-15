@@ -7,22 +7,13 @@ import { BraiStore } from "../../services/brai_api/src/store.js";
 import { normalizedReleaseReceiptFromPull } from "./accepted-preview-branches.mjs";
 
 const args = parseArgs(process.argv.slice(2));
-const apkVersion = apkCounter(required(args, "version"));
-const versionCode = required(args, "version-code");
 const workKey = required(args, "work-key");
-const targetBranch = required(args, "target-branch");
-const targetCommit = required(args, "target-commit");
-const published = publishedArtifact(apkVersion, versionCode);
-const releasedAtUtc = args["released-at"] || published.publishedAt;
-if (releasedAtUtc !== published.publishedAt) throw new Error("APK ledger timestamp does not match the published artifact");
 const store = new BraiStore(databaseTarget(args));
 
 try {
   const work = store.releaseWork(workKey);
   if (!work) throw new Error(`unknown release work: ${workKey}`);
   const existing = store.db.prepare("SELECT * FROM build_versions WHERE release_works_id = ? AND version_type_id = 'apk'").get(work.id);
-  if (existing && existing.version !== apkVersion) throw new Error(`${workKey} already has apk ${existing.version}, not ${apkVersion}`);
-  const latest = store.latestVersion("apk");
   const build = store.db.prepare("SELECT * FROM build_versions WHERE release_works_id = ? AND version_type_id = 'build'").get(work.id);
   if (existing) {
     if (build && existing.included_in_version_id == null) {
@@ -30,6 +21,14 @@ try {
     }
     console.log(`apk ${existing.version} (already recorded)`);
   } else {
+    const apkVersion = apkCounter(required(args, "version"));
+    const versionCode = required(args, "version-code");
+    const targetBranch = required(args, "target-branch");
+    const targetCommit = required(args, "target-commit");
+    const published = publishedArtifact(apkVersion, versionCode);
+    const releasedAtUtc = args["released-at"] || published.publishedAt;
+    if (releasedAtUtc !== published.publishedAt) throw new Error("APK ledger timestamp does not match the published artifact");
+    const latest = store.latestVersion("apk");
     const pulls = store.db.prepare(`
       SELECT * FROM github_pull_requests
       WHERE release_works_id = ? AND (state = 'MERGED' OR github_merged_at_utc IS NOT NULL)

@@ -16,7 +16,7 @@ try {
     JOIN release_works AS works ON works.id = pulls.release_works_id
     WHERE pulls.repository = ? AND pulls.pull_number = ?
   `).get(repository, Number(pull.number));
-  const work = explicitWorkFromPull(pull) ?? (existing ? { key: existing.work_key, role: existing.work_role } : null);
+  const work = existing ? { key: existing.work_key, role: existing.work_role } : explicitWorkFromPull(pull);
   if (!work) {
     console.log(`PR ${repository}#${pull.number} has no brai-work-v1 marker; skipped`);
     process.exitCode = 0;
