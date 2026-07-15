@@ -25,6 +25,7 @@ import {
   isWriteLikeCommand,
   linkDependencyDirs,
   parseHookInput,
+  previewReviewNote,
   readPreviewSlot,
   taskStartGuidance,
   taskWorktreeParent,
@@ -1660,6 +1661,12 @@ test("release notes v2 keep owner summary separate from support details", () => 
     testing: "Проверить историю версии и список связанных PR.",
   };
   assert.deepEqual(validateReleaseNotes(owner), { ok: true });
+  assert.deepEqual(previewReviewNote(owner), {
+    short_changes: owner.build.short_changes,
+    detailed_changes: owner.build.detailed_changes,
+    reason: owner.build.reason,
+    testing: owner.testing,
+  });
   const support = {
     ...owner,
     work: { ...owner.work, role: "support" },

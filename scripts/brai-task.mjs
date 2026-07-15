@@ -92,6 +92,7 @@ export {
   linkDependencyDirs,
   findOpenTaskForThread,
   parseHookInput,
+  previewReviewNote,
   readPreviewSlot,
   taskStartGuidance,
   taskWorktreeParent,
@@ -669,7 +670,7 @@ function previewHandoff(branchArg) {
 
 function writePreviewTestingNote(branch, commit, releaseNotes) {
   const root = git("rev-parse", "--show-toplevel");
-  const encoded = Buffer.from(JSON.stringify(releaseNotes), "utf8").toString("base64");
+  const encoded = Buffer.from(JSON.stringify(previewReviewNote(releaseNotes)), "utf8").toString("base64");
   const result = spawnSync(path.join(root, "deploy/scripts/preview-slots.sh"), ["note", branch, commit, encoded], {
     cwd: root,
     encoding: "utf8",
@@ -678,6 +679,16 @@ function writePreviewTestingNote(branch, commit, releaseNotes) {
   if (result.status !== 0 || result.error) {
     throw new Error(`Failed to store Preview testing note: ${result.error?.message ?? result.stderr ?? result.stdout ?? `exit ${result.status}`}`);
   }
+}
+
+function previewReviewNote(releaseNotes) {
+  if (releaseNotes?.receiptType !== RELEASE_NOTES_VERSION) return releaseNotes;
+  return {
+    short_changes: releaseNotes.build?.short_changes,
+    detailed_changes: releaseNotes.build?.detailed_changes,
+    reason: releaseNotes.build?.reason,
+    testing: releaseNotes.testing,
+  };
 }
 
 function deliveryHandoff(branchArg) {
