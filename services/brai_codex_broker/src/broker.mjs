@@ -173,10 +173,6 @@ export class RuntimeManager extends EventEmitter {
     try {
       requireRuntimeConfig(await runtime.app.call("config/read", { cwd: WORKSPACE }));
       requireRuntimeRequirements(await runtime.app.call("configRequirements/read"));
-      const account = await runtime.app.call("account/read", { refreshToken: true });
-      if (account?.requiresOpenaiAuth && !account?.account) {
-        throw new BrokerError("BRAI_RUNTIME_AUTH_UNAVAILABLE", "Codex runtime authentication is unavailable");
-      }
       const models = await runtime.app.call("model/list", { limit: 1 });
       if (!Array.isArray(models?.data) || models.data.length === 0) {
         throw new BrokerError("BRAI_RUNTIME_CAPABILITY_UNAVAILABLE", "Codex model capability is unavailable");

@@ -156,6 +156,9 @@ test("preflight verifies version, auth and required capabilities before readines
   assert.deepEqual(initialize.params.capabilities, { experimentalApi: true, requestAttestation: false });
   assert.ok(docker.runtimes[0].requests.some(({ method }) => method === "config/read"));
   assert.ok(docker.runtimes[0].requests.some(({ method }) => method === "configRequirements/read"));
+  const accountRequests = docker.runtimes[0].requests.filter(({ method }) => method === "account/read");
+  assert.equal(accountRequests.length, 1);
+  assert.deepEqual(accountRequests[0].params, { refreshToken: false });
   const startRequest = docker.runtimes[0].requests.find(({ method }) => method === "thread/start");
   assert.equal(Object.hasOwn(startRequest.params, "sandbox"), false);
   assert.equal(startRequest.params.permissions, "brai-chat");
