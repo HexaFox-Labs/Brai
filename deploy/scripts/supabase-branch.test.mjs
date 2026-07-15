@@ -63,11 +63,16 @@ test("production seed loads only explicitly marked idempotent migrations into th
     path.join(repoRoot, "supabase/migrations/0010_agent_role_normalization_workflows.sql"),
     "utf8"
   );
+  const versionHistoryMigration = fs.readFileSync(
+    path.join(repoRoot, "supabase/migrations/0031_normalize_version_work_history.sql"),
+    "utf8"
+  );
   const seedStart = script.indexOf("async function seedTestDataFromProduction");
   const copyStart = script.indexOf("async function copySchemaData");
   const seedFunction = script.slice(seedStart, copyStart);
 
   assert.match(migration, /^-- brai:reapply-after-production-seed$/m);
+  assert.match(versionHistoryMigration, /^-- brai:reapply-after-production-seed$/m);
   assert.match(script, /sql\.includes\(POST_PRODUCTION_SEED_MIGRATION_MARKER\)/);
   assert.match(seedFunction, /const postSeedMigrations = postProductionSeedMigrations\(\)/);
   assert.match(seedFunction, /copySchemaData\(pool, \{ sourceSchema, targetSchema, postSeedMigrations \}\)/);
