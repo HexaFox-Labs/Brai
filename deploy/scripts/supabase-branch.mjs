@@ -7,6 +7,12 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { expandPreservedTables, orderTablesByDependencies, tablesToReset } from "./copy-table-order.mjs";
+import {
+  databaseUrlForSupavisorTenant,
+  databaseUsernameWithoutKnownTenant,
+  NONPROD_SUPAVISOR_TENANT,
+  tenantIsolationEnabled,
+} from "./supavisor-tenants.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(scriptDir, "../..");
@@ -136,7 +142,10 @@ function ensureBranch(name, { projectRef, persistent, withData }) {
 }
 
 async function ensureSelfHostedSchema(name) {
-  const adminUrl = selfHostedDatabaseUrl();
+  const sourceUrl = selfHostedDatabaseUrl();
+  const adminUrl = tenantIsolationEnabled()
+    ? databaseUrlForSupavisorTenant(sourceUrl, NONPROD_SUPAVISOR_TENANT)
+    : sourceUrl;
   const databaseUrl = databaseUrlWithSearchPath(adminUrl, name);
   if (process.env.BRAI_SUPABASE_DRY_RUN === "true") {
     return { databaseUrl, details: { id: name, status: "ready" } };
@@ -669,8 +678,8 @@ export function assertSameDatabaseTarget(currentDatabaseUrl, resolvedDatabaseUrl
   if (!currentDatabaseUrl || !resolvedDatabaseUrl) throw new Error("preserve-existing requires the current BRAI_DATABASE_URL");
   const current = new URL(currentDatabaseUrl);
   const resolved = new URL(resolvedDatabaseUrl);
-  const currentTarget = [current.protocol, current.username, current.hostname, current.port, current.pathname, searchPathSchema(currentDatabaseUrl)];
-  const resolvedTarget = [resolved.protocol, resolved.username, resolved.hostname, resolved.port, resolved.pathname, searchPathSchema(resolvedDatabaseUrl)];
+  const currentTarget = [current.protocol, databaseUsernameWithoutKnownTenant(current.username), current.hostname, current.port, current.pathname, searchPathSchema(currentDatabaseUrl)];
+  const resolvedTarget = [resolved.protocol, databaseUsernameWithoutKnownTenant(resolved.username), resolved.hostname, resolved.port, resolved.pathname, searchPathSchema(resolvedDatabaseUrl)];
   if (currentTarget.some((value, index) => value !== resolvedTarget[index])) {
     throw new Error("preserve-existing target does not match the current runtime database");
   }

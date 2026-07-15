@@ -21,6 +21,7 @@
 {{ maintainer }} ALL=({{ brai_service_user }}) NOPASSWD: {{ brai_env_root }}/{{ brai_envs.prod.path }}/source/deploy/scripts/complete-operation-activities.sh --local *
 {{ maintainer }} ALL=({{ brai_service_user }}) NOPASSWD: {{ brai_env_root }}/{{ brai_envs.prod.path }}/source/deploy/scripts/complete-inbox-operations.sh --local *
 {{ maintainer }} ALL=({{ brai_service_user }}) NOPASSWD: {{ brai_env_root }}/{{ brai_envs.prod.path }}/source/deploy/scripts/list-operation-activities.sh --local *
+{{ maintainer }} ALL=(root) NOPASSWD: {{ brai_supabase_maintenance }} --apply reconfigure-pooler
 {{ maintainer }} ALL=(root) NOPASSWD: {{ brai_repo }}/deploy/scripts/apply-main-infra.sh --check brai-caddy
 {{ maintainer }} ALL=(root) NOPASSWD: {{ brai_repo }}/deploy/scripts/apply-main-infra.sh --apply brai-caddy
 {{ maintainer }} ALL=(root) NOPASSWD: {{ brai_repo }}/deploy/scripts/apply-main-infra.sh --check brai-vault

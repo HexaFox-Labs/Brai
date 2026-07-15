@@ -129,6 +129,13 @@ export function sandboxCheckMode(command, env = process.env) {
     };
   }
 
+  if (/(?:^| )(?:deploy\/scripts\/supabase-maintenance\.sh|\/srv\/opt\/brai-supabase-maintenance\.sh)\b/.test(text)) {
+    return {
+      mode: "require_escalated",
+      reason: "Supabase maintenance holds host deploy locks and controls production services and Supavisor.",
+    };
+  }
+
   if (/\bdeploy\/scripts\/classify-delivery\.mjs\b/.test(text)) {
     const explicitFiles = command.includes("--file") || Boolean(env.BRAI_CHANGED_FILES?.trim());
     return explicitFiles

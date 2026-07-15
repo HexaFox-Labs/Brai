@@ -32,6 +32,29 @@ describe("BraiApp actions", () => {
     await waitFor(async () => expect(await pendingActivityEvents()).toHaveLength(1));
   });
 
+  it("preserves the current scope, screen, and cached actions when auth returns 503", async () => {
+    await saveActivitiesState(cachedActivitiesState("action-auth-outage", "Действие во время сбоя auth"));
+    window.history.replaceState(null, "", "/");
+    vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(true);
+    vi.mocked(globalThis.fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url.endsWith("/auth/session")) {
+        return new Response(JSON.stringify({ error: "auth_backend_unavailable" }), {
+          status: 503,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      throw new Error("unexpected_request");
+    });
+
+    render(<BraiApp />);
+
+    expect(await screen.findByRole("textbox", { name: "Название действия: Действие во время сбоя auth" })).toBeInTheDocument();
+    expect(await getMeta<string>("currentUserId")).toBe("test-user");
+    expect(window.location.pathname).toBe("/");
+    expect(screen.queryByRole("button", { name: "Войти" })).not.toBeInTheDocument();
+  });
+
   it("rejects ownerless local mutations until a delayed session binds the user", async () => {
     let resolveSession!: (value: { authenticated: true; user: { id: string; email: string; name: string } }) => void;
     const sessionResult = new Promise<{ authenticated: true; user: { id: string; email: string; name: string } }>((resolve) => {

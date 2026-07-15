@@ -47,6 +47,9 @@ brai_api_domain: api.brai.one
 brai_api_legacy_domains:
   - api.brightos.world
 brai_supabase_deploy_env_source: /etc/brai/supabase-deploy.env
+brai_supavisor_managed_config: /srv/opt/brai-supavisor-pooler.exs
+brai_supavisor_tenant_tool: /srv/opt/brai-supavisor-tenants.mjs
+brai_supabase_maintenance: /srv/opt/brai-supabase-maintenance.sh
 brai_temporal_worker_env_source: /etc/brai/brai-temporal-worker.env
 brai_temporal_ui_domain: temporal.brai.one
 brai_temporal_ui_legacy_domains:
