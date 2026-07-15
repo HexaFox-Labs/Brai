@@ -65,6 +65,7 @@ describe("mobile OTA publish scripts", () => {
         BRAI_ROOT: root,
         BRAI_BUILD_CLIENT: "false",
         BRAI_APP_VERSION: "9.9.9",
+        BRAI_PRODUCT_VERSION: "147",
         BRAI_TARGET_APK_VERSION: "2999",
         BRAI_PUBLISHED_AT: "2026-06-15T00:00:00Z",
       },
@@ -97,6 +98,7 @@ describe("mobile OTA publish scripts", () => {
     });
     expect(runtimeConfig).toContain("window.__BRAI_RUNTIME_CONFIG__");
     expect(runtimeConfig).toContain('"appVersion": "9.9.9"');
+    expect(runtimeConfig).toContain('"productVersion": 147');
     expect(manifest.otaVersion).toBe(bundleVersion);
     expect(manifest.targetApkVersion).toBe(2999);
   });
@@ -114,6 +116,7 @@ describe("mobile OTA publish scripts", () => {
         NEXT_PUBLIC_BRAI_PREVIEW_SLOT: "A",
         NEXT_PUBLIC_BRAI_BRANCH: "codex/x</script>\u2028",
         NEXT_PUBLIC_BRAI_COMMIT: "abc123",
+        NEXT_PUBLIC_BRAI_PRODUCT_VERSION: "147",
         NEXT_PUBLIC_BRAI_API: "/api",
         NEXT_PUBLIC_BRAI_ANDROID_API: "https://a.test.brai.one/api",
         NEXT_PUBLIC_BRAI_OTA_CHANNEL: "a.test.brai.one/mobile-update",
@@ -131,6 +134,7 @@ describe("mobile OTA publish scripts", () => {
       previewSlot: "A",
       branch: "codex/x</script>\u2028",
       commit: "abc123",
+      productVersion: 147,
       webApiBase: "/api",
       androidApiBase: "https://a.test.brai.one/api",
       otaChannel: "a.test.brai.one/mobile-update",
@@ -187,6 +191,7 @@ describe("mobile OTA publish scripts", () => {
         BRAI_ENVS_ROOT: path.join(root, "envs"),
         BRAI_SKIP_DEPLOY_USER_REENTRY: "true",
         BRAI_APP_VERSION: "9.9.9",
+        BRAI_PRODUCT_VERSION: "147",
         BRAI_TARGET_APK_VERSION: "2999",
         BRAI_PUBLISHED_AT: "2026-06-15T00:00:00Z",
       },
@@ -198,6 +203,7 @@ describe("mobile OTA publish scripts", () => {
     await expect(readFile(path.join(target, "web/index.html"), "utf8")).resolves.toContain("baseline");
     expect(runtimeConfig).toContain('"environment": "preview-b"');
     expect(runtimeConfig).toContain('"previewSlot": "B"');
+    expect(runtimeConfig).toContain('"productVersion": 147');
     expect(runtimeConfig).toContain('"androidApiBase": "https://b.test.brai.one/api"');
     expect(manifest.otaVersion).toBe("9.9.9");
     expect(manifest.targetApkVersion).toBe(2999);
@@ -579,6 +585,9 @@ describe("mobile OTA publish scripts", () => {
     const prodBlock = deploy.slice(deploy.indexOf('elif [[ "$ENVIRONMENT" == "prod" ]]'));
 
     expect(deploy).toContain("export BRAI_NATIVE_APK_CHANGE");
+    expect(deploy).toContain('git rev-list --first-parent "$BRAI_COMMIT"');
+    expect(deploy).toContain('--target-commit "$BRAI_PRODUCT_BASE_COMMIT"');
+    expect(deploy).toContain('--ancestor-commits "$BRAI_PRODUCT_ANCESTOR_COMMITS"');
     expect(deployBranch).toContain("BRAI_NATIVE_APK_CHANGE:-false");
     expect(deployBranch).toContain('resolve-required-apk-version.mjs" prod apkVersion');
     expect(deployBranch).toContain('BRAI_TARGET_APK_VERSION="$("$NODE_BIN" "$SCRIPT_DIR/resolve-required-apk-version.mjs" prod apkVersion)"');
@@ -1171,7 +1180,9 @@ describe("mobile OTA publish scripts", () => {
     expect(html).toContain("Brai E");
     expect(html).toContain('<div class="version-row"><p class="version">v1</p><span class="size">');
     expect(html).toContain("0 МБ</span>");
-    expect(html).toContain("23 июня 2026, 12:13 МСК");
+    expect(html).toContain("23 июня 2026, 09:13");
+    expect(html).toContain('document.querySelectorAll("time[datetime]")');
+    expect(html).not.toContain("МСК");
     expect(html).toContain('<a class="download" href="./brai-v1.apk">Скачать</a>');
     expect(html).toContain('<span class="download" aria-disabled="true">Скачать</span>');
     expect(html).not.toContain("versionCode");

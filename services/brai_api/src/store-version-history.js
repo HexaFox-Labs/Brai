@@ -126,7 +126,10 @@ export const versionHistoryMethods = {
   finalizeVersionWork(input) {
     const now = input.releasedAtUtc ?? new Date().toISOString();
     const versionTypeId = requiredText(input.versionTypeId ?? 'build', 'version_type_id');
-    const details = normalizeDetails(input.details);
+    const shortChanges = requiredText(input.shortChanges, 'short_changes');
+    const detailedChanges = requiredText(input.detailedChanges, 'detailed_changes');
+    const reason = requiredText(input.reason, 'reason');
+    const details = normalizeDetails(input.details, { shortChanges, detailedChanges, reason });
     return inTransaction(this, () => {
       const work = requiredWork(this, input.workKey, { forUpdate: true });
       const pulls = this.db.prepare(`
@@ -187,9 +190,9 @@ export const versionHistoryMethods = {
         version,
         includedInVersionId: input.includedInVersionId ?? null,
         releaseWorkId: work.id,
-        shortChanges: requiredText(input.shortChanges, 'short_changes'),
-        detailedChanges: requiredText(input.detailedChanges, 'detailed_changes'),
-        reason: requiredText(input.reason, 'reason'),
+        shortChanges,
+        detailedChanges,
+        reason,
         releasedAtUtc: now,
         sourceBranch: input.sourceBranch ?? null,
         sourceCommit: input.sourceCommit ?? null,
@@ -228,11 +231,20 @@ export const versionHistoryMethods = {
   },
 
   versionTypeExists(versionTypeId) {
-    return Boolean(this.db.prepare('SELECT 1 FROM version_types WHERE id = ?').get(versionTypeId));
+    return this.listVersionTypes().some((type) => type.id === versionTypeId);
   },
 
   listVersionTypes() {
-    const result = this.db.prepare('SELECT id, title FROM version_types ORDER BY id').all()
+    const result = this.db.prepare(`
+      SELECT id, title FROM version_types
+      WHERE id IN ('build', 'apk', 'macos', 'ios')
+      ORDER BY CASE id
+        WHEN 'build' THEN 1
+        WHEN 'apk' THEN 2
+        WHEN 'macos' THEN 3
+        WHEN 'ios' THEN 4
+      END
+    `).all()
       .map((row) => ({ id: publicHistoryText(row.id), title: publicHistoryText(row.title) }));
     assertPublicHistorySafe(result);
     return result;
@@ -422,13 +434,37 @@ function requiredPull(store, workId, repository, pullNumber) {
   return pull;
 }
 
-function normalizeDetails(details) {
+function normalizeDetails(details, { shortChanges, detailedChanges, reason }) {
   if (!Array.isArray(details) || !details.length) throw new Error('version requires at least one detail');
-  return details.map((detail) => ({
+  const normalized = details.map((detail) => ({
     title: requiredText(detail?.title, 'detail.title'),
     description: requiredText(detail?.description, 'detail.description'),
     pullNumber: detail?.pullNumber == null ? null : positiveInteger(detail.pullNumber, 'detail.pull_number'),
   }));
+  const seen = new Set();
+  const seenTitles = new Set();
+  const seenDescriptions = new Set();
+  const parentSummaries = new Set([shortChanges, detailedChanges, reason].map(comparableReleaseText));
+  for (const [index, detail] of normalized.entries()) {
+    const title = comparableReleaseText(detail.title);
+    const description = comparableReleaseText(detail.description);
+    const pair = `${title}\n${description}`;
+    if (/\s(?:—|-)\s*\d+$/u.test(detail.title)) throw new Error(`detail[${index}].title must not use an automatic numeric suffix`);
+    if (seen.has(pair)) throw new Error(`detail[${index}] duplicates another atomic detail`);
+    if (seenTitles.has(title)) throw new Error(`detail[${index}].title duplicates another atomic detail title`);
+    if (seenDescriptions.has(description)) throw new Error(`detail[${index}].description duplicates another atomic detail description`);
+    if (title === description) throw new Error(`detail[${index}].title must not repeat its description`);
+    if (parentSummaries.has(title)) throw new Error(`detail[${index}].title duplicates the parent summary`);
+    if (parentSummaries.has(description)) throw new Error(`detail[${index}].description duplicates the parent summary`);
+    seen.add(pair);
+    seenTitles.add(title);
+    seenDescriptions.add(description);
+  }
+  return normalized;
+}
+
+function comparableReleaseText(value) {
+  return String(value ?? '').trim().replace(/\s+/g, ' ').replace(/[.!?]+$/u, '').toLocaleLowerCase('ru-RU');
 }
 
 function requiredText(value, field) {

@@ -83,6 +83,7 @@ export async function BranchPreviewDeployWorkflow(input) {
     type: "preview_deploy_requested",
     sha: input.sha,
     baseSha: input.baseSha || "",
+    productBaseSha: input.productBaseSha || "",
     at: input.at,
     source: input.source || "exact-sha-preview-deploy"
   });
@@ -134,7 +135,8 @@ async function runPreviewDeploy(state, request) {
     result = await activities.deployBranch({
       branch: state.branch,
       sha: request.sha || state.lastSha,
-      baseSha: request.baseSha || ""
+      baseSha: request.baseSha || "",
+      productBaseSha: request.productBaseSha || ""
     });
     const passed = { slot: result.previewSlot || request.slot || "" };
     applyPreviewEvent(state, eventLike(request, "supabase_preview_passed", passed));

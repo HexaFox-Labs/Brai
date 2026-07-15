@@ -7,11 +7,19 @@ import test from "node:test";
 
 import { BraiStore } from "../../services/brai_api/src/store.js";
 import { createTestDatabase } from "../../services/brai_api/test-support/api.js";
-import { resolveAppVersion, resolveAppVersionAsync } from "./resolve-app-version.mjs";
+import { productAncestorCommits, resolveAppVersion, resolveAppVersionAsync } from "./resolve-app-version.mjs";
 
 test("explicit versions resolve without database access", () => {
   assert.equal(resolveAppVersion({ explicit: "1.2.3" }), "1.2.3");
   assert.equal(resolveAppVersion({ kind: "apk", explicit: "7" }), "7");
+  assert.equal(resolveAppVersion({ kind: "product", explicit: "148" }), "148");
+  assert.equal(resolveAppVersion({ kind: "product", explicit: "" }), "");
+});
+
+test("Product ancestor commit input is explicit and validated", () => {
+  assert.deepEqual(productAncestorCommits(`${"a".repeat(40)},${"B".repeat(40)}`), ["a".repeat(40), "B".repeat(40)]);
+  assert.deepEqual(productAncestorCommits(""), []);
+  assert.throws(() => productAncestorCommits("not-a-commit"), /Invalid Brai Product ancestor commits/);
 });
 
 test("client artifact detection imports without API dependencies", () => {
@@ -52,6 +60,8 @@ test("OTA version follows published artifacts instead of the independent build l
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "brai-version-"));
   const database = await createTestDatabase();
   const store = new BraiStore(database.url);
+  const acceptedProduct66 = "a".repeat(40);
+  const newerUnrelatedProduct = "b".repeat(40);
   try {
     store.upsertBuildVersion({
       versionTypeId: "build",
@@ -60,7 +70,20 @@ test("OTA version follows published artifacts instead of the independent build l
       shortChanges: "Production build.",
       detailedChanges: "Production build.",
       reason: "Test.",
-      releasedAtUtc: "2026-07-06T00:00:00.000Z"
+      releasedAtUtc: "2026-07-06T00:00:00.000Z",
+      targetBranch: "main",
+      targetCommit: acceptedProduct66
+    });
+    store.upsertBuildVersion({
+      versionTypeId: "build",
+      version: 67,
+      includedInVersionId: null,
+      shortChanges: "Unrelated production build.",
+      detailedChanges: "Unrelated production build.",
+      reason: "Test.",
+      releasedAtUtc: "2026-07-07T00:00:00.000Z",
+      targetBranch: "main",
+      targetCommit: newerUnrelatedProduct
     });
 
     const prodWebVersionJson = path.join(tmp, "version.json");
@@ -78,7 +101,14 @@ test("OTA version follows published artifacts instead of the independent build l
       /invalid client artifact change hint/,
     );
     assert.equal(await resolveAppVersionAsync({ environment: "preview-a", prodPostgresUrl: database.url, prodWebVersionJson, mobileTarget, nextOta: true }), "0.0.64");
-    assert.equal(await resolveAppVersionAsync({ kind: "apk", postgresUrl: database.url }), "1");
+    assert.equal(await resolveAppVersionAsync({ kind: "apk", postgresUrl: database.url }), "2");
+    assert.equal(await resolveAppVersionAsync({ kind: "product", postgresUrl: database.url, targetCommit: acceptedProduct66 }), "66");
+    assert.equal(await resolveAppVersionAsync({ kind: "product", postgresUrl: database.url, targetCommit: "unknown-product" }), "");
+    assert.equal(await resolveAppVersionAsync({
+      kind: "product",
+      postgresUrl: database.url,
+      ancestorCommits: `${"c".repeat(40)},${acceptedProduct66}`,
+    }), "66");
   } finally {
     store.close();
     await database.drop();

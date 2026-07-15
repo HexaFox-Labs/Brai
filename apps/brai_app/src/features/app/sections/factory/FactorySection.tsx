@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Bot, CheckCircle2, Clock3, Database, FileJson, GitBranch, Terminal, XCircle } from "lucide-react";
 import { BraiApi, type AiLog } from "@/shared/api/braiApi";
 import { defaultApiBase } from "@/shared/config/runtime";
+import { formatDisplayDateTime } from "@/shared/time/format";
 import { Badge } from "@/shared/ui/badge";
 import { Card } from "@/shared/ui/card";
 import { ScrollArea } from "@/shared/ui/scroll-area";
@@ -309,10 +310,10 @@ function formatDuration(value: unknown) {
 }
 
 function formatFactoryTime(value: string) {
-  return new Intl.DateTimeFormat("ru-RU", {
+  return formatDisplayDateTime(value, {
     day: "2-digit",
     month: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
-  }).format(new Date(value));
+  });
 }

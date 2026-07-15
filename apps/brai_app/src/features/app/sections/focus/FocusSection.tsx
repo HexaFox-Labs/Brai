@@ -3,7 +3,7 @@
 import { useEffect, useState, type ReactNode, type WheelEvent } from "react";
 import { ChevronDown, Crown, Eye, Sparkles } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { formatDuration, formatHumanDuration, formatPercent, formatRussianDate, moscowTime } from "@/shared/time/format";
+import { formatDisplayTime, formatDuration, formatHumanDuration, formatPercent, formatRussianDate } from "@/shared/time/format";
 import type { GoalData, HistoryData, TimerState } from "@/shared/types/timer";
 import { BorderTrail } from "@/shared/ui/border-trail";
 import { Button } from "@/shared/ui/button";
@@ -333,7 +333,7 @@ function TimerSection({
         data-galaxy-interaction-block
       >
         <p className={cx("session-line m-0 text-xs font-normal text-muted-foreground/55 tabular-nums", !active && "invisible")} aria-hidden={!active}>
-          Started {moscowTime(state.active_session?.started_at_utc)}
+          Started {formatDisplayTime(state.active_session?.started_at_utc)}
         </p>
         <Button
           type="button"

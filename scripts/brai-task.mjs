@@ -182,7 +182,7 @@ function runCli([command, ...args]) {
         accessContract(args);
         break;
       default:
-        throw new Error("usage: brai-task.mjs start <slug> [--support-of <owner-branch>]|follow-up [branch]|recover-follow-up [branch] --from-thread <lost-thread-id>|adopt-work|acceptance-reconcile [branch]|acceptance-repair [branch]|pre-tool-use|pre-commit|pre-push <remote>|stop|classify [--base <ref>] [--head <ref>] [--github-output]|handoff [branch]|preview [branch]|release-notes --short <text> --details <text> --reason <text> --testing <text> [--detail <title>::<description>] [--apk-short <text> --apk-details <text> --apk-reason <text> --apk-detail <title>::<description>]|require-delivery [branch] [sha]|require-preview [branch] [sha]|doctor [--strict]|preflight [--strict]|access-contract --local|--server|socraticode-exact-only --reason <text>|socraticode-used --tool <name>|delegate --thread <id> --path <path>|revoke --thread <id>");
+        throw new Error("usage: brai-task.mjs start <slug> [--support-of <owner-branch>]|follow-up [branch]|recover-follow-up [branch] --from-thread <lost-thread-id>|adopt-work|acceptance-reconcile [branch]|acceptance-repair [branch]|pre-tool-use|pre-commit|pre-push <remote>|stop|classify [--base <ref>] [--head <ref>] [--github-output]|handoff [branch]|preview [branch]|release-notes --short <text> --details <text> --reason <text> --testing <text> --detail <title>::<description> [--detail ...] [--apk-short <text> --apk-details <text> --apk-reason <text> --apk-detail <title>::<description>]|require-delivery [branch] [sha]|require-preview [branch] [sha]|doctor [--strict]|preflight [--strict]|access-contract --local|--server|socraticode-exact-only --reason <text>|socraticode-used --tool <name>|delegate --thread <id> --path <path>|revoke --thread <id>");
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -1344,9 +1344,6 @@ function writeReleaseNotesCli(args) {
   }
   const marker = ensureTaskWorkIdentity();
   const buildDetails = (values.detail ?? []).map((value) => parseAtomicDetail(value, "--detail"));
-  if (marker.workRole === "owner" && buildDetails.length === 0 && values.short && values.details) {
-    buildDetails.push({ title: values.short, description: values.details });
-  }
   if (marker.workRole === "support" && (values.short || values.details || values.reason)) {
     throw new Error("Support release notes accept --detail entries only; owner build summary remains authoritative.");
   }
@@ -1428,17 +1425,19 @@ function requireReleaseNotes(notes, source, { expectedWork = null, nativeRequire
     throw new Error(`${source}: work identity does not match the task marker.`);
   }
   const build = notes.build ?? {};
-  const normalizedBuild = { details: normalizeReleaseDetails(build.details, source, "build.details") };
+  const normalizedBuild = {};
   if (work.role === "owner") {
     for (const field of ["short_changes", "detailed_changes", "reason"]) normalizedBuild[field] = releaseText(build[field], source, `build.${field}`);
   } else if ([build.short_changes, build.detailed_changes, build.reason].some((value) => String(value ?? "").trim())) {
     throw new Error(`${source}: support receipt cannot replace owner build summary.`);
   }
+  normalizedBuild.details = normalizeReleaseDetails(build.details, source, "build.details", normalizedBuild);
   const platforms = {};
   if (notes.platforms?.apk) {
     const apk = notes.platforms.apk;
-    platforms.apk = { details: normalizeReleaseDetails(apk.details, source, "platforms.apk.details") };
+    platforms.apk = {};
     for (const field of ["short_changes", "detailed_changes", "reason"]) platforms.apk[field] = releaseText(apk[field], source, `platforms.apk.${field}`);
+    platforms.apk.details = normalizeReleaseDetails(apk.details, source, "platforms.apk.details", platforms.apk);
   }
   if (nativeRequired === true && !platforms.apk) throw new Error(`${source}: native APK boundary changed, so a complete platforms.apk block is required.`);
   if (nativeRequired === false && platforms.apk) throw new Error(`${source}: platforms.apk is present but no native APK boundary changed.`);
@@ -1459,12 +1458,40 @@ function releaseText(value, source, field) {
   return text;
 }
 
-function normalizeReleaseDetails(details, source, field) {
+function normalizeReleaseDetails(details, source, field, parent = {}) {
   if (!Array.isArray(details) || details.length === 0) throw new Error(`${source}: ${field} requires at least one atomic detail.`);
-  return details.map((detail, index) => ({
+  const normalized = details.map((detail, index) => ({
     title: releaseText(detail?.title, source, `${field}[${index}].title`),
     description: releaseText(detail?.description, source, `${field}[${index}].description`),
   }));
+  const seen = new Set();
+  const seenTitles = new Set();
+  const seenDescriptions = new Set();
+  const parentSummaries = new Set(
+    [parent.short_changes, parent.detailed_changes, parent.reason]
+      .map(comparableReleaseText)
+      .filter(Boolean),
+  );
+  for (const [index, detail] of normalized.entries()) {
+    const title = comparableReleaseText(detail.title);
+    const description = comparableReleaseText(detail.description);
+    const pair = `${title}\n${description}`;
+    if (/\s(?:—|-)\s*\d+$/u.test(detail.title)) throw new Error(`${source}: ${field}[${index}].title must describe the change, not use an automatic numeric suffix.`);
+    if (seen.has(pair)) throw new Error(`${source}: ${field}[${index}] duplicates another atomic detail.`);
+    if (seenTitles.has(title)) throw new Error(`${source}: ${field}[${index}].title duplicates another atomic detail title.`);
+    if (seenDescriptions.has(description)) throw new Error(`${source}: ${field}[${index}].description duplicates another atomic detail description.`);
+    if (title === description) throw new Error(`${source}: ${field}[${index}].title must summarize rather than repeat its description.`);
+    if (parentSummaries.has(title)) throw new Error(`${source}: ${field}[${index}].title duplicates the parent summary.`);
+    if (parentSummaries.has(description)) throw new Error(`${source}: ${field}[${index}].description duplicates the parent summary.`);
+    seen.add(pair);
+    seenTitles.add(title);
+    seenDescriptions.add(description);
+  }
+  return normalized;
+}
+
+function comparableReleaseText(value) {
+  return String(value ?? "").trim().replace(/\s+/g, " ").replace(/[.!?]+$/u, "").toLocaleLowerCase("ru-RU");
 }
 
 function parseAtomicDetail(value, option) {

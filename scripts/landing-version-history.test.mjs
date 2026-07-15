@@ -14,8 +14,10 @@ test('versions landing renders the normalized public history safely', async () =
   assert.match(html, /payload\.next_cursor/);
 
   assert.match(html, /\["", "All"\]/);
-  assert.match(html, /\["build", "Build"\]/);
-  assert.match(html, /\["apk", "APK"\]/);
+  assert.match(html, /\["build", "Product"\]/);
+  assert.match(html, /\["apk", "Android APK"\]/);
+  assert.match(html, /\["macos", "macOS"\]/);
+  assert.match(html, /\["ios", "iOS"\]/);
   assert.match(html, /knownTypes\.set\(item\.type/);
 
   for (const state of [

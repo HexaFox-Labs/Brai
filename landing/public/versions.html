@@ -64,8 +64,10 @@
       const retryButton = document.querySelector("[data-history-retry]");
       const moreButton = document.querySelector("[data-history-more]");
       const knownTypes = new Map([
-        ["build", "Build"],
-        ["apk", "APK"],
+        ["build", "Product"],
+        ["apk", "Android APK"],
+        ["macos", "macOS"],
+        ["ios", "iOS"],
       ]);
       let selectedType = "";
       let items = [];

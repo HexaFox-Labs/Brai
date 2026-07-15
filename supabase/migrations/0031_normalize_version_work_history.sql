@@ -109,13 +109,19 @@ ALTER TABLE github_pull_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE build_version_details ENABLE ROW LEVEL SECURITY;
 ALTER TABLE build_version_pull_requests ENABLE ROW LEVEL SECURITY;
 
-UPDATE version_types
-SET title = 'Сборка',
-    description = 'Завершённый объём работы Brai, независимо от web/OTA и platform artifact versions.'
-WHERE id = 'build';
+INSERT INTO version_types (id, title, description, created_at_utc) VALUES
+  ('build', 'Product', 'Принятая версия продукта Brai с завершённым объёмом работы, независимо от web/OTA-версии приложения.', now()::text),
+  ('apk', 'Android APK', 'Опубликованная версия Android APK. Увеличивается только при осознанном выпуске нового APK.', now()::text),
+  ('macos', 'macOS', 'Тип зарезервирован для будущих релизов приложения Brai для macOS.', now()::text),
+  ('ios', 'iOS', 'Тип зарезервирован для будущих релизов приложения Brai для iOS.', now()::text)
+ON CONFLICT (id) DO UPDATE SET
+  title = excluded.title,
+  description = excluded.description;
 
 INSERT INTO table_descriptions (table_name, title, short_description, long_description, updated_at_utc) VALUES
-  ('build_versions', 'Версии работ и платформ', 'Нумерованный ledger завершённых работ и опубликованных platform artifacts.', 'Build представляет законченный work scope; APK и будущие platform types представляют доказанно опубликованные артефакты.', now()::text),
+  ('version_types', 'Типы версий', 'Канонические линии Product и platform-версий.', 'Product и Android APK — активные линии; macOS и iOS зарезервированы без фиктивных версий и счётчиков.', now()::text),
+  ('build_versions', 'Версии продукта и платформ', 'Нумерованный ledger принятых Product-изменений и опубликованных platform artifacts.', 'Build — внутренний id Product-линии; APK — Android APK. Типы macOS и iOS не получают строк до фактической публикации своих артефактов.', now()::text),
+  ('build_version_counters', 'Счётчики версий', 'Следующие номера активных линий.', 'Счётчики создаются только для активных Product (build) и Android APK; для будущих macOS и iOS счётчиков пока нет.', now()::text),
   ('build_version_refs', 'Ссылки версий', 'Источник и целевая доставка версии.', 'Связывает work/platform version с исходной веткой и commit, а также с целевой веткой и commit доставки.', now()::text),
   ('release_works', 'Release works', 'Стабильные идентификаторы законченных объёмов работы.', 'Один work объединяет owner PR и необязательные support PR; build создаётся только при финализации всего work.', now()::text),
   ('github_pull_requests', 'GitHub pull requests', 'Публичные GitHub-снимки PR, зарегистрированных в release work.', 'Хранит полный release-time snapshot PR и неизменяемую принадлежность к work с ролью owner или support.', now()::text),

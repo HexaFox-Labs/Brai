@@ -14,8 +14,8 @@ const { Pool } = requireFromApi("pg");
 const DEFAULT_MANIFEST = path.join(root, "supabase/backfills/version-history-20260714.json");
 const DEFAULT_REPORT = path.join(root, "supabase/backfills/version-history-20260714-report.json");
 const REPOSITORY = "sergobright/Brai";
-const EXPECTED_VERSIONS = 156;
-const EXPECTED_MERGED_PULLS = 277;
+const EXPECTED_VERSIONS = 159;
+const EXPECTED_MERGED_PULLS = 288;
 const BACKFILL_LOCK = [20260714, 1];
 
 const APK_NOTES = new Map([
@@ -119,6 +119,280 @@ const APK_NOTES = new Map([
   }]
 ]);
 
+const HISTORICAL_DETAIL_OVERRIDES = new Map([
+  ["build:19", [
+    ["Проверка владельца Codex thread", "Task startup отказывает accepted или merged codex branches, если они не принадлежат текущему Codex thread."],
+    ["Owner thread новых task branches", "Task startup записывает owner thread для новых task branches."],
+    ["Правило task startup в документации", "Правило task startup задокументировано в repository-sync и preview handoff guidance."],
+  ]],
+  ["build:20", [["Fail-closed guards agent delivery", "Agent delivery guards отклоняют доставку, которая нарушает обязательные условия task и Preview flow."]]],
+  ["build:21", [["Separator выбранных строк", "Separator больше не отображается непосредственно перед выбранными строками."]]],
+  ["build:22", [["Документация inbound API contract", "Inbound API contract получил отдельное описание маршрута и ожидаемого поведения."]]],
+  ["build:23", [["Guard same-thread task start", "Same-thread guard предотвращает повторный task start в неподходящем контексте."]]],
+  ["build:24", [["Registry inbound LLM title handler", "Inbound LLM title handler регистрируется через отдельный handler registry."]]],
+  ["build:26", [["Compatibility gates Preview APK", "Compatibility gates Preview APK согласованы с условиями сборки и применения пакета."]]],
+  ["build:27", [["Отключение автоматического DEV delivery", "DEV delivery loop больше не запускается в автоматическом delivery flow."]]],
+  ["build:28", [["Favicons Preview web окружений", "Preview web окружения публикуют собственные favicon assets."]]],
+  ["build:29", [["Быстрая загрузка shell", "Shell больше не задерживает отображение основного интерфейса при загрузке."]]],
+  ["build:30", [["Мобильный редактор Focus History", "Inline-редактор Focus History адаптирован к мобильной ширине и управлению."]]],
+  ["build:31", [["Совместимость APK и OTA", "OTA допускается только при совместимой установленной APK-версии."]]],
+  ["build:32", [["Сброс Focus timer после remote stop", "После remote stop Focus timer сбрасывает локальное состояние."]]],
+  ["build:33", [["APK baselines всех окружений", "Production native deploy обновляет APK baselines для всех окружений."]]],
+  ["build:34", [["Компактные отступы Detail tab", "Detail tab использует уменьшенные отступы для более плотной компоновки."]]],
+  ["build:35", [["Совместимость Web OTA и APK", "Web OTA сверяет целевую APK-версию перед применением bundle."]]],
+  ["build:37", [["Короткий маршрут inbound API", "Inbound API доступен по сокращённому маршруту."]]],
+  ["build:38", [["Enter в однострочном title editor", "Enter завершает однострочное редактирование title вместо добавления новой строки."]]],
+  ["build:73", [
+    ["Проверка прав SQLite", "Preview deploy проверяет права SQLite до и после записи deployment metadata."],
+    ["Права SQLite-файлов для service group", "Preview deploy нормализует созданные SQLite-файлы для service group."],
+    ["Проверка API после restart", "Preview deploy ждёт успешный /health после systemctl restart."],
+    ["Ready только после успешного health", "Preview deploy помечает слот ready только после успешного /health."],
+    ["Application ID transient Preview APK", "Release index для transient preview APK показывает фактический applicationId с .work."],
+  ]],
+  ["build:76", [
+    ["Версионированный реестр agents", "SQLite registry handlers перенесены в agents с явной версией агента."],
+    ["Расписания в agent_schedules", "Расписания зарегистрированных агентов перенесены в отдельную таблицу agent_schedules."],
+    ["Добавлен журнал ai_logs", "Таблица ai_logs добавлена для аудита фактических запусков AI-агентов."],
+    ["Аудит фактических запусков агентов", "Текущие inbound, AirWhisper и scheduled agents пишут одну audit-строку на фактический запуск."],
+  ]],
+  ["build:80", [
+    ["Android package Brai Cmd", "Android namespace/package переименован с airwhisper на braicmd."],
+    ["Серверные модули Brai Cmd", "Серверные модули и тесты переименованы в Brai Cmd."],
+    ["SQLite identity Brai Cmd", "SQLite-таблицы и agent id переведены на brai_cmd/brai-cmd."],
+    ["Совместимость старых интеграций", "Legacy alias-ы сохранены для старых headers, routes и env vars."],
+    ["Миграция Android preferences", "Android migration переносит прежние AirWhisper preferences в ключи Brai Cmd."],
+    ["Handoff ждёт готовности Preview", "Preview handoff ждёт готовности CI и слота вместо преждевременного выхода на queued/in_progress."],
+  ]],
+  ["build:115", [
+    ["Admin observability для Role Contracts и Workflows", "Admin Role Contracts и Workflows получили read-only observability UI с diagrams, telemetry, trace status, worker heartbeats и cursor runs."],
+    ["Preview login на тестовых доменах", "В test email login добавлен allowlist для https://[a-e].test.brai.one."],
+    ["Auto-fit диаграмм", "Диаграммы автоматически вписываются в выделенную область."],
+    ["Глобальный feedback действий Admin", "Клики, ссылки и submit в Admin получили глобальный feedback."],
+    ["Подписи медленной загрузки", "При медленной загрузке Admin показывает «Загружаю» или «Применяю»."],
+    ["Локальное подтверждение кнопок", "Каждая локальная кнопка Admin показывает короткое подтверждение после действия."],
+  ]],
+  ["build:125", [
+    ["Общий helper items/item_roles", "В API store добавлен общий helper для items/item_roles."],
+    ["Role identity operation и focus", "Operation и focus paths сохраняют item_roles_id."],
+    ["Транзакционная запись role-связей", "Operation script пишет role-связи в той же транзакции."],
+    ["Repair production-derived seed", "Migration 58 исправляет production и preview данные после production seed."],
+    ["Retry Preview Supabase deploy", "Preview Supabase deploy повторяет transient pooler circuit breaker."],
+    ["Reconcile перед acceptance", "Branch согласована с актуальным main перед acceptance."],
+  ]],
+  ["build:136", [
+    ["Результат расшифровки переживает retry", "DurableQueue сохраняет результат расшифровки в checkpoint между повторными попытками доставки."],
+    ["Классификация provider failures", "Ошибки 4xx, 429 и 5xx классифицируются раздельно."],
+    ["Остановка повторов при неверном ключе", "Фоновые повторы останавливаются при неверном ключе."],
+    ["Возобновление после отключения профиля", "Обработка автоматически возобновляется после отключения профиля."],
+    ["Защита от поздних WebView-ответов", "Поздние ответы WebView больше не меняют завершённое состояние."],
+    ["Locked-состояние после выхода", "ConfigStore и SecureStringStore сохраняют durable locked-состояние после выхода из Brai Cmd."],
+    ["Поддержка ручных моделей", "Brai Cmd поддерживает ручные model profiles вместе со встроенными вариантами."],
+    ["WAV-диагностика Brai", "RecordingArchiveStore сохраняет реальные WAV-записи для диагностики сбоев записи и расшифровки."],
+    ["Понятные русские ошибки", "Ошибки Brai Cmd получили понятные русские тексты."],
+    ["Полные UI-проверки под нагрузкой", "Полные UI-проверки стабильно проходят под нагрузкой."],
+    ["Проверки Android и API", "Полные проверки Android и API пройдены."],
+  ]],
+  ["build:146", [
+    ["Auth-сбои возвращают 503", "При сбое auth-зависимостей API возвращает 503 вместо ложного выхода пользователя."],
+    ["Health проверяет оба Postgres-пула", "API health-check независимо проверяет auth и runtime Postgres pools."],
+    ["Защита Supavisor и будущих tenants", "Supavisor maintenance и будущие production/nonproduction tenants защищены deploy-lock и auth canary."],
+  ]],
+  ["build:147", [
+    ["Единая ширина страниц", "Все страницы приложения используют одну каноническую ширину контента."],
+    ["Единые панели страниц", "Разделы приложения используют общий компонент оболочки page panel."],
+    ["Исправлены мобильные меню", "Исправлены мобильные Док-, Дроп- и контекст-меню."],
+    ["Плавные общие жесты", "Общие mobile navigation gestures используют единую плавную модель взаимодействия."],
+    ["Стандартные области прокрутки", "Контент страниц прокручивается внутри стандартных общих scroll areas."],
+  ]],
+  ["build:148", [
+    ["Канонический Inbox-helper", "Новые agent operations создаются только через канонический Inbox helper."],
+    ["Legacy alias работает без SQL", "Legacy operation alias делегирует каноническому Inbox helper без прямого SQL."],
+    ["Postgres блокирует новые операции в Activities", "Postgres trigger блокирует новые Codex operations в Activities."],
+    ["Узкий import-флаг production-derived копирования", "Production-derived копирование использует узкий transaction-local import-флаг."],
+    ["Чтение исторических строк", "Существующие operation rows в Activities остаются доступными для чтения после закрытия write path."],
+    ["Завершение исторических строк", "Исторические operation rows можно завершать через сохранённый compatibility path."],
+    ["Soft-delete исторических строк", "Исторические operation rows можно soft-delete через сохранённый compatibility path."],
+  ]],
+]);
+
+const HISTORICAL_TITLE_OVERRIDES = new Map([
+  ["apk:3:1", "API и OTA endpoints Android flavors"],
+  ["apk:3:2", "Production OTA manifest"],
+  ["apk:3:3", "OTA endpoints environment flavors"],
+  ["apk:7:4", "WAV-диагностика и checkpoint расшифровки"],
+  ["apk:7:3", "Durable locked-состояние credential stores"],
+  ["apk:9:1", "Failed audio items и update dot"],
+  ["apk:10:1", "Разрешение установки APK"],
+  ["apk:10:2", "Безопасный URI для installer"],
+  ["apk:11:4", "Checkpoint расшифровки и диагностические записи"],
+  ["apk:11:1", "Последовательное хранение provider credentials"],
+  ["apk:11:3", "Восстановление auth-blocked очереди"],
+  ["build:1:2", "Единая публичная версия web и Android OTA"],
+  ["build:2:2", "Счётчик S для APK-релизов"],
+  ["build:5:2", "Канонические Bright OS icons production"],
+  ["build:6:2", "Публикация build version после deploy-dev"],
+  ["build:7:2", "Cache-safe публикация OTA manifests"],
+  ["build:9:2", "FIFO-очередь полного preview pool"],
+  ["build:9:3", "Автоматическое освобождение preview slot"],
+  ["build:11:1", "Cleanup Preview после DEV deployment"],
+  ["build:14:2", "Исключение metadata для content-only changes"],
+  ["build:16:1", "Versioned-модель Focus History"],
+  ["build:16:2", "Синхронизация completed sessions через timer events"],
+  ["build:16:3", "Миграция legacy timer sessions"],
+  ["build:17:1", "Guards task-start и preview handoff"],
+  ["build:25:1", "SocratiCode как основной semantic search"],
+  ["build:36:1", "Profile actions в rail"],
+  ["build:39:1", "Синхронизация Android focus notification"],
+  ["build:42:1", "Проверка актуальности Production APK"],
+  ["build:44:1", "Расчёт нижней production OTA-версии"],
+  ["build:47:1", "Устойчивый cleanup Preview DB"],
+  ["build:54:1", "Согласованное расположение Focus controls"],
+  ["build:56:1", "Компактные desktop rail и mobile menu"],
+  ["build:56:2", "Компактные статусы и навигация"],
+  ["build:62:1", "Переименование Android package и native paths"],
+  ["build:63:2", "Release notes в production build_versions"],
+  ["build:64:2", "Отказ от legacy release/canon строк"],
+  ["build:65:1", "Better Auth и Resend в Brai API"],
+  ["build:65:2", "Android compatibility legacy password login"],
+  ["build:66:1", "Product release notes в accepted promotion"],
+  ["build:66:2", "Сохранение build history при APK reset"],
+  ["build:66:3", "Раздельные build и APK-линии"],
+  ["build:67:2", "Защита от повторной публикации OTA 0.0.63"],
+  ["build:68:2", "Документация брендовых логотипов"],
+  ["build:69:2", "Сохранённая структура OTP-письма"],
+  ["build:70:1", "Sign In и APP по /auth/session"],
+  ["build:70:2", "CORS access brightos.world"],
+  ["build:71:1", "Фиксация Preview iteration после успешного deploy"],
+  ["build:71:2", "Сохранение предыдущей iteration при сбое"],
+  ["build:72:1", "Engine вместо блокировки устаревшим APK"],
+  ["build:72:2", "Доступность Actions, Focus и остальных разделов"],
+  ["build:72:3", "Блокировка OTA новым APK"],
+  ["build:74:2", "Fail-closed проверка Preview APK assets"],
+  ["build:75:1", "Items как identity-таблица сущностей"],
+  ["build:77:2", "Generic scheduler без TASKS.md"],
+  ["build:78:2", "Проверка индекса и watcher в preflight"],
+  ["build:79:1", "Создание Vault после OTP-входа"],
+  ["build:82:1", "Thumbnail для image-вложений"],
+  ["build:82:2", "Image attachments в Inbox detail panel"],
+  ["build:84:2", "Изоляция preview APK environment"],
+  ["build:85:2", "Web-only scope OTA metadata Preview D"],
+  ["build:85:3", "OTA target stable Brai D v6"],
+  ["build:86:2", "Scope замены брендовых wordmark assets"],
+  ["build:87:2", "CI-покрытие deploy scripts"],
+  ["build:87:1", "Удаление SQLite runtime fallback"],
+  ["build:90:2", "Переиспользование готового static export"],
+  ["build:91:1", "Проверка brai-runtime-config.js в Gradle"],
+  ["build:91:2", "Runtime config вместо всего JS bundle"],
+  ["build:91:3", "Защита Android API через runtime config"],
+  ["build:92:2", "--cd для каталога attachment"],
+  ["build:92:4", "Порядок аргументов fake-codex"],
+  ["build:92:3", "Корректный запуск image_describer"],
+  ["build:94:2", "Абсолютные пути image attachments"],
+  ["build:94:3", "Изоляция Codex config от attachment path"],
+  ["build:95:2", "Fail-fast для obsolete Inbox storage env"],
+  ["build:97:2", "Canonical events для timer, activities и inbox"],
+  ["build:99:1", "Очистка ошибочных APK-версий после v2"],
+  ["build:99:2", "APK v2 в manifest и release metadata"],
+  ["build:102:1", "Точное определение Android-boundary"],
+  ["build:102:2", "Admin-поля без Preview APK build"],
+  ["build:102:3", "Android-поля требуют APK"],
+  ["build:104:1", "Fallback исходного изображения"],
+  ["build:106:3", "308-редиректы старых адресов"],
+  ["build:107:1", "Перенос на актуальный main"],
+  ["build:107:2", "Послойная проверка auth-матрицы"],
+  ["build:107:3", "Актуальный Caddy/runtime publishing config"],
+  ["build:109:2", "Логирование vault_prepare_failed"],
+  ["build:109:4", "Недоступный Vault side effect"],
+  ["build:110:3", "APK v3 с проверкой готового файла"],
+  ["build:111:3", "Provider-ключи только в server env"],
+  ["build:112:2", "Миграция шага cloud-password"],
+  ["build:112:3", "Cloud onboarding без password prompt"],
+  ["build:113:1", "Удаление HTTP/HTML preview-status"],
+  ["build:114:1", "HTTPS wordmark в OTP-письмах"],
+  ["build:116:1", "Новая Gmail-цепочка для OTP-писем"],
+  ["build:117:2", "Исправления guard sync и delivery"],
+  ["build:118:1", "Описание особого доступа под заголовком"],
+  ["build:122:2", "Postgres smoke истории и схемы"],
+  ["build:128:2", "Закрытие resolved operation backlog"],
+  ["build:129:1", "Единый email → OTP вход на web и Android"],
+  ["build:130:1", "Внешний Inbox API для Agent operations"],
+  ["build:131:1", "Email-only login Dev и Preview"],
+  ["build:131:2", "Production email OTP"],
+  ["build:131:3", "Единый primary/test аккаунт test-only login"],
+  ["build:132:1", "Размер опубликованного APK"],
+  ["build:133:1", "Рендеринг release page из releases.json"],
+  ["build:133:2", "Release page без stale index.html"],
+  ["build:133:3", "Видимые размеры файлов"],
+  ["build:134:2", "Синхронизация сообщения и retry-кнопки"],
+  ["build:137:2", "Обновление credential после native 401"],
+  ["build:137:3", "Возврат в auth_required после истечения сессии"],
+  ["build:138:1", "Сохранение прав пользовательского Vault"],
+  ["build:139:1", "Загрузка сцены до mount Draws editor"],
+  ["build:140:2", "Отдельный слой анимации открытия"],
+  ["build:140:6", "Единый mobile scroll gutter"],
+  ["build:140:7", "Сохранённый отступ верхней панели"],
+  ["build:140:8", "UI-only scope мобильного исправления"],
+  ["build:141:2", "Инструкция полного закрытия приложения"],
+  ["build:142:3", "Сохранение выбора при переключении"],
+  ["build:142:1", "Прокрутка моделей в Radix Select"],
+  ["build:142:2", "Редактирование text и vision профилей"],
+  ["build:144:3", "Runtime fallback BRAI_AIRWHISPER_*"],
+  ["build:145:1", "Девять аргументов удалённой SSH-команды"],
+]);
+
+const HISTORICAL_DESCRIPTION_OVERRIDES = new Map([
+  ["apk:10:1", "AndroidManifest объявляет REQUEST_INSTALL_PACKAGES, чтобы передать загруженный APK системному installer."],
+  ["build:2:2", "Номер S увеличивается отдельно при выпуске нового native APK."],
+  ["build:9:3", "Acceptance release освобождает занятый Preview slot для следующей task branch."],
+  ["build:36:1", "Profile actions теперь доступны непосредственно в компактном rail интерфейса."],
+  ["build:63:2", "Production promotion записывает явные русские release notes в build_versions без fallback из Git или deployment metadata."],
+  ["build:64:2", "Release history использует отдельные build и APK-линии без legacy release/canon rows."],
+  ["build:67:2", "Build-counter предотвращает повторную публикацию устаревшей OTA 0.0.63 в production и Preview."],
+  ["build:72:2", "Уведомление о новом APK блокирует только OTA update, сохраняя доступ к Actions, Focus и остальным разделам."],
+  ["build:75:3", "Schema metadata в table_descriptions и migration tests обновлены для новой items/item_roles модели."],
+  ["build:82:1", "Сервер создаёт thumbnail для каждого image-вложения, сохранённого во Входящих."],
+  ["build:85:2", "Изменение относится только к OTA metadata Preview D и не выпускает новый native APK."],
+  ["build:85:3", "OTA manifest Preview D указывает на опубликованный stable APK Brai D v6."],
+  ["build:86:2", "Релиз заменяет крупные brand wordmarks, не затрагивая app icons, favicons, PWA и launcher/splash assets."],
+  ["build:91:2", "Gradle проверяет brai-runtime-config.js вместо всего JS bundle."],
+  ["build:91:3", "Проверка runtime config сохраняет защиту от неверного Android API и допускает production fallback в переиспользуемом static export."],
+  ["build:92:2", "Параметр --cd задаёт каталог текущего image attachment для Codex CLI."],
+  ["build:92:3", "Исправленный порядок аргументов предотвращает падение image_describer до обработки изображения."],
+  ["build:94:2", "Image-describer передаёт каждый attachment в Codex абсолютным filesystem path."],
+  ["build:94:3", "Абсолютный путь attachment не позволяет Codex читать repo-local .codex/config.toml вместо конфигурации вложения."],
+  ["build:106:3", "Запросы к retired brightos.world адресам получают постоянный HTTP 308 redirect на brai.one."],
+  ["build:107:1", "Implementation changes перенесены на актуальный main перед финальной delivery проверкой."],
+  ["build:107:2", "Auth matrix проверяет каждый access layer в детерминированном порядке."],
+  ["build:109:4", "При ошибке подготовки Vault внешний Vault side effect не выполняется."],
+  ["build:112:2", "Сохранённый onboarding state cloud-password мигрирует на актуальный шаг cloud-login."],
+  ["build:126:3", "Навигация получила отдельный пустой раздел /profile с собственным route."],
+  ["build:131:2", "Production login требует email OTP, а test email login остаётся в nonproduction окружениях."],
+  ["build:133:3", "Renderer страницы релизов показывает размеры APK из актуальной releases.json metadata."],
+  ["build:134:2", "Onboarding retry message и retry button теперь обновляются из одного синхронизированного состояния."],
+  ["build:135:3", "Reliability regression tests покрывают client_sequence, retry fallback и восстановление local cache."],
+  ["build:137:2", "Native HTTP 401 запускает принудительное обновление device credential перед повтором запроса."],
+  ["build:140:6", "Одинаковый mobile scroll gutter применяется в Actions, Inbox, Archive и вложенных мобильных панелях."],
+  ["build:140:7", "Controls верхней панели сохраняют собственный padding при расширении scroll gutter до края экрана."],
+  ["build:140:8", "Исправление ограничено animation и mobile scroll layout и не затрагивает auth/session code."],
+  ["build:142:3", "Переключение режима сохраняет ранее выбранный профиль."],
+]);
+
+const LEADING_CHANGE_VERB = /^(?:Добавлен(?:а|о|ы)?|Исправлен(?:а|о|ы)?|Усилен(?:а|о|ы)?|Обновл[её]н(?:а|о|ы)?|Реализован(?:а|о|ы)?|Перевед[её]н(?:а|о|ы)?|Стабилизирован(?:а|о|ы)?|Устран[её]н(?:а|о|ы)?|Нормализован(?:а|о|ы)?|Ограничен(?:а|о|ы)?|Заверш[её]н(?:а|о|ы)?|Унифицирован(?:а|о|ы)?|Опубликован(?:а|о|ы)?|Записан(?:а|о|ы)?|Переименован(?:а|о|ы)?|Пересобран(?:а|о|ы)?|Отключ[её]н(?:а|о|ы)?|Уплотн[её]н(?:а|о|ы)?|Сокращ[её]н(?:а|о|ы)?|Перенес[её]н(?:а|о|ы)?|Удал[её]н(?:а|о|ы)?|Убран(?:а|о|ы)?|Скрыт(?:а|о|ы)?|Защищ[её]н(?:а|о|ы)?|Поддержан(?:а|о|ы)?|Введ[её]н(?:а|о|ы)?|Создан(?:а|о|ы)?|Задокументирован(?:а|о|ы)?|Подтвержд[её]н(?:а|о|ы)?)\s+/iu;
+const GENERIC_DETAIL_TITLES = new Set([
+  "production",
+  "environment flavors",
+  "configstore",
+  "securestringstore",
+  "durablequeue",
+  "task-start",
+  "android package",
+  "timer",
+  "manifest",
+]);
+const CONTEXT_DEPENDENT_DETAIL = /^(?:это|эта|этот|эти|они|их|остальные|не весь|переключение обратно)(?:\s|$)/iu;
+const GENERIC_ACTION_TITLE = /^(?:действия|изменения|исправления|улучшения|обновления|разное|прочее|добавлен[аоы]? (?:проверка|тесты?|поддержка)|исправлены guard sync|добавлены reliability)(?:[.!…]|$)/iu;
+const NON_CHANGE_DETAIL = /(?:не (?:менял(?:ась|ось|ись)?|изменял(?:ась|ось|ись)?)|остаются доступными)(?:[.!…]|$)/iu;
+
 export async function generateManifest({
   databaseUrl,
   databaseEvidence,
@@ -170,8 +444,8 @@ export async function generateManifest({
     const key = versionKey(row.version_type_id, row.version);
     const pullNumbers = pullNumbersByVersion.get(key) || [];
     const releaseWorkKey = pullNumbers.length ? workKey(pullNumbers[0]) : null;
-    const parent = normalizedParent(row);
     const details = normalizedDetails(row, pullNumbers[0] || null);
+    const parent = normalizedParent(row, details);
     const refs = (refsByVersion.get(key) || []).map(publicRef);
     if (key === "apk:11") {
       refs.splice(0, refs.length, {
@@ -302,6 +576,24 @@ export function buildReport(manifest) {
   };
 }
 
+export function retitleHistoricalManifest(manifest) {
+  const result = structuredClone(manifest);
+  for (const version of result.versions) {
+    const key = versionKey(version.version_type_id, version.version);
+    version.details = version.details.map((detail, index) => {
+      const override = HISTORICAL_DETAIL_OVERRIDES.get(key)?.[index];
+      const description = override?.[1] || HISTORICAL_DESCRIPTION_OVERRIDES.get(`${key}:${index + 1}`) || detail.description;
+      return {
+        ...detail,
+        title: historicalDetailTitle(key, index, description, version.parent.short_changes),
+        description
+      };
+    });
+    version.parent.detailed_changes = detailSummary(version.details, version.parent.short_changes);
+  }
+  return validateManifest(result);
+}
+
 export function validateManifest(manifest) {
   if (manifest?.schema_version !== 1) throw new Error("unsupported version-history manifest schema");
   assertPublicHistorySafe(manifest);
@@ -338,8 +630,39 @@ export function validateManifest(manifest) {
       if (linkedPullTypes.has(typed)) throw new Error(`PR ${keyForPull} is linked twice for ${version.version_type_id}`);
       linkedPullTypes.add(typed);
     }
+    const detailKeys = new Set();
+    const detailTitles = new Set();
+    const detailDescriptions = new Set();
     for (const detail of version.details) {
       if (!requiredText(detail.title) || !requiredText(detail.description)) throw new Error(`empty detail in ${key}`);
+      if (/\s(?:—|-)\s*\d+$/u.test(detail.title)) throw new Error(`automatic numeric detail title in ${key}`);
+      if (/…|\.\.\./u.test(detail.title)) throw new Error(`truncated detail title in ${key}`);
+      const title = comparableText(detail.title);
+      const description = comparableText(detail.description);
+      const titleWords = detail.title.match(/[\p{L}\p{N}_]+(?:[-./][\p{L}\p{N}_]+)*/gu) || [];
+      const descriptionWords = detail.description.match(/[\p{L}\p{N}_]+(?:[-./][\p{L}\p{N}_]+)*/gu) || [];
+      const firstDescriptionFragment = comparableText(detail.description.split(/[,;:]\s+|\s+[—–]\s+/u)[0]);
+      const detailKey = `${title}\n${description}`;
+      if (title === description) throw new Error(`detail title repeats its description in ${key}`);
+      if (GENERIC_DETAIL_TITLES.has(title)) throw new Error(`generic detail title in ${key}`);
+      if (titleWords.length <= 2 && /[A-Za-z]/u.test(detail.title) && !/[А-Яа-яЁё]/u.test(detail.title)) throw new Error(`short Latin-only detail title in ${key}`);
+      if (title.split(/\s+/u).length < 3 && title === firstDescriptionFragment) throw new Error(`generic detail title fragment in ${key}`);
+      if (title === comparableText(version.parent.short_changes)) throw new Error(`detail title duplicates the parent summary in ${key}`);
+      if (title === comparableText(version.parent.detailed_changes)) throw new Error(`detail title duplicates the parent details in ${key}`);
+      if (title === comparableText(version.parent.reason)) throw new Error(`detail title duplicates the parent reason in ${key}`);
+      if (description === comparableText(version.parent.short_changes)) throw new Error(`detail description duplicates the parent short summary in ${key}`);
+      if (description === comparableText(version.parent.detailed_changes)) throw new Error(`detail description duplicates the parent summary in ${key}`);
+      if (description === comparableText(version.parent.reason)) throw new Error(`detail description duplicates the parent reason in ${key}`);
+      if (descriptionWords.length <= 5) throw new Error(`short detail description in ${key}`);
+      if (CONTEXT_DEPENDENT_DETAIL.test(detail.title) || CONTEXT_DEPENDENT_DETAIL.test(detail.description)) throw new Error(`context-dependent detail in ${key}`);
+      if (GENERIC_ACTION_TITLE.test(detail.title)) throw new Error(`generic action detail title in ${key}`);
+      if (NON_CHANGE_DETAIL.test(`${detail.title}\n${detail.description}`)) throw new Error(`non-change detail wording in ${key}`);
+      if (detailKeys.has(detailKey)) throw new Error(`duplicate detail in ${key}`);
+      if (detailTitles.has(title)) throw new Error(`duplicate detail title in ${key}`);
+      if (detailDescriptions.has(description)) throw new Error(`duplicate detail description in ${key}`);
+      detailKeys.add(detailKey);
+      detailTitles.add(title);
+      detailDescriptions.add(description);
       if (detail.pull_number != null && !versionPulls.has(pullKey(REPOSITORY, detail.pull_number))) {
         throw new Error(`detail PR #${detail.pull_number} is not linked to ${key}`);
       }
@@ -650,13 +973,13 @@ function apk11ArtifactEvidence(releasesRoot) {
   };
 }
 
-function normalizedParent(row) {
+function normalizedParent(row, details) {
   const apk = row.version_type_id === "apk" ? APK_NOTES.get(Number(row.version)) : null;
   if (row.version_type_id === "apk" && !apk) throw new Error(`missing native-only APK notes for v${row.version}`);
   return {
     included_in_version: null,
     short_changes: publicHistoryText(apk?.short_changes || row.short_changes),
-    detailed_changes: publicHistoryText(apk ? apk.details.join("\n\n") : row.detailed_changes),
+    detailed_changes: detailSummary(details, apk?.short_changes || row.short_changes),
     reason: publicHistoryText(apk?.reason || row.reason),
     released_at_utc: row.released_at_utc,
     created_at_utc: row.created_at_utc
@@ -664,20 +987,62 @@ function normalizedParent(row) {
 }
 
 function normalizedDetails(row, pullNumber) {
+  const key = versionKey(row.version_type_id, Number(row.version));
+  const override = HISTORICAL_DETAIL_OVERRIDES.get(key);
+  if (override) return override.map(([title, description]) => ({ title, description, pull_number: pullNumber }));
   const apk = row.version_type_id === "apk" ? APK_NOTES.get(Number(row.version)) : null;
-  const chunks = apk?.details || atomicText(row.detailed_changes);
-  const title = publicHistoryText(apk?.short_changes || row.short_changes).replace(/[.!?]+$/u, "");
-  return chunks.map((description, index) => ({
-    title: chunks.length === 1 ? title : `${title} — ${index + 1}`,
-    description: publicHistoryText(description),
-    pull_number: pullNumber
-  }));
+  const chunks = (apk?.details || [row.detailed_changes]).flatMap(atomicText);
+  return chunks.map((description, index) => {
+    const normalizedDescription = HISTORICAL_DESCRIPTION_OVERRIDES.get(`${key}:${index + 1}`) || description;
+    return {
+      title: historicalDetailTitle(key, index, normalizedDescription, apk?.short_changes || row.short_changes),
+      description: publicHistoryText(normalizedDescription),
+      pull_number: pullNumber
+    };
+  });
+}
+
+function historicalDetailTitle(key, index, description, parentTitle) {
+  return HISTORICAL_DETAIL_OVERRIDES.get(key)?.[index]?.[0]
+    || HISTORICAL_TITLE_OVERRIDES.get(`${key}:${index + 1}`)
+    || detailTitle(description, parentTitle);
+}
+
+function detailTitle(value, parentTitle) {
+  const text = requiredText(publicHistoryText(value)).replace(/[.!?]+$/u, "");
+  const firstClause = text.split(/[,;:]\s+|\s+[—–]\s+/u)[0].trim();
+  const clause = firstClause.split(/\s+/u).length < 3 ? text : firstClause;
+  const withoutChangeVerb = clause.replace(LEADING_CHANGE_VERB, "").trim();
+  const semanticClause = withoutChangeVerb === clause ? clauseAtSemanticBoundary(clause) : withoutChangeVerb;
+  const title = semanticClause[0].toLocaleUpperCase("ru-RU") + semanticClause.slice(1);
+  if (comparableText(title) !== comparableText(parentTitle)) return title;
+  const subject = title.replace(LEADING_CHANGE_VERB, "");
+  return subject === title ? `Состав изменения: ${title}` : subject[0].toLocaleUpperCase("ru-RU") + subject.slice(1);
+}
+
+function clauseAtSemanticBoundary(text) {
+  const boundary = /\s+(?:с|для|через|при|после|до|между|вместо|без|из-за|перед|внутри|рядом|по|на|к|от|под)\s+/giu;
+  for (const match of text.matchAll(boundary)) {
+    const before = text.slice(0, match.index).trim();
+    const after = text.slice(match.index + match[0].length).trim();
+    if (before.split(/\s+/u).length >= 3 && after.split(/\s+/u).length >= 2) return before;
+  }
+  return text;
+}
+
+function detailSummary(details, shortChanges) {
+  const titles = details.map((detail) => detail.title.replace(/[.!?]+$/u, ""));
+  return titles.length === 1
+    ? `Релиз включает изменение: ${titles[0]}.`
+    : titles.length <= 3
+      ? `Релиз включает: ${titles.join("; ")}.`
+      : `Релиз объединяет ${titles.length} самостоятельных изменений по теме «${requiredText(publicHistoryText(shortChanges)).replace(/[.!?]+$/u, "")}».`;
 }
 
 function atomicText(value) {
   const text = requiredText(publicHistoryText(value));
   const chunks = text
-    .split(/\n\s*\n|\n+|;\s+(?=[\p{Lu}\d])|(?<=[.!?])\s+(?=[\p{Lu}\d])/u)
+    .split(/\n\s*\n|\n+|;\s+|,\s+а\s+|(?<=[.!?])\s+(?=[\p{Lu}\d])/u)
     .map((part) => part.trim().replace(/^[-*•]\s*/u, ""))
     .filter(Boolean);
   return chunks.length ? chunks : [text];
@@ -767,6 +1132,10 @@ function publicHistoryText(value) {
   return redactPublicHistoryText(String(value ?? "").trim());
 }
 
+function comparableText(value) {
+  return String(value ?? "").trim().replace(/\s+/g, " ").replace(/[.!?]+$/u, "").toLocaleLowerCase("ru-RU");
+}
+
 function jsonText(value) {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
@@ -832,7 +1201,17 @@ async function main() {
     else process.stdout.write(jsonText(report));
     return;
   }
-  throw new Error("usage: version-history-backfill.mjs generate|apply|report");
+  if (command === "retitle") {
+    const input = path.resolve(args.manifest || DEFAULT_MANIFEST);
+    const manifest = retitleHistoricalManifest(JSON.parse(fs.readFileSync(input, "utf8")));
+    const output = path.resolve(args.output || input);
+    const reportPath = path.resolve(args.report || DEFAULT_REPORT);
+    writeJson(output, manifest);
+    writeJson(reportPath, buildReport(manifest));
+    console.log(JSON.stringify({ ok: true, manifest: path.relative(root, output), report: path.relative(root, reportPath), ...buildReport(manifest).counts }));
+    return;
+  }
+  throw new Error("usage: version-history-backfill.mjs generate|apply|report|retitle");
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { createFixture, jsonRequest, request } from '../test-support/api.js';
 
 test('public version history is normalized, filtered, cursor-paginated, and safe for brai.one', async () => {
@@ -9,6 +11,12 @@ test('public version history is normalized, filtered, cursor-paginated, and safe
     seedWork(fixture, 301, 'work_api_301', '2099-07-14T10:01:00.000Z');
     seedWork(fixture, 302, 'work_api_302', '2099-07-14T10:03:00.000Z');
     seedWork(fixture, 303, 'work_api_303', '2099-07-14T10:03:00.000Z');
+    const pool = fixture.openDatabasePool();
+    try {
+      await pool.query(fs.readFileSync(path.resolve(import.meta.dirname, '../../../supabase/migrations/0031_normalize_version_work_history.sql'), 'utf8'));
+    } finally {
+      await pool.end();
+    }
     const hostileBody = [
       'Диагностика /srv/projects/brai/private.',
       'postgres://user:pass@example.test/db',
@@ -28,6 +36,27 @@ test('public version history is normalized, filtered, cursor-paginated, and safe
 
     const first = await request(fixture.url, '/v1/version-history?limit=2', {}, false);
     assert.equal(first.status, 200, errors.map((error) => error?.message ?? String(error)).join('\n'));
+    assert.deepEqual(first.body.types, [
+      { id: 'build', title: 'Product' },
+      { id: 'apk', title: 'Android APK' },
+      { id: 'macos', title: 'macOS' },
+      { id: 'ios', title: 'iOS' },
+    ]);
+    const storedTypes = fixture.store.db.prepare('SELECT id, description FROM version_types ORDER BY id').all();
+    assert.deepEqual(storedTypes.map((row) => row.id), ['apk', 'build', 'ios', 'macos']);
+    assert.equal(storedTypes.every((row) => row.description.length > 0), true);
+    assert.deepEqual(
+      fixture.store.db.prepare("SELECT table_name FROM table_descriptions WHERE table_name IN ('version_types', 'build_versions', 'build_version_counters') ORDER BY table_name").all(),
+      [{ table_name: 'build_version_counters' }, { table_name: 'build_versions' }, { table_name: 'version_types' }],
+    );
+    assert.deepEqual(
+      fixture.store.db.prepare('SELECT version_type_id FROM build_version_counters ORDER BY version_type_id').all(),
+      [{ version_type_id: 'apk' }, { version_type_id: 'build' }],
+    );
+    assert.equal(
+      Number(fixture.store.db.prepare("SELECT COUNT(*) AS count FROM build_versions WHERE version_type_id IN ('macos', 'ios')").get().count),
+      0,
+    );
     assert.deepEqual(first.body.items.map((item) => item.work.key), ['work_api_303', 'work_api_302']);
     assert.ok(first.body.next_cursor);
     assert.equal(first.body.items[0].details[0].title, 'Изменение 303');
@@ -67,10 +96,17 @@ test('public version history is normalized, filtered, cursor-paginated, and safe
     const buildOnly = await request(fixture.url, '/v1/version-history?type=build&limit=100', {}, false);
     assert.equal(buildOnly.status, 200);
     assert.equal(buildOnly.body.items.every((item) => item.type === 'build'), true);
-    assert.equal(buildOnly.body.types.some((type) => type.id === 'apk'), true);
+    assert.deepEqual(buildOnly.body.types, first.body.types);
+    for (const type of ['macos', 'ios']) {
+      const futureType = await request(fixture.url, `/v1/version-history?type=${type}&limit=100`, {}, false);
+      assert.equal(futureType.status, 200);
+      assert.deepEqual(futureType.body.items, []);
+      assert.deepEqual(futureType.body.types, first.body.types);
+      assert.equal(futureType.body.next_cursor, null);
+    }
 
     const forgedCursor = Buffer.from(JSON.stringify(['July 14 2099', 3])).toString('base64url');
-    for (const query of ['type=missing', 'limit=0', 'limit=101', 'limit=nope', 'cursor=not-json', `cursor=${forgedCursor}`]) {
+    for (const query of ['type=missing', 'type=canon', 'type=release', 'limit=0', 'limit=101', 'limit=nope', 'cursor=not-json', `cursor=${forgedCursor}`]) {
       const invalid = await request(fixture.url, `/v1/version-history?${query}`, {}, false);
       assert.equal(invalid.status, 400, query);
     }
@@ -173,6 +209,82 @@ test('work finalization is atomic, idempotent, and blocked by unresolved support
   }
 });
 
+test('work finalization rejects non-atomic details after owner and support notes are combined', async () => {
+  const fixture = await createFixture(['2026-07-14T11:30:00.000Z']);
+  try {
+    fixture.store.upsertReleaseWork({ workKey: 'work_detail_validation' });
+    fixture.store.upsertGithubPullRequest(pullSnapshot(411, 'work_detail_validation', 'owner', 'MERGED'));
+    fixture.store.upsertGithubPullRequest(pullSnapshot(412, 'work_detail_validation', 'support', 'MERGED'));
+    const input = {
+      workKey: 'work_detail_validation',
+      versionTypeId: 'build',
+      shortChanges: 'Общий итог релиза.',
+      detailedChanges: 'Краткое обобщение всех независимых изменений.',
+      reason: 'История должна сохранять атомарные release notes.',
+      pullNumbers: [411, 412],
+      releasedAtUtc: '2026-07-14T11:31:00.000Z',
+    };
+    const validOwner = { title: 'Изменён API', description: 'Owner PR обновил API-контракт.', pullNumber: 411 };
+    const invalidCases = [
+      {
+        details: [validOwner, { ...validOwner, pullNumber: 412 }],
+        error: /duplicates another atomic detail/,
+      },
+      {
+        details: [validOwner, { title: 'Изменён API!', description: 'Support PR обновил worker.', pullNumber: 412 }],
+        error: /title duplicates another atomic detail title/,
+      },
+      {
+        details: [validOwner, { title: 'Изменён worker', description: 'Owner PR обновил API-контракт!', pullNumber: 412 }],
+        error: /description duplicates another atomic detail description/,
+      },
+      {
+        details: [validOwner, { title: 'Фоновая задача — 1', description: 'Support PR обновил worker.', pullNumber: 412 }],
+        error: /automatic numeric suffix/,
+      },
+      {
+        details: [validOwner, { title: 'Одинаковый текст', description: 'Одинаковый текст.', pullNumber: 412 }],
+        error: /must not repeat its description/,
+      },
+      {
+        details: [validOwner, { title: ' общий итог релиза! ', description: 'Support PR обновил worker.', pullNumber: 412 }],
+        error: /title duplicates the parent summary/,
+      },
+      {
+        details: [validOwner, { title: ' краткое обобщение всех независимых изменений! ', description: 'Support PR обновил worker.', pullNumber: 412 }],
+        error: /title duplicates the parent summary/,
+      },
+      {
+        details: [validOwner, { title: 'Изменён worker', description: ' общий итог релиза! ', pullNumber: 412 }],
+        error: /description duplicates the parent summary/,
+      },
+      {
+        details: [validOwner, { title: 'Изменён worker', description: ' краткое обобщение всех независимых изменений! ', pullNumber: 412 }],
+        error: /description duplicates the parent summary/,
+      },
+      {
+        details: [validOwner, { title: ' история должна сохранять атомарные release notes! ', description: 'Support PR обновил worker.', pullNumber: 412 }],
+        error: /title duplicates the parent summary/,
+      },
+      {
+        details: [validOwner, { title: 'Изменён worker', description: ' история должна сохранять атомарные release notes! ', pullNumber: 412 }],
+        error: /description duplicates the parent summary/,
+      },
+    ];
+
+    for (const invalid of invalidCases) {
+      assert.throws(() => fixture.store.finalizeVersionWork({ ...input, details: invalid.details }), invalid.error);
+      assert.equal(fixture.store.releaseWork(input.workKey).status, 'active');
+      assert.equal(
+        Number(fixture.store.db.prepare('SELECT COUNT(*) AS count FROM build_versions WHERE release_works_id=(SELECT id FROM release_works WHERE work_key=?)').get(input.workKey).count),
+        0,
+      );
+    }
+  } finally {
+    await fixture.close();
+  }
+});
+
 test('explicit platform versions and typed PR links fail closed on conflicting work identity', async () => {
   const fixture = await createFixture(['2026-07-14T12:00:00.000Z']);
   try {
@@ -187,7 +299,7 @@ test('explicit platform versions and typed PR links fail closed on conflicting w
       shortChanges: `APK ${version}.`,
       detailedChanges: `Нативные изменения APK ${version}.`,
       reason: `Опубликован артефакт APK ${version}.`,
-      details: [{ title: `APK ${version}`, description: `Подтверждён APK ${version}.`, pullNumber }],
+      details: [{ title: `Нативный пакет ${version}`, description: `Подтверждён APK ${version}.`, pullNumber }],
       pullNumbers: [pullNumber],
       releasedAtUtc: '2026-07-14T12:01:00.000Z',
     });

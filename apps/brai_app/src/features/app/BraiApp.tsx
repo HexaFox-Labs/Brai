@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, BookOpen, Crown, History, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import type { AuthOnboardingContext } from "@/shared/api/braiApi";
 import { beginBraiCmdAccountCredentialMode, ensureBraiCmdAccess, getBraiCmdState, listenBraiCmdCredentialRefreshRequired, retryBraiCmdPendingAccountRevocation, retryBraiCmdQueue, setBraiCmdAccessKey, setBraiCmdAuthenticatedMode, setBraiCmdOverlayEnabled, syncBraiCmdProviderCredentials } from "@/shared/platform/braiCmd";
-import { appCommit, useAppVersion } from "@/shared/config/runtime";
+import { appCommit, installedProductVersion, useAppVersion } from "@/shared/config/runtime";
 import { installAndroidBackHandler, isNativeShell, platformName } from "@/shared/platform/platform";
 import { getBraiLocalStorageItem, removeBraiLocalStorageItem, setBraiLocalStorageItem } from "@/shared/storage/localStorageKeys";
 import { ScrollArea } from "@/shared/ui/scroll-area";
@@ -50,6 +50,7 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
   const app = useBraiAppState(initialSection);
   const appBuild = useAppVersion();
   const currentCommit = appCommit();
+  const currentProductVersion = installedProductVersion();
   const engineView = engineSectionView({
     appBuild,
     appVersionState: app.versionState,
@@ -485,7 +486,7 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
             onRailContent={isActivePage ? registerDrawsRail : undefined}
           />} />
         ) : screenSection === "engine" ? (
-          <PageWorkspace persistentPanel={app.engineHistoryOpen && !mobileViewport ? <VersionHistoryPanel api={app.api} currentCommit={currentCommit} installedApkVersion={engineView.installedApkVersion} /> : undefined} main={<EngineSection
+          <PageWorkspace persistentPanel={app.engineHistoryOpen && !mobileViewport ? <VersionHistoryPanel api={app.api} currentCommit={currentCommit} installedApkVersion={engineView.installedApkVersion} installedProductVersion={currentProductVersion} platform={nativeAndroid ? "android" : "web"} /> : undefined} main={<EngineSection
             appVersionState={app.versionState}
             otaState={app.otaState}
             otaCheckedAt={app.otaCheckedAt}
@@ -701,6 +702,8 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
           api={app.api}
           currentCommit={currentCommit}
           installedApkVersion={engineView.installedApkVersion}
+          installedProductVersion={currentProductVersion}
+          platform={nativeAndroid ? "android" : "web"}
           mobile
           onClose={app.closeEngineHistory}
         />

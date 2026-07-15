@@ -1,25 +1,29 @@
 {
   "schema_version": 1,
-  "manifest_sha256": "8f3c2e9bf7b64e89e985833d1177be111f4c01d84224d6d85bd13460464dc6c0",
+  "manifest_sha256": "eedb8f7557f23e16ac66ef15b32e9600080612e20c8d89e2af43708bfd85a9ff",
   "counts": {
-    "versions": 156,
+    "versions": 159,
     "versions_by_type": {
       "apk": 11,
-      "build": 145
+      "build": 148
     },
-    "details": 240,
+    "details": 348,
     "detail_count_distribution": {
-      "1": 92,
-      "2": 49,
-      "3": 12,
-      "4": 1,
-      "5": 2
+      "1": 62,
+      "2": 46,
+      "3": 34,
+      "4": 7,
+      "5": 4,
+      "6": 3,
+      "7": 1,
+      "8": 1,
+      "11": 1
     },
-    "merged_pull_requests_imported": 277,
-    "linked_pull_requests": 122,
-    "imported_but_unlinked_pull_requests": 155,
+    "merged_pull_requests_imported": 288,
+    "linked_pull_requests": 125,
+    "imported_but_unlinked_pull_requests": 163,
     "versions_without_pull_requests": 24,
-    "refs": 133,
+    "refs": 136,
     "corrected_refs": 1,
     "insufficient_evidence_items": 32
   },
@@ -276,7 +280,15 @@
     281,
     282,
     284,
-    285
+    285,
+    288,
+    289,
+    291,
+    293,
+    294,
+    296,
+    297,
+    298
   ],
   "corrected_refs": [
     {

@@ -14,7 +14,8 @@ Brai keeps completed work, APK releases, and OTA/web artifacts as separate versi
 - Owner finalization must create or reuse exactly one build row after every registered owner/support PR reaches a terminal state. Merged support PRs join that build; a support merge never creates its own build.
 - A build records completed product, server, CI/CD, infrastructure, documentation, maintenance, or refactoring work even when no client artifact was published.
 - Creating a build does not advance browser web or Android OTA `X.Y.Z`; those versions advance only with their published artifacts.
-- Every build and platform version stores Russian `short_changes`, `detailed_changes`, and `reason` plus at least one normalized atomic detail from structured release metadata.
+- Production clients receive the latest Product ref on the deployed `main` commit's first-parent ancestry. Preview clients receive only the Product version linked to the branch's frozen accepted base commit. Exact current-commit history refs take precedence; the newest Product row returned by the API is never treated as installed merely because it is newest.
+- Every build and platform version stores Russian `short_changes`, `detailed_changes`, and `reason` plus at least one normalized atomic detail from structured release metadata. The parent `detailed_changes` briefly summarizes all details and must not duplicate one detail verbatim. Each `--detail <title>::<description>` records one independent change with its own meaningful title and description; agents must pass every detail explicitly, must not combine unrelated changes in one entry, and must not use automatic titles such as `— 1`.
 - Branch names, commits, domains, and deploy metadata belong in `build_version_refs` or `deployment_records`, not release-note text.
 - Manual `release` and `canon` rows are disabled unless a future explicit requirement restores them.
 

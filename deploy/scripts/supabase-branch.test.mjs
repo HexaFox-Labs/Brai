@@ -301,6 +301,11 @@ test("Postgres smoke inspects owned sequences on one repeatable-read client unde
   assert.ok(inspectIndex < commitIndex);
   assert.ok(commitIndex < releaseIndex);
   assert.match(smoke, /lockOwnedTables: true/);
+  assert.match(smoke, /version_types WHERE id IN \('apk', 'build', 'macos', 'ios'\).*COUNT\(\*\) FROM version_types\) = 4/);
+  assert.match(smoke, /build_version_counters WHERE version_type_id IN \('apk', 'build'\).*COUNT\(\*\) FROM build_version_counters\) = 2/);
+  assert.match(smoke, /versions\.version_type_id = 'build' AND versions\.version <= 148/);
+  assert.match(smoke, /cutoffVersionsWithDetails !== 159/);
+  assert.match(smoke, /importedMergedPulls < 288/);
 });
 
 test("owned sequence inspection SHARE-locks quoted tables before reading allocation state", async () => {

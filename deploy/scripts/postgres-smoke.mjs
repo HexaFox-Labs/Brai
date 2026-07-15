@@ -24,7 +24,7 @@ try {
     scalar("SELECT 1"),
     scalar("SELECT COUNT(*)::int FROM schema_migrations"),
     scalar("SELECT COUNT(*)::int FROM supabase_migration_files"),
-    scalar("SELECT COUNT(*)::int FROM version_types WHERE id IN ('apk', 'build')"),
+    scalar("SELECT COUNT(*)::int FROM version_types WHERE id IN ('apk', 'build', 'macos', 'ios') AND (SELECT COUNT(*) FROM version_types) = 4"),
     scalar("SELECT COUNT(*)::int FROM activity_types WHERE id IN ('action', 'operation')"),
     scalar("SELECT COUNT(*)::int FROM inbox_record_types"),
     scalar("SELECT COUNT(*)::int FROM role_statuses WHERE id IN ('active', 'ended', 'deleted')"),
@@ -56,7 +56,7 @@ try {
           ('ai_logs', 'attempt_number')
         )
     `),
-    scalar("SELECT COUNT(*)::int FROM build_version_counters WHERE version_type_id IN ('apk', 'build')"),
+    scalar("SELECT COUNT(*)::int FROM build_version_counters WHERE version_type_id IN ('apk', 'build') AND (SELECT COUNT(*) FROM build_version_counters) = 2"),
     scalar("SELECT COUNT(*)::int FROM schema_migrations WHERE version = 67"),
     scalar("SELECT COUNT(*)::int FROM supabase_migration_files WHERE version = '0031' AND name = '0031_normalize_version_work_history.sql'"),
     scalar(`
@@ -94,7 +94,7 @@ try {
       SELECT COUNT(*)::int
       FROM build_versions AS versions
       WHERE (
-        (versions.version_type_id = 'build' AND versions.version <= 145)
+        (versions.version_type_id = 'build' AND versions.version <= 148)
         OR (versions.version_type_id = 'apk' AND versions.version <= 11)
       )
         AND EXISTS (
@@ -195,7 +195,7 @@ try {
   if (ping !== 1) throw new Error("Postgres ping failed");
   if (migrations < 1) throw new Error("schema_migrations is empty");
   if (supabaseMigrations < 1) throw new Error("supabase_migration_files is empty");
-  if (versionTypes !== 2) throw new Error("version_types seed is incomplete");
+  if (versionTypes !== 4) throw new Error("version_types seed is incomplete");
   if (activityTypes !== 2) throw new Error("activity_types seed is incomplete");
   if (inboxTypes < 4) throw new Error("inbox_record_types seed is incomplete");
   if (roleStatuses !== 3) throw new Error("role_statuses seed is incomplete");
@@ -208,8 +208,8 @@ try {
   if (versionHistoryMigration !== 1 || versionHistoryMigrationFile !== 1) throw new Error("Version history migration is incomplete");
   if (versionHistoryTables !== 4 || versionHistoryColumns !== 5) throw new Error("Version history schema is incomplete");
   if (versionsWithoutDetails !== 0) throw new Error(`Version history contains ${versionsWithoutDetails} parent versions without details`);
-  if (cutoffVersionsWithDetails !== 156) throw new Error(`Version history cutoff backfill is incomplete: ${cutoffVersionsWithDetails}/156 versions have details`);
-  if (importedMergedPulls < 277) throw new Error(`Version history PR cutoff backfill is incomplete: ${importedMergedPulls}/277 merged PRs imported`);
+  if (cutoffVersionsWithDetails !== 159) throw new Error(`Version history cutoff backfill is incomplete: ${cutoffVersionsWithDetails}/159 versions have details`);
+  if (importedMergedPulls < 288) throw new Error(`Version history PR cutoff backfill is incomplete: ${importedMergedPulls}/288 merged PRs imported`);
   if (apk11Correction !== 1) throw new Error("APK v11 is not linked exclusively to PR #279 and its corrected ref");
   if (runtimeSchema === "public" && rlsAutoTrigger !== 1) {
     throw new Error("public table RLS auto-enable trigger is missing or disabled");

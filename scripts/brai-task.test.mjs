@@ -983,8 +983,10 @@ test("remote deploy serializes dependency staging before replacing the active so
 test("production deploy tolerates an omitted preview lease generation", () => {
   const deploy = fs.readFileSync(new URL("../deploy/scripts/ci-ssh-deploy.sh", import.meta.url), "utf8");
   assert.match(deploy, /BRAI_PREVIEW_LEASE_GENERATION="\$\{6:-\}"/);
-  assert.match(deploy, /printf -v REMOTE_DEPLOY_COMMAND 'bash -s -- %q %q %q %q %q %q %q %q %q %q'/);
+  assert.match(deploy, /printf -v REMOTE_DEPLOY_COMMAND 'bash -s -- %q %q %q %q %q %q %q %q %q %q %q %q'/);
   assert.match(deploy, /BRAI_CLIENT_ARTIFACT_CHANGE="\$\{10\}"/);
+  assert.match(deploy, /BRAI_PRODUCT_BASE_COMMIT="\$\{11:-\}"/);
+  assert.match(deploy, /BRAI_PRODUCT_ANCESTOR_COMMITS="\$\{12:-\}"/);
   assert.match(deploy, /ssh[^\n]*\\\n\s+"\$REMOTE_DEPLOY_COMMAND" <<'REMOTE'/);
 });
 
@@ -1650,6 +1652,8 @@ test("preview receipts must match exact branch and head", () => {
 });
 
 test("release notes v2 keep owner summary separate from support details", () => {
+  const source = fs.readFileSync(new URL("./brai-task.mjs", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /buildDetails\.push\(/);
   const owner = {
     receiptType: "brai-release-notes-v2",
     work: { key: "work_12345678-1234-4123-a123-123456789abc", role: "owner" },
@@ -1675,6 +1679,44 @@ test("release notes v2 keep owner summary separate from support details", () => 
   };
   assert.deepEqual(validateReleaseNotes(support), { ok: true });
   assert.match(validateReleaseNotes({ ...support, build: { ...support.build, short_changes: "Подмена summary." } }).message, /cannot replace owner/);
+
+  assert.match(validateReleaseNotes({ ...owner, build: { ...owner.build, details: [] } }).message, /requires at least one atomic detail/);
+  assert.match(validateReleaseNotes({
+    ...owner,
+    build: { ...owner.build, details: [owner.build.details[0], owner.build.details[0]] },
+  }).message, /duplicates another atomic detail/);
+  assert.match(validateReleaseNotes({
+    ...owner,
+    build: { ...owner.build, details: [{ title: owner.build.short_changes, description: "Самостоятельное описание изменения." }] },
+  }).message, /title duplicates the parent summary/);
+  assert.match(validateReleaseNotes({
+    ...owner,
+    build: { ...owner.build, details: [{ title: "Отдельный заголовок", description: owner.build.detailed_changes }] },
+  }).message, /description duplicates the parent summary/);
+  assert.match(validateReleaseNotes({
+    ...owner,
+    build: { ...owner.build, details: [{ title: owner.build.detailed_changes, description: "Самостоятельное описание изменения." }] },
+  }).message, /title duplicates the parent summary/);
+  assert.match(validateReleaseNotes({
+    ...owner,
+    build: { ...owner.build, details: [{ title: "Отдельный заголовок", description: owner.build.short_changes }] },
+  }).message, /description duplicates the parent summary/);
+  assert.match(validateReleaseNotes({
+    ...owner,
+    build: { ...owner.build, details: [{ title: owner.build.reason, description: "Самостоятельное описание изменения." }] },
+  }).message, /title duplicates the parent summary/);
+  assert.match(validateReleaseNotes({
+    ...owner,
+    build: { ...owner.build, details: [{ title: "Отдельный заголовок", description: owner.build.reason }] },
+  }).message, /description duplicates the parent summary/);
+  assert.match(validateReleaseNotes({
+    ...owner,
+    build: { ...owner.build, details: [{ title: "История версий — 1", description: "Самостоятельное описание изменения." }] },
+  }).message, /automatic numeric suffix/);
+  assert.match(validateReleaseNotes({
+    ...owner,
+    build: { ...owner.build, details: [{ title: "Самостоятельное описание изменения", description: "Самостоятельное описание изменения." }] },
+  }).message, /must summarize rather than repeat/);
 });
 
 test("delivery receipts must match exact branch, head, and class", () => {

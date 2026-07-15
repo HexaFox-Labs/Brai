@@ -8,6 +8,14 @@ set -euo pipefail
 : "${BRAI_BRANCH:?BRAI_BRANCH is required}"
 : "${BRAI_COMMIT:?BRAI_COMMIT is required}"
 [[ "$BRAI_COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo "BRAI_COMMIT must be a full lowercase SHA" >&2; exit 1; }
+BRAI_PRODUCT_BASE_COMMIT="${BRAI_PRODUCT_BASE_COMMIT:-}"
+[[ -z "$BRAI_PRODUCT_BASE_COMMIT" || "$BRAI_PRODUCT_BASE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo "BRAI_PRODUCT_BASE_COMMIT must be empty or a full lowercase SHA" >&2; exit 1; }
+BRAI_PRODUCT_ANCESTOR_COMMITS=""
+if [[ "$BRAI_BRANCH" == "main" ]]; then
+  mapfile -t product_ancestors < <(git rev-list --first-parent "$BRAI_COMMIT")
+  [[ "${product_ancestors[0]:-}" == "$BRAI_COMMIT" ]] || { echo "Production Product ancestry does not start at the deployed commit" >&2; exit 1; }
+  BRAI_PRODUCT_ANCESTOR_COMMITS="$(IFS=,; printf '%s' "${product_ancestors[*]}")"
+fi
 
 DEPLOY_REPO="${BRAI_DEPLOY_REPO:-/srv/projects/brai}"
 SSH_PORT="${BRAI_DEPLOY_SSH_PORT:-22}"
@@ -225,9 +233,9 @@ tar \
 DEPLOY_OUTPUT=""
 REMOTE_DEPLOY_OWNS_STAGING="true"
 REMOTE_UPLOAD_OWNED="false"
-printf -v REMOTE_DEPLOY_COMMAND 'bash -s -- %q %q %q %q %q %q %q %q %q %q' \
+printf -v REMOTE_DEPLOY_COMMAND 'bash -s -- %q %q %q %q %q %q %q %q %q %q %q %q' \
   "$DEPLOY_REPO" "$REMOTE_UPLOAD" "$BRAI_BRANCH" "$BRAI_COMMIT" "$BRAI_NATIVE_APK_CHANGE" \
-  "$BRAI_PREVIEW_LEASE_GENERATION" "$UPLOAD_ROOT" "$UPLOAD_MARKER" "$DEPLOY_MIN_FREE_GB" "$BRAI_CLIENT_ARTIFACT_CHANGE"
+  "$BRAI_PREVIEW_LEASE_GENERATION" "$UPLOAD_ROOT" "$UPLOAD_MARKER" "$DEPLOY_MIN_FREE_GB" "$BRAI_CLIENT_ARTIFACT_CHANGE" "$BRAI_PRODUCT_BASE_COMMIT" "$BRAI_PRODUCT_ANCESTOR_COMMITS"
 if ! DEPLOY_OUTPUT="$(ssh -i "$KEY_FILE" -p "$SSH_PORT" -o StrictHostKeyChecking=accept-new "$BRAI_DEPLOY_USER@$BRAI_DEPLOY_HOST" \
   "$REMOTE_DEPLOY_COMMAND" <<'REMOTE'
 set -euo pipefail
@@ -241,6 +249,9 @@ UPLOAD_ROOT="$7"
 UPLOAD_MARKER="$8"
 DEPLOY_MIN_FREE_GB="$9"
 BRAI_CLIENT_ARTIFACT_CHANGE="${10}"
+BRAI_PRODUCT_BASE_COMMIT="${11:-}"
+BRAI_PRODUCT_ANCESTOR_COMMITS="${12:-}"
+[[ -z "$BRAI_PRODUCT_ANCESTOR_COMMITS" || "$BRAI_PRODUCT_ANCESTOR_COMMITS" =~ ^[0-9a-f]{40}(,[0-9a-f]{40})*$ ]] || { echo "Invalid Production Product ancestry" >&2; exit 1; }
 ATTEMPT_STAGING="$REMOTE_UPLOAD"
 ENVS_ROOT="${BRAI_ENVS_ROOT:-/srv/projects/brai-envs}"
 NODE_PREFIX="${BRAI_NODE_PREFIX:-/srv/opt/node-v22.16.0/bin}"
@@ -768,6 +779,7 @@ cd "$SOURCE_ROOT"
 export BRAI_BRANCH BRAI_COMMIT
 export BRAI_NATIVE_APK_CHANGE
 export BRAI_CLIENT_ARTIFACT_CHANGE
+export BRAI_PRODUCT_BASE_COMMIT
 export BRAI_ROOT="$SOURCE_ROOT"
 export BRAI_RELEASE_TARGET="$DEPLOY_REPO/deploy/releases"
 export BRAI_PROD_WEB_VERSION_JSON="$DEPLOY_REPO/deploy/web/version.json"
@@ -784,6 +796,14 @@ else
   set +a
 fi
 export BRAI_DATABASE_URL="$TARGET_DATABASE_URL"
+
+if [[ "$ENVIRONMENT" == preview-* && -n "$BRAI_PRODUCT_BASE_COMMIT" ]]; then
+  BRAI_PRODUCT_VERSION="$(node deploy/scripts/resolve-app-version.mjs --kind product --postgres-url "$TARGET_DATABASE_URL" --target-commit "$BRAI_PRODUCT_BASE_COMMIT")"
+  export BRAI_PRODUCT_VERSION
+elif [[ "$ENVIRONMENT" == "prod" && -n "$BRAI_PRODUCT_ANCESTOR_COMMITS" ]]; then
+  BRAI_PRODUCT_VERSION="$(node deploy/scripts/resolve-app-version.mjs --kind product --postgres-url "$TARGET_DATABASE_URL" --ancestor-commits "$BRAI_PRODUCT_ANCESTOR_COMMITS")"
+  export BRAI_PRODUCT_VERSION
+fi
 
 echo "Starting provisional $SERVICE_NAME from incoming source..."
 "${BRAI_SUDO:-sudo}" systemctl restart "$SERVICE_NAME"

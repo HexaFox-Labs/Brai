@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 const DEFAULT_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const ROOT = process.env.BRAI_ROOT ?? DEFAULT_ROOT;
 
-export async function deployBranch({ branch, sha, baseSha = "" }) {
+export async function deployBranch({ branch, sha, baseSha = "", productBaseSha = "" }) {
   assertSafeBranch(branch);
   assertSafeSha(sha);
 
@@ -19,7 +19,8 @@ export async function deployBranch({ branch, sha, baseSha = "" }) {
         ...gitEnv,
         BRAI_BRANCH: branch,
         BRAI_COMMIT: sha,
-        BRAI_BASE_COMMIT: baseSha
+        BRAI_BASE_COMMIT: baseSha,
+        BRAI_PRODUCT_BASE_COMMIT: productBaseSha
       })
     });
     return {

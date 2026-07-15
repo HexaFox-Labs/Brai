@@ -144,7 +144,7 @@ test("opens Engine from the profile menu", async ({ page }) => {
   await openEngineFromProfile(page);
 
   await expect(page.getByRole("heading", { name: "Engine", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: /Текущая версия (unknown|0\.\d+\.\d+)/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Текущая версия приложения (unknown|0\.\d+\.\d+)/ })).toBeVisible();
   await expect(page.getByText("Доступна новая версия 0.11.52.", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Скачать обновление" })).toBeVisible();
 });
@@ -172,11 +172,12 @@ test("opens compact Engine version cards and returns from version details", asyn
   const historyButton = page.getByRole("button", { name: "История версий", exact: true });
   await historyButton.click();
   await expect(historyButton).toHaveAttribute("aria-pressed", "true");
-  const version142 = page.getByRole("button", { name: "Новая версия 142: История work 142" });
+  const version142 = page.getByRole("button", { name: "Установленная версия не определена. Версия 142: История work 142" });
   await expect(version142).toBeVisible();
-  await expect(version142).toContainText("Версия 142");
-  await expect(page.getByRole("heading", { name: "История work 142" })).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: /Текущая версия/ })).toBeVisible();
+  await expect(version142).toContainText("Product");
+  await expect(version142).not.toContainText("Версия 142");
+  await expect(page.getByRole("heading", { name: /История work 142/ })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: /Текущая версия приложения/ })).toBeVisible();
 
   if (testInfo.project.name === "desktop") {
     const workspace = page.locator(".section-page-current .page-workspace");
@@ -188,16 +189,16 @@ test("opens compact Engine version cards and returns from version details", asyn
     expect(Math.abs((mainBox?.width ?? 0) - (panelBox?.width ?? 0))).toBeLessThanOrEqual(2);
 
     await version142.click();
-    await expect(page.getByRole("heading", { name: "История work 142" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Установленная версия не определена. Версия 142: История work 142" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Закрыть подробности версии" })).toBeVisible();
     await expect(version142).toHaveCount(0);
     await page.getByRole("button", { name: "Закрыть подробности версии" }).click();
     await expect(version142).toBeVisible();
 
     await page.getByRole("button", { name: "Показать более ранние" }).click();
-    await expect(page.getByRole("button", { name: "Новая версия 141: История work 141" })).toBeVisible();
-    await page.getByRole("button", { name: "APK" }).click();
-    await expect(page.getByRole("button", { name: "Новая версия 11: История work 11" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Установленная версия не определена. Версия 141: История work 141" })).toBeVisible();
+    await page.getByRole("button", { name: "Android APK" }).click();
+    await expect(page.getByRole("button", { name: "Не относится к этой платформе. Версия 11: История work 11" })).toBeVisible();
     await expect(version142).toHaveCount(0);
   } else {
     const historySheet = page.locator(".mobile-context-sheet");
@@ -210,7 +211,7 @@ test("opens compact Engine version cards and returns from version details", asyn
     await version142.click();
     const detailSheet = page.locator(".version-history-detail-backdrop");
     await expect(page.locator(".mobile-context-backdrop")).toHaveCount(2);
-    await expect(detailSheet.getByRole("heading", { name: "История work 142" })).toBeVisible();
+    await expect(detailSheet.getByRole("heading", { name: "Установленная версия не определена. Версия 142: История work 142" })).toBeVisible();
     await expect(detailSheet.locator(".actions-detail-close")).toHaveCount(0);
     await expect(historySheet).toBeAttached();
 

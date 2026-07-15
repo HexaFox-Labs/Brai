@@ -1,17 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { VersionHistoryItem, VersionHistoryPage, VersionHistoryType } from "@/shared/api/braiApi";
+import type { VersionHistoryItem, VersionHistoryPage, VersionHistoryType, VersionHistoryTypeId } from "@/shared/api/braiApi";
 
 export type VersionHistoryApi = {
-  versionHistory: (query?: { type?: string | null; cursor?: string | null; limit?: number }) => Promise<VersionHistoryPage>;
+  versionHistory: (query?: { type?: VersionHistoryTypeId | null; cursor?: string | null; limit?: number }) => Promise<VersionHistoryPage>;
 };
 
 type VersionHistoryStatus = "loading" | "loading-more" | "ready" | "error";
 
 /** Loads and progressively appends one filtered public version-history stream. */
 export function useVersionHistory(api: VersionHistoryApi) {
-  const [filter, setFilter] = useState<string | null>(null);
+  const [filter, setFilter] = useState<VersionHistoryTypeId | null>(null);
   const [items, setItems] = useState<VersionHistoryItem[]>([]);
   const [types, setTypes] = useState<VersionHistoryType[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -47,7 +47,7 @@ export function useVersionHistory(api: VersionHistoryApi) {
     };
   }, [requestPage]);
 
-  const selectFilter = useCallback((nextFilter: string | null) => {
+  const selectFilter = useCallback((nextFilter: VersionHistoryTypeId | null) => {
     if (nextFilter === filter) return;
     requestId.current += 1;
     setItems([]);

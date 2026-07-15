@@ -23,6 +23,7 @@ if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
     nextApk: args["next-apk"] === "true",
     targetBranch: args["target-branch"],
     targetCommit: args["target-commit"],
+    ancestorCommits: args["ancestor-commits"],
     baseCommit: args["base-commit"] || process.env.BRAI_BASE_COMMIT || "",
     clientArtifactChanged: args["client-artifact-changed"] || process.env.BRAI_CLIENT_ARTIFACT_CHANGE || "",
   };
@@ -32,9 +33,14 @@ if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
 
 export function resolveAppVersion({
   kind = "ota",
-  explicit = kind === "apk" ? process.env.BRAI_APK_VERSION || "" : process.env.BRAI_APP_VERSION || "",
+  explicit = kind === "apk"
+    ? process.env.BRAI_APK_VERSION || ""
+    : kind === "product"
+      ? process.env.BRAI_PRODUCT_VERSION || ""
+      : process.env.BRAI_APP_VERSION || "",
 } = {}) {
   if (kind === "apk" && explicit) return validApkVersion(explicit);
+  if (kind === "product") return explicit ? validProductVersion(explicit) : "";
   if (explicit) return validOtaVersion(explicit);
   if (kind === "apk") throw new Error("Unable to resolve Brai APK version; set BRAI_APK_VERSION or provide BRAI_DATABASE_URL");
   throw new Error("Unable to resolve Brai X.Y.Z OTA version; set BRAI_APP_VERSION or provide BRAI_DATABASE_URL");
@@ -46,11 +52,16 @@ export async function resolveAppVersionAsync(options = {}) {
     environment = process.env.NEXT_PUBLIC_BRAI_ENVIRONMENT || "",
     postgresUrl = process.env.BRAI_DATABASE_URL || "",
     prodPostgresUrl = process.env.BRAI_PROD_DATABASE_URL || "",
-    explicit = kind === "apk" ? process.env.BRAI_APK_VERSION || "" : process.env.BRAI_APP_VERSION || "",
+    explicit = kind === "apk"
+      ? process.env.BRAI_APK_VERSION || ""
+      : kind === "product"
+        ? process.env.BRAI_PRODUCT_VERSION || ""
+        : process.env.BRAI_APP_VERSION || "",
     nextOta = false,
     nextApk = false,
     targetBranch = "",
     targetCommit = "",
+    ancestorCommits = "",
     prodWebVersionJson = "",
     mobileTarget = "",
     root = repoRoot,
@@ -60,6 +71,10 @@ export async function resolveAppVersionAsync(options = {}) {
 
   if (kind === "apk") {
     return validApkVersion(explicit || await resolveApkVersionPg(postgresUrl || prodPostgresUrl, { nextApk, targetBranch, targetCommit }));
+  }
+  if (kind === "product") {
+    if (explicit) return validProductVersion(explicit);
+    return resolveProductVersionPg(postgresUrl || prodPostgresUrl, { targetCommit, ancestorCommits });
   }
   if (explicit) return validOtaVersion(explicit);
   const deployedVersions = [
@@ -73,6 +88,36 @@ export async function resolveAppVersionAsync(options = {}) {
   const deployedVersion = latestOtaVersion(deployedVersions);
   if (deployedVersion) return validOtaVersion(deployedVersion);
   throw new Error("Unable to resolve Brai X.Y.Z OTA version; set BRAI_APP_VERSION or provide published web/mobile metadata");
+}
+
+async function resolveProductVersionPg(databaseUrl, { targetCommit = "", ancestorCommits = "" } = {}) {
+  const commits = targetCommit ? [targetCommit] : productAncestorCommits(ancestorCommits);
+  if (!databaseUrl || !commits.length) return "";
+  const { Pool } = requireFromApi("pg");
+  const pool = new Pool({ connectionString: databaseUrl, ssl: postgresSsl(databaseUrl) });
+  try {
+    const result = await pool.query(`
+      SELECT version
+      FROM build_version_refs
+      WHERE version_type_id = 'build'
+        AND LOWER(target_commit) = ANY($1::text[])
+      ORDER BY version DESC
+      LIMIT 1
+    `, [commits.map((commit) => commit.toLowerCase())]);
+    const version = Number(result.rows[0]?.version || 0);
+    return version > 0 ? validProductVersion(version) : "";
+  } finally {
+    await pool.end();
+  }
+}
+
+export function productAncestorCommits(value) {
+  if (!value) return [];
+  const commits = String(value).split(",");
+  if (commits.some((commit) => !/^[0-9a-f]{40}$/i.test(commit))) {
+    throw new Error("Invalid Brai Product ancestor commits");
+  }
+  return commits;
 }
 
 async function resolveApkVersionPg(databaseUrl, { nextApk = false, targetBranch = "", targetCommit = "" } = {}) {
@@ -204,6 +249,12 @@ function nextPatchVersion(version) {
 function validApkVersion(version) {
   const value = Number(version);
   if (!Number.isInteger(value) || value <= 0) throw new Error(`Invalid Brai APK version: ${version}`);
+  return String(value);
+}
+
+function validProductVersion(version) {
+  const value = Number(version);
+  if (!Number.isInteger(value) || value <= 0) throw new Error(`Invalid Brai Product version: ${version}`);
   return String(value);
 }
 

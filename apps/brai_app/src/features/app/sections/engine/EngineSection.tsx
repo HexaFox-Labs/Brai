@@ -5,7 +5,7 @@ import type { AppVersionState } from "@/shared/api/braiApi";
 import { useAppVersion } from "@/shared/config/runtime";
 import type { BraiOtaState } from "@/shared/platform/ota";
 import { platformName } from "@/shared/platform/platform";
-import { moscowTime } from "@/shared/time/format";
+import { formatDisplayTime } from "@/shared/time/format";
 import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
 import { Field, FieldLabel } from "@/shared/ui/field";
@@ -67,7 +67,7 @@ export function EngineSection({
     <section className={cx(SECTION_GRID_CLASS, "w-full content-start items-start")} aria-label="Engine">
       <Card className="grid w-full content-start gap-3 self-start p-4 sm:gap-4 sm:p-5">
         <div className="grid gap-1.5">
-          <h2 className="m-0 text-lg leading-tight tracking-normal sm:text-xl">Текущая версия {view.installedVersion}</h2>
+          <h2 className="m-0 text-lg leading-tight tracking-normal sm:text-xl">Текущая версия приложения {view.installedVersion}</h2>
           <p className="m-0 text-sm leading-5 text-muted-foreground">{view.updateStatus.body}</p>
         </div>
 
@@ -80,7 +80,7 @@ export function EngineSection({
             <ButtonIcon className={cx("size-4", button.animated && "motion-safe:animate-bounce", view.updateAction === "checking" && "motion-safe:animate-spin")} aria-hidden="true" />
             {button.text}
           </Button>
-          {checkedAt ? <p className="m-0 ml-auto whitespace-nowrap text-xs text-muted-foreground">Проверено {moscowTime(checkedAt)}</p> : null}
+          {checkedAt ? <p className="m-0 ml-auto whitespace-nowrap text-xs text-muted-foreground">Проверено {formatDisplayTime(checkedAt)}</p> : null}
         </div>
       </Card>
     </section>

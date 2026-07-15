@@ -340,7 +340,7 @@ export class BraiApi {
     return this.request("/v1/version");
   }
 
-  async versionHistory({ type, cursor, limit = 30 }: { type?: string | null; cursor?: string | null; limit?: number } = {}): Promise<VersionHistoryPage> {
+  async versionHistory({ type, cursor, limit = 30 }: { type?: VersionHistoryTypeId | null; cursor?: string | null; limit?: number } = {}): Promise<VersionHistoryPage> {
     const query = new URLSearchParams({ limit: String(limit) });
     if (type) query.set("type", type);
     if (cursor) query.set("cursor", cursor);
@@ -608,9 +608,10 @@ interface ActivitiesApiSyncResponse {
 }
 
 export type VersionTypeId = "canon" | "release" | "build" | "apk";
+export type VersionHistoryTypeId = "build" | "apk" | "macos" | "ios";
 
 export type VersionHistoryType = {
-  id: string;
+  id: VersionHistoryTypeId;
   title: string;
 };
 
@@ -636,7 +637,7 @@ export type VersionHistoryPullRequest = {
 
 export type VersionHistoryItem = {
   id: number;
-  type: string;
+  type: VersionHistoryTypeId;
   version: number;
   short_changes: string;
   detailed_changes: string;

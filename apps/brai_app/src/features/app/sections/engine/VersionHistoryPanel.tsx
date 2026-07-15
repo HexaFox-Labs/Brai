@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { CheckCircle2, LoaderCircle, RotateCcw, Timer, TriangleAlert, X } from "lucide-react";
-import { BraiApi, type VersionHistoryItem, type VersionHistoryPullRequest, type VersionHistoryType } from "@/shared/api/braiApi";
+import { CheckCircle2, Info, LoaderCircle, RotateCcw, Timer, TriangleAlert, X } from "lucide-react";
+import { BraiApi, type VersionHistoryItem, type VersionHistoryPullRequest } from "@/shared/api/braiApi";
 import { defaultApiBase } from "@/shared/config/runtime";
-import { moscowDateTime } from "@/shared/time/format";
+import { platformName } from "@/shared/platform/platform";
+import { formatDisplayDateTime } from "@/shared/time/format";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/shared/ui/alert";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
@@ -14,12 +15,14 @@ import { ScrollArea } from "@/shared/ui/scroll-area";
 import { Separator } from "@/shared/ui/separator";
 import { MobileContextSheet } from "../../chrome/AppChrome";
 import { useVersionHistory, type VersionHistoryApi } from "./useVersionHistory";
+import { installedProductVersion, versionHistoryStatus, versionTypeTitle, type InstalledVersions, type VersionHistoryPlatform, type VersionHistoryStatus } from "./versionHistoryModel";
 
-type InstalledVersions = Partial<Record<string, number | null>>;
 type VersionHistoryPanelProps = {
   api?: VersionHistoryApi;
   currentCommit?: string;
   installedApkVersion?: number | null;
+  installedProductVersion?: number | null;
+  platform?: VersionHistoryPlatform;
 } & (
   | { mobile: true; onClose: () => void }
   | { mobile?: false; onClose?: never }
@@ -31,15 +34,17 @@ export function VersionHistoryPanel(props: VersionHistoryPanelProps) {
   const [selectedItem, setSelectedItem] = useState<VersionHistoryItem | null>(null);
   const cardIdPrefix = useId();
   const listScrollTopRef = useRef(0);
+  const platform = props.platform ?? platformName();
   const installedVersions = useMemo<InstalledVersions>(() => ({
     apk: props.installedApkVersion,
-    build: currentBuildVersion(history.items, props.currentCommit),
-  }), [history.items, props.currentCommit, props.installedApkVersion]);
+    build: installedProductVersion(history.items, props.currentCommit, props.installedProductVersion),
+  }), [history.items, props.currentCommit, props.installedApkVersion, props.installedProductVersion]);
   const list = (
     <VersionHistoryList
       cardIdPrefix={cardIdPrefix}
       history={history}
       installedVersions={installedVersions}
+      platform={platform}
       onSelect={(item, opener) => {
         listScrollTopRef.current = opener.closest<HTMLElement>("[data-slot='scroll-area-viewport']")?.scrollTop ?? 0;
         setSelectedItem(item);
@@ -75,10 +80,10 @@ export function VersionHistoryPanel(props: VersionHistoryPanelProps) {
             variant="detail"
           >
             <VersionHistoryDetails
-              installed={isInstalled(selectedItem, installedVersions)}
               item={selectedItem}
               mobile
-              typeTitle={versionTypeTitle(selectedItem, history.types)}
+              status={versionHistoryStatus(selectedItem, installedVersions, platform)}
+              typeTitle={versionTypeTitle(selectedItem.type, history.types)}
             />
           </MobileContextSheet>
         ) : null}
@@ -88,10 +93,10 @@ export function VersionHistoryPanel(props: VersionHistoryPanelProps) {
 
   return selectedItem ? (
     <VersionHistoryDetails
-      installed={isInstalled(selectedItem, installedVersions)}
       item={selectedItem}
       onClose={closeDetails}
-      typeTitle={versionTypeTitle(selectedItem, history.types)}
+      status={versionHistoryStatus(selectedItem, installedVersions, platform)}
+      typeTitle={versionTypeTitle(selectedItem.type, history.types)}
     />
   ) : list;
 }
@@ -100,11 +105,13 @@ function VersionHistoryList({
   cardIdPrefix,
   history,
   installedVersions,
+  platform,
   onSelect,
 }: {
   cardIdPrefix: string;
   history: ReturnType<typeof useVersionHistory>;
   installedVersions: InstalledVersions;
+  platform: VersionHistoryPlatform;
   onSelect: (item: VersionHistoryItem, opener: HTMLButtonElement) => void;
 }) {
   const headingId = useId();
@@ -117,7 +124,7 @@ function VersionHistoryList({
       <div className="flex flex-wrap gap-2" role="group" aria-label="Фильтр истории по типу версии">
         <FilterButton active={history.filter == null} label="Все" onClick={() => history.selectFilter(null)} />
         {history.types.map((type) => (
-          <FilterButton key={type.id} active={history.filter === type.id} label={type.title} onClick={() => history.selectFilter(type.id)} />
+          <FilterButton key={type.id} active={history.filter === type.id} label={versionTypeTitle(type.id, history.types)} onClick={() => history.selectFilter(type.id)} />
         ))}
       </div>
 
@@ -133,10 +140,11 @@ function VersionHistoryList({
           {history.items.map((item) => (
             <VersionHistoryCard
               cardId={`${cardIdPrefix}-card-${item.id}`}
-              installed={isInstalled(item, installedVersions)}
               item={item}
               key={item.id}
               onOpen={(opener) => onSelect(item, opener)}
+              status={versionHistoryStatus(item, installedVersions, platform)}
+              typeTitle={versionTypeTitle(item.type, history.types)}
             />
           ))}
         </ol>
@@ -178,24 +186,25 @@ function FilterButton({ active, label, onClick }: { active: boolean; label: stri
   );
 }
 
-function VersionHistoryCard({ cardId, item, installed, onOpen }: { cardId: string; item: VersionHistoryItem; installed: boolean; onOpen: (opener: HTMLButtonElement) => void }) {
-  const StatusIcon = installed ? CheckCircle2 : Timer;
-  const statusLabel = installed ? "Установлена" : "Новая версия";
+function VersionHistoryCard({ cardId, item, onOpen, status, typeTitle }: { cardId: string; item: VersionHistoryItem; onOpen: (opener: HTMLButtonElement) => void; status: VersionHistoryStatus; typeTitle: string }) {
+  const { Icon: StatusIcon, iconClassName, label: statusLabel } = statusPresentation(status);
+  const releasedAt = formatDisplayDateTime(item.released_at_utc);
 
   return (
     <li>
       <Card
-        render={<button id={cardId} type="button" aria-label={`${statusLabel} ${item.version}: ${item.short_changes}`} onClick={(event) => onOpen(event.currentTarget)} />}
+        render={<button id={cardId} type="button" aria-label={`${statusLabel}. Версия ${item.version}: ${item.short_changes}. ${typeTitle}. Выпущена ${releasedAt}`} onClick={(event) => onOpen(event.currentTarget)} />}
         className="grid min-h-16 w-full min-w-0 gap-2 p-3 text-left transition-colors hover:bg-accent/45 active:bg-accent/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <span className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-2">
-          <StatusIcon className={installed ? "mt-0.5 size-4 text-primary" : "mt-0.5 size-4 text-foreground"} aria-hidden="true" />
+        <span className="grid min-w-0 grid-cols-[auto_auto_minmax(0,1fr)] items-start gap-2">
+          <StatusIcon className={`mt-0.5 size-4 ${iconClassName}`} aria-hidden="true" />
+          <span className="shrink-0 text-sm font-semibold leading-5 text-primary">{item.version}</span>
           <span className="line-clamp-2 text-sm font-semibold leading-5">{item.short_changes}</span>
         </span>
-        <span className="flex min-w-0 items-center gap-2 pl-6">
-          <Badge variant="secondary" size="sm">Версия {item.version}</Badge>
+        <span className="flex min-w-0 items-center gap-2">
+          <Badge variant="outline" size="sm">{typeTitle}</Badge>
           <time className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground" dateTime={item.released_at_utc}>
-            {moscowDateTime(item.released_at_utc)} МСК
+            {releasedAt}
           </time>
         </span>
       </Card>
@@ -204,19 +213,19 @@ function VersionHistoryCard({ cardId, item, installed, onOpen }: { cardId: strin
 }
 
 function VersionHistoryDetails({
-  installed,
   item,
   mobile = false,
   onClose,
+  status,
   typeTitle,
 }: {
-  installed: boolean;
   item: VersionHistoryItem;
   mobile?: boolean;
   onClose?: () => void;
+  status: VersionHistoryStatus;
   typeTitle: string;
 }) {
-  const StatusIcon = installed ? CheckCircle2 : Timer;
+  const { Icon: StatusIcon, iconClassName, label: statusLabel } = statusPresentation(status);
   const headingRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
@@ -230,18 +239,23 @@ function VersionHistoryDetails({
     <article className={`grid min-w-0 gap-5 pb-7 ${mobile ? "px-[18px] pt-4" : "pl-7 pr-[18px]"}`} aria-labelledby={`version-history-details-${item.id}`}>
       <header className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
         <div className="grid min-w-0 gap-3">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 text-sm font-medium">
-              <StatusIcon className={installed ? "size-4 text-primary" : "size-4 text-foreground"} aria-hidden="true" />
-              {installed ? "Установлена" : "Доступна"}
-            </span>
-            <Badge variant="secondary">Версия {item.version}</Badge>
+          <h2
+            ref={headingRef}
+            id={`version-history-details-${item.id}`}
+            className="m-0 grid min-w-0 grid-cols-[auto_auto_minmax(0,1fr)] items-start gap-2 text-xl font-semibold leading-tight"
+            aria-label={`${statusLabel}. Версия ${item.version}: ${item.short_changes}`}
+            tabIndex={-1}
+          >
+            <StatusIcon className={`mt-0.5 size-5 ${iconClassName}`} aria-hidden="true" />
+            <span className="text-primary">{item.version}</span>
+            <span>{item.short_changes}</span>
+          </h2>
+          <div className="flex min-w-0 items-center gap-2">
             <Badge variant="outline">{typeTitle}</Badge>
+            <time className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground" dateTime={item.released_at_utc}>
+              {formatDisplayDateTime(item.released_at_utc)}
+            </time>
           </div>
-          <h2 ref={headingRef} id={`version-history-details-${item.id}`} className="m-0 text-xl font-semibold leading-tight" tabIndex={-1}>{item.short_changes}</h2>
-          <time className="text-xs tabular-nums text-muted-foreground" dateTime={item.released_at_utc}>
-            {moscowDateTime(item.released_at_utc)} МСК
-          </time>
         </div>
         {!mobile && onClose ? (
           <Button type="button" variant="ghost" size="icon" className="size-11" aria-label="Закрыть подробности версии" title="Закрыть" onClick={onClose}>
@@ -321,10 +335,10 @@ function PullRequests({ pulls }: { pulls: VersionHistoryPullRequest[] }) {
                 <Metadata label="Состояние" value={`${pull.state}${pull.is_draft ? " · draft" : ""}`} />
                 <Metadata label="Ветки" value={`${pull.head_branch} → ${pull.base_branch}`} />
                 <Metadata label="Merge SHA" value={pull.merge_commit_sha ?? "Нет"} />
-                <Metadata label="Создан" value={moscowDateTime(pull.created_at_utc)} />
-                <Metadata label="Обновлён" value={moscowDateTime(pull.updated_at_utc)} />
-                <Metadata label="Закрыт" value={pull.closed_at_utc ? moscowDateTime(pull.closed_at_utc) : "Нет"} />
-                <Metadata label="Объединён" value={pull.merged_at_utc ? moscowDateTime(pull.merged_at_utc) : "Нет"} />
+                <Metadata label="Создан" value={formatDisplayDateTime(pull.created_at_utc)} />
+                <Metadata label="Обновлён" value={formatDisplayDateTime(pull.updated_at_utc)} />
+                <Metadata label="Закрыт" value={pull.closed_at_utc ? formatDisplayDateTime(pull.closed_at_utc) : "Нет"} />
+                <Metadata label="Объединён" value={pull.merged_at_utc ? formatDisplayDateTime(pull.merged_at_utc) : "Нет"} />
               </dl>
               <div className="grid gap-1">
                 <p className="m-0 text-xs font-medium">Полное описание</p>
@@ -356,7 +370,7 @@ function VersionRefs({ item }: { item: VersionHistoryItem }) {
           <dl key={`${ref.created_at_utc}-${index}`} className="m-0 grid gap-2 text-xs">
             <Metadata label="Источник" value={[ref.source_branch, ref.source_commit].filter(Boolean).join(" · ") || "Нет"} />
             <Metadata label="Назначение" value={[ref.target_branch, ref.target_commit].filter(Boolean).join(" · ") || "Нет"} />
-            <Metadata label="Записано" value={moscowDateTime(ref.created_at_utc)} />
+            <Metadata label="Записано" value={formatDisplayDateTime(ref.created_at_utc)} />
           </dl>
         ))}
       </div>
@@ -364,22 +378,11 @@ function VersionRefs({ item }: { item: VersionHistoryItem }) {
   );
 }
 
-function isInstalled(item: VersionHistoryItem, installedVersions: InstalledVersions): boolean {
-  const installedVersion = installedVersions[item.type];
-  return installedVersion != null && item.version <= installedVersion;
-}
-
-function currentBuildVersion(items: VersionHistoryItem[], currentCommit: string | undefined): number | null {
-  const commit = currentCommit?.trim().toLowerCase();
-  if (!commit) return null;
-  return items.reduce<number | null>((current, item) => {
-    if (item.type !== "build" || !item.refs.some((ref) => ref.target_commit?.toLowerCase() === commit)) return current;
-    return current == null ? item.version : Math.max(current, item.version);
-  }, null);
-}
-
-function versionTypeTitle(item: VersionHistoryItem, types: VersionHistoryType[]): string {
-  return types.find((type) => type.id === item.type)?.title ?? item.type.toUpperCase();
+function statusPresentation(status: VersionHistoryStatus) {
+  if (status === "installed") return { Icon: CheckCircle2, iconClassName: "text-primary", label: "Установлена" };
+  if (status === "available") return { Icon: Timer, iconClassName: "text-foreground", label: "Доступна" };
+  if (status === "irrelevant") return { Icon: Info, iconClassName: "text-muted-foreground", label: "Не относится к этой платформе" };
+  return { Icon: Info, iconClassName: "text-muted-foreground", label: "Установленная версия не определена" };
 }
 
 function safePullUrl(value: string): boolean {

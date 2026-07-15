@@ -435,7 +435,7 @@ test('retired APK reset script cannot delete normalized version history', async 
     try {
       assert.deepEqual(
         reset.db.prepare('SELECT id FROM version_types ORDER BY id').all().map((row) => row.id),
-        ['apk', 'build', 'canon', 'release']
+        ['apk', 'build', 'canon', 'ios', 'macos', 'release']
       );
       assert.deepEqual(
         reset.db.prepare('SELECT version_type_id, version, short_changes FROM build_versions ORDER BY version_type_id, version').all(),

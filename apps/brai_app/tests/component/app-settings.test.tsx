@@ -29,7 +29,7 @@ describe("BraiApp settings", () => {
     await openEngineFromProfile();
 
     expect(screen.getByRole("heading", { name: "Engine" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Текущая версия unknown" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Текущая версия приложения unknown" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Скачать обновление" })).toBeInTheDocument();
   });
 
