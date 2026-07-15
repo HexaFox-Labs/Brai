@@ -103,6 +103,7 @@ export {
   validatePreviewReceipt,
   accessContract,
   archiveOpenSpecChange,
+  preserveLinkedOpenSpecChanges,
   workspacePreflight,
 };
 
@@ -309,9 +310,33 @@ function linkOpenSpecChanges(changes) {
   const markerValidation = validateTaskMarker(marker, branch);
   if (!markerValidation.ok) throw new Error(markerValidation.message);
   const root = git("rev-parse", "--show-toplevel");
+  preserveLinkedOpenSpecChanges(changes, root);
   const openspecChanges = mergeOpenSpecChanges(marker.openspecChanges, changes);
   writeTaskMarker(root, withThreadId({ ...marker, openspecChanges }));
   console.log(`Linked OpenSpec changes: ${openspecChanges.join(", ")}`);
+}
+
+function preserveLinkedOpenSpecChanges(changes, root) {
+  const canonicalRoot = dependencySourceRoot(root);
+  if (canonicalRoot === root) return;
+  for (const change of changes) {
+    const local = path.join(root, "openspec", "changes", change);
+    const durable = path.join(canonicalRoot, "openspec", "changes", change);
+    if (fs.existsSync(local) && !fs.existsSync(durable)) {
+      fs.mkdirSync(path.dirname(durable), { recursive: true });
+      fs.renameSync(local, durable);
+      fs.symlinkSync(path.relative(path.dirname(local), durable), local, "dir");
+      continue;
+    }
+    if (!fs.existsSync(local) && fs.existsSync(durable)) {
+      fs.mkdirSync(path.dirname(local), { recursive: true });
+      fs.symlinkSync(path.relative(path.dirname(local), durable), local, "dir");
+      continue;
+    }
+    if (fs.existsSync(local) && fs.existsSync(durable) && fs.realpathSync(local) !== fs.realpathSync(durable)) {
+      throw new Error(`OpenSpec change ${change} exists in both task and canonical checkouts.`);
+    }
+  }
 }
 
 function archiveAcceptedOpenSpecChanges() {
