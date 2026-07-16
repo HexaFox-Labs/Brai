@@ -1211,7 +1211,7 @@ test("local OpenSpec archive closes terminal handoff tasks and is idempotent", (
   fs.writeFileSync(tasks, "- [x] Implement.\n- [ ] Run verified preview handoff.\n- [ ] Archive this OpenSpec change.\n");
 
   archiveOpenSpecChange("ready", worktree);
-  const archived = path.join(canonical, "openspec", "changes", "archive", "2026-07-15-ready", "tasks.md");
+  const archived = path.join(canonical, "openspec", "changes", "archive", `${new Date().toISOString().slice(0, 10)}-ready`, "tasks.md");
   assert.equal(fs.existsSync(archived), true);
   assert.match(fs.readFileSync(archived, "utf8"), /\[x\] Run verified preview handoff/);
   assert.doesNotThrow(() => archiveOpenSpecChange("ready", worktree));
