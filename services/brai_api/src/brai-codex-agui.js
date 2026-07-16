@@ -251,7 +251,9 @@ export class CodexAguiNormalizer {
 
   #itemStarted(item) {
     if (!item || typeof item !== 'object') return [];
-    const itemId = this.#itemId(item.id, item.type || 'item');
+    const itemId = this.#itemId(
+      item.id, item.type === 'agentMessage' ? 'message' : item.type || 'item'
+    );
     if (item.type === 'reasoning') {
       if (!this.reasoningItems.has(itemId)) {
         this.reasoningItems.set(itemId, {
@@ -289,7 +291,9 @@ export class CodexAguiNormalizer {
 
   #itemCompleted(item, turnId) {
     if (!item || typeof item !== 'object') return [];
-    const itemId = this.#itemId(item.id, item.type || 'item');
+    const itemId = this.#itemId(
+      item.id, item.type === 'agentMessage' ? 'message' : item.type || 'item'
+    );
     if (item.type === 'reasoning') {
       const state = this.reasoningItems.get(itemId);
       if (!state?.started || state.ended) return [];

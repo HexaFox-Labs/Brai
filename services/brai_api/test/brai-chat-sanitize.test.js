@@ -129,6 +129,20 @@ test('adapter binds every tool in a turn to one stable public assistant message'
   assert.notEqual(firstTool.toolCallId, secondTool.toolCallId);
 });
 
+test('adapter keeps an agent message id stable between live deltas and snapshot replay', () => {
+  const live = new CodexAguiNormalizer({ publicThreadId: 'public-thread', runId: 'run-message' });
+  const replay = new CodexAguiNormalizer({ publicThreadId: 'public-thread', runId: 'run-message' });
+  const liveStart = live.translate('item/agentMessage/delta', {
+    itemId: 'item-2', delta: 'Потоковый ответ'
+  }).find((event) => event.type === EventType.TEXT_MESSAGE_START);
+  const replayStart = replay.translate('item/started', {
+    item: { type: 'agentMessage', id: 'item-2', text: 'Потоковый ответ' }
+  }).find((event) => event.type === EventType.TEXT_MESSAGE_START);
+
+  assert.equal(liveStart.messageId, replayStart.messageId);
+  assert.match(liveStart.messageId, /^message:/);
+});
+
 test('adapter applies one total output limit per streaming item and drops later deltas', () => {
   const normalizer = new CodexAguiNormalizer({ publicThreadId: 'public-thread', runId: 'run-1' });
   const commandEvents = [];

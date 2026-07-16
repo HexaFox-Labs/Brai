@@ -31,6 +31,8 @@ test("Codex image and broker unit are pinned, non-public and least-privileged", 
   assert.match(unit, /SupplementaryGroups=docker \{\{ brai_service_group \}\} \{\{ brai_codex_auth_group \}\} \{\{ brai_source_group \}\}/);
   assert.match(unit, /RuntimeDirectoryMode=0750/);
   assert.match(unit, /ProtectSystem=strict/);
+  assert.match(unit, /ReadWritePaths=\{\{ brai_codex_runtime_root \}\}\/\{\{ item\.key \}\}/);
+  assert.match(unit, /ReadWritePaths=\{\{ item\.value\.vault_root \}\}/);
   assert.match(unit, /RestrictAddressFamilies=AF_UNIX/);
   assert.doesNotMatch(unit, /ListenStream|0\.0\.0\.0|:[0-9]{2,5}/);
 });

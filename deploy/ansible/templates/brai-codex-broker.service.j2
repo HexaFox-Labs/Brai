@@ -44,6 +44,7 @@ ProtectKernelModules=true
 ProtectKernelTunables=true
 ProtectSystem=strict
 ReadWritePaths={{ brai_codex_runtime_root }}/{{ item.key }}
+ReadWritePaths={{ item.value.vault_root }}
 RestrictAddressFamilies=AF_UNIX
 RestrictRealtime=true
 RestrictSUIDSGID=true
