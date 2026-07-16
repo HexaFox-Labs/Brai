@@ -25,7 +25,11 @@ check_access() {
   test -x "$check_root/deploy/scripts/sync-occupied-preview-ota-manifests.sh"
   test -r "$REGISTRY"
   : "${PROD_POSTGRES_URL:?BRAI_PROD_DATABASE_URL or BRAI_DATABASE_URL is required}"
-  BRAI_DATABASE_URL="$PROD_POSTGRES_URL" "$NODE_BIN" "$check_root/deploy/scripts/resolve-app-version.mjs" --environment prod --root "$check_root" >/dev/null
+  BRAI_DATABASE_URL="$PROD_POSTGRES_URL" "$NODE_BIN" "$check_root/deploy/scripts/resolve-app-version.mjs" \
+    --environment prod \
+    --root "$check_root" \
+    --prod-web-version-json "${BRAI_PROD_WEB_VERSION_JSON:-$DEPLOY_REPO/deploy/web/version.json}" \
+    --mobile-target "${BRAI_RELEASE_TARGET:-$DEPLOY_REPO/deploy/releases}" >/dev/null
   echo "accepted preview OTA sync access ok: $check_root"
 }
 
@@ -117,7 +121,11 @@ if [[ ! -f "$REGISTRY" ]]; then
 fi
 
 : "${PROD_POSTGRES_URL:?BRAI_PROD_DATABASE_URL or BRAI_DATABASE_URL is required}"
-VERSION="${BRAI_APP_VERSION:-$(BRAI_DATABASE_URL="$PROD_POSTGRES_URL" "$NODE_BIN" "$ROOT/deploy/scripts/resolve-app-version.mjs" --environment prod --root "$ROOT")}"
+VERSION="${BRAI_APP_VERSION:-$(BRAI_DATABASE_URL="$PROD_POSTGRES_URL" "$NODE_BIN" "$ROOT/deploy/scripts/resolve-app-version.mjs" \
+  --environment prod \
+  --root "$ROOT" \
+  --prod-web-version-json "${BRAI_PROD_WEB_VERSION_JSON:-$DEPLOY_REPO/deploy/web/version.json}" \
+  --mobile-target "${BRAI_RELEASE_TARGET:-$DEPLOY_REPO/deploy/releases}")}"
 mapfile -t FAILED_PREVIEW_SKIP_LINES < <("$NODE_BIN" -e '
 const fs = require("node:fs");
 const registry = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
