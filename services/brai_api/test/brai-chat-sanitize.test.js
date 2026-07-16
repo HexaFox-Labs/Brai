@@ -5,11 +5,13 @@ import { CodexAguiNormalizer } from '../src/brai-codex-agui.js';
 import { BRAI_CHAT_OUTPUT_LIMIT_BYTES, sanitizeBraiChatText } from '../src/brai-chat-sanitize.js';
 
 test('chat sanitizer redacts credentials and server paths before truncation', () => {
-  const safe = sanitizeBraiChatText(`Authorization: Bearer secret-token\nAPI_KEY=topsecret\n/srv/projects/brai/private ${'я'.repeat(80_000)}`);
+  const safe = sanitizeBraiChatText(`Authorization: Bearer secret-token\nAPI_KEY=topsecret\n/srv/projects/brai/private /codex-home /workspace ${'я'.repeat(80_000)}`);
 
   assert.equal(safe.includes('secret-token'), false);
   assert.equal(safe.includes('topsecret'), false);
   assert.equal(safe.includes('/srv/projects'), false);
+  assert.equal(safe.includes('/codex-home'), false);
+  assert.equal(safe.includes('/workspace'), false);
   assert.ok(Buffer.byteLength(safe, 'utf8') <= BRAI_CHAT_OUTPUT_LIMIT_BYTES);
   assert.match(safe, /Вывод обрезан/);
 });

@@ -1536,6 +1536,63 @@ test('restart snapshot covers notifications received before readThread responds'
   assert.equal(store.events.filter((event) => event.safePayload?.delta === 'Из снимка').length, 1);
 });
 
+test('restart snapshot reuses a persisted assistant message when upstream item ids change', async () => {
+  const store = fakeStore();
+  Object.assign(store.thread, {
+    codex_thread_id: 'internal-thread-secret',
+    active_turn_id: 'persisted-id-change-run',
+    active_codex_turn_id: 'internal-turn-secret',
+    active_user_message_id: 'm_persisted000000000000000000000000000000'
+  });
+  const messageId = 'message:live-notification-id';
+  for (const safePayload of [
+    {
+      type: EventType.RUN_STARTED,
+      threadId: 'public-thread',
+      runId: 'persisted-id-change-run'
+    },
+    { type: EventType.TEXT_MESSAGE_START, messageId, role: 'assistant' },
+    { type: EventType.TEXT_MESSAGE_CONTENT, messageId, delta: 'Сохранённый ответ' },
+    { type: EventType.TEXT_MESSAGE_END, messageId }
+  ]) {
+    store.events.push({
+      id: `persisted-${store.events.length + 1}`,
+      turnId: 'persisted-id-change-run',
+      safePayload
+    });
+  }
+  const broker = new FakeBroker({
+    readThread: {
+      thread: {
+        turns: [{
+          id: 'internal-turn-secret',
+          status: 'inProgress',
+          items: [{
+            type: 'agentMessage',
+            id: 'item-2',
+            text: 'Сохранённый ответ'
+          }]
+        }]
+      }
+    }
+  });
+  const coordinator = new BraiChatTurnCoordinator({ broker, turnTimeoutMs: 10_000 });
+  const subscription = coordinator.connect({
+    store,
+    userId: 'user-a',
+    publicThreadId: 'public-thread'
+  }).subscribe(() => {});
+  await waitFor(() => broker.requests.some((request) => request.method === 'readThread'));
+  await new Promise((resolve) => setTimeout(resolve, 10));
+
+  assert.equal(store.events.filter((event) =>
+    event.safePayload?.type === EventType.TEXT_MESSAGE_START).length, 1);
+  assert.equal(store.events.filter((event) =>
+    event.safePayload?.type === EventType.TEXT_MESSAGE_CONTENT
+      && event.safePayload.delta === 'Сохранённый ответ').length, 1);
+  subscription.unsubscribe();
+});
+
 test('restart processes a sequenced notification emitted after the read watermark', async () => {
   const store = fakeStore();
   Object.assign(store.thread, {

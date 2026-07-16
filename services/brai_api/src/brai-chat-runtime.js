@@ -783,6 +783,7 @@ export class BraiChatTurnCoordinator {
 
   async #reconcileTurn(state, turn) {
     const persisted = withUserScope(state.userId, () => this.#persistedTurnState(state));
+    const matchedSnapshotMessages = new Set();
     state.streamOffsets = persisted.streamOffsets;
     state.messageText = new Map(persisted.messageText);
     state.messageRoles = new Map(persisted.messageRoles);
@@ -795,6 +796,16 @@ export class BraiChatTurnCoordinator {
     await this.#reconcileSteers(state, turn);
     for (const item of turn.items || []) {
       if (!item || item.type === 'userMessage' || item.type === 'hookPrompt') continue;
+      if (item.type === 'agentMessage' && item.text) {
+        const snapshotText = sanitizeBraiChatText(item.text);
+        const match = [...persisted.messageText.entries()].find(([messageId, text]) =>
+          text && persisted.messageRoles.get(messageId) !== 'user'
+            && !matchedSnapshotMessages.has(messageId) && snapshotText.startsWith(text));
+        if (match) {
+          state.normalizer.bindSnapshotItemId(item.id, match[0]);
+          matchedSnapshotMessages.add(match[0]);
+        }
+      }
       if (item.type === 'reasoning') {
         for (const [summaryIndex, delta] of (item.summary || []).entries()) {
           const method = 'item/reasoning/summaryTextDelta';

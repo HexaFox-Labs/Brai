@@ -20,7 +20,7 @@ const WHOLE_SECRET_PATTERNS = [
 ];
 
 const SERVER_PATH_PATTERNS = [
-  /(?:^|[\s"'=(])\/(?:home|root|srv|var\/lib|run|etc|opt|tmp)(?:\/[A-Za-z0-9._@%+,:=-]+)+/g,
+  /(?:^|[\s"'=(])\/(?:codex-home|workspace|proc|home|root|srv|var\/lib|run|etc|opt|tmp)(?:\/[A-Za-z0-9._@%+,:=-]+)*/g,
   /(?:^|[\s"'=(])\/vault\/(?:[A-Za-z0-9._@%+,:=-]+\/)+[A-Za-z0-9._@%+,:=-]+/g
 ];
 

@@ -152,6 +152,15 @@ export class CodexAguiNormalizer {
     this.reasoningGroupId = `reasoning:${reasoningDigest}`;
   }
 
+  bindSnapshotItemId(internalId, publicId) {
+    const boundId = safeId(publicId, null);
+    if (!boundId) return false;
+    const key = typeof internalId === 'string' && internalId ? internalId : null;
+    if (!key) return false;
+    this.publicItemIds.set(key, boundId);
+    return true;
+  }
+
   translate(method, params = {}) {
     if (this.finished || RAW_REASONING_METHODS.has(method) || method === 'item/reasoning/textDelta') return [];
     const events = [];
