@@ -32,6 +32,43 @@ test('attachment upload gate bounds total and per-owner buffering', () => {
   releaseC();
 });
 
+test('chat replay boundary rewinds only to RUN_STARTED of the matching turn', async () => {
+  const fixture = await createFixture(NOW, {
+    createAuth: authRuntime(() => 'boundary-owner'),
+    braiChatRuntime: modelRuntime()
+  });
+  try {
+    seedUser(fixture, 'boundary-owner');
+    withUserScope('boundary-owner', () => {
+      const thread = fixture.store.createBraiChatThread({ id: 'boundary-thread' });
+      const append = (id, turnId, type) => fixture.store.appendBraiChatEvent({
+        id,
+        threadId: thread.id,
+        turnId,
+        idempotencyKey: `boundary:${id}`,
+        type,
+        safePayload: { type }
+      });
+      append('boundary-event-1', 'previous-run', 'RUN_STARTED');
+      append('boundary-event-2', 'previous-run', 'RUN_FINISHED');
+      append('boundary-event-3', 'prestart-error-run', 'RUN_ERROR');
+      append('boundary-event-4', 'error-run', 'RUN_STARTED');
+      append('boundary-event-5', 'error-run', 'CUSTOM');
+      append('boundary-event-6', 'error-run', 'RUN_ERROR');
+      append('boundary-event-7', 'finished-run', 'RUN_STARTED');
+      append('boundary-event-8', 'finished-run', 'RUN_FINISHED');
+
+      assert.equal(fixture.store.findBraiChatReplayBoundary(thread.id, 2), 0);
+      assert.equal(fixture.store.findBraiChatReplayBoundary(thread.id, 3), 0);
+      assert.equal(fixture.store.findBraiChatReplayBoundary(thread.id, 4), 4);
+      assert.equal(fixture.store.findBraiChatReplayBoundary(thread.id, 5), 4);
+      assert.equal(fixture.store.findBraiChatReplayBoundary(thread.id, 7), 7);
+    });
+  } finally {
+    await fixture.close();
+  }
+});
+
 test('Better-Auth chat API isolates owners and supports lifecycle, settings, replay and search anchors', async () => {
   let activeUser = 'chat-owner-a';
   const fixture = await createFixture(NOW, {
@@ -148,7 +185,21 @@ test('Better-Auth chat API isolates owners and supports lifecycle, settings, rep
       content: 'one two three four five six seven eight nine'
     }));
     assert.equal((await request(fixture.url, `/v1/brai-chat/threads/${inherited.body.thread.id}`)).body.thread.title,
-      'one two three four five six seven eight');
+      'Новый чат');
+    withUserScope('chat-owner-a', () =>
+      fixture.store.setBraiChatGeneratedTitle(inherited.body.thread.id, 'Семантический заголовок'));
+    assert.equal((await request(fixture.url, `/v1/brai-chat/threads/${inherited.body.thread.id}`)).body.thread.title,
+      'Семантический заголовок');
+    await chatJson(fixture, `/v1/brai-chat/threads/${inherited.body.thread.id}`, {
+      method: 'PATCH', body: JSON.stringify({ title: 'Ручной заголовок' })
+    });
+    withUserScope('chat-owner-a', () =>
+      fixture.store.setBraiChatGeneratedTitle(inherited.body.thread.id, 'Не должен победить'));
+    assert.deepEqual(fixture.store.db.prepare(`
+      SELECT title, title_source FROM brai_chat_threads WHERE id = ?
+    `).get(inherited.body.thread.id), {
+      title: 'Ручной заголовок', title_source: 'manual'
+    });
 
     activeUser = 'chat-owner-b';
     const crossOwner = await request(fixture.url, `/v1/brai-chat/threads/${threadId}`);
@@ -615,6 +666,85 @@ test('attachment download refuses a symlinked user Vault parent even for matchin
     await fixture.close();
     fs.rmSync(vaultRoot, { recursive: true, force: true });
     fs.rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test('generated image metadata links to an assistant message and is returned in durable history', async () => {
+  const fixture = await createFixture(NOW, {
+    createAuth: authRuntime(() => 'generated-owner'),
+    braiChatRuntime: modelRuntime()
+  });
+  try {
+    seedUser(fixture, 'generated-owner');
+    const thread = (await chatJson(fixture, '/v1/brai-chat/threads', {
+      method: 'POST', body: '{}'
+    })).body.thread;
+    const messageId = 'assistant_generated_image';
+    const attachmentId = 'attachment_generated_image';
+    withUserScope('generated-owner', () => {
+      fixture.store.putBraiChatMessage({
+        id: messageId,
+        threadId: thread.id,
+        turnId: 'turn_generated_image',
+        idempotencyKey: 'assistant-generated-image',
+        role: 'assistant',
+        content: '',
+        status: 'completed'
+      });
+      fixture.store.addBraiChatAttachments(thread.id, [{
+        id: attachmentId,
+        original_name: 'spring.png',
+        relative_path: `Brai/Chat/${thread.id}/${attachmentId}`,
+        media_type: 'image/png',
+        byte_size: PNG.length,
+        checksum_sha256: crypto.createHash('sha256').update(PNG).digest('hex')
+      }], NOW[0]);
+      fixture.store.linkBraiChatAttachments({
+        threadId: thread.id,
+        messageId,
+        attachmentIds: [attachmentId]
+      });
+      fixture.store.appendBraiChatEvent({
+        id: 'generated-image-artifact-event',
+        threadId: thread.id,
+        messageId,
+        turnId: 'turn_generated_image',
+        idempotencyKey: 'generated-image-artifact-event',
+        type: 'CUSTOM',
+        safePayload: {
+          type: 'CUSTOM',
+          name: 'brai.artifact.v1',
+          value: {
+            kind: 'image',
+            status: 'ready',
+            attachment_id: attachmentId
+          }
+        }
+      });
+      assert.deepEqual(
+        fixture.store.listBraiChatReadyGeneratedAttachmentIds(thread.id),
+        [attachmentId]
+      );
+    });
+
+    const history = await chatJson(
+      fixture, `/v1/brai-chat/threads/${thread.id}/messages`, {}
+    );
+    const assistant = history.body.messages.find((message) => message.id === messageId);
+    assert.equal(assistant.attachments.length, 1);
+    assert.deepEqual(assistant.attachments[0], {
+      version: 1,
+      id: attachmentId,
+      thread_id: thread.id,
+      message_id: messageId,
+      filename: 'spring.png',
+      media_type: 'image/png',
+      byte_size: PNG.length,
+      checksum_sha256: crypto.createHash('sha256').update(PNG).digest('hex'),
+      created_at_utc: NOW[0]
+    });
+  } finally {
+    await fixture.close();
   }
 });
 

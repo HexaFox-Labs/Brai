@@ -3,7 +3,7 @@ import { artifactWorkspaceMode, attachmentReservationError, projectBraiChatArtif
 import type { BraiChatEvent, BraiChatMessage } from "@/shared/types/braiChat";
 
 describe("projectBraiChatArtifacts", () => {
-  it("derives images, code, long markdown, diffs and tools with stable source links", () => {
+  it("derives images, code, long markdown and diffs while leaving tool calls in chat", () => {
     const messages: BraiChatMessage[] = [{
       version: 1,
       id: "message-1",
@@ -39,19 +39,38 @@ describe("projectBraiChatArtifacts", () => {
       { kind: "code", sourceMessageId: "message-1", sourceEventId: undefined },
       { kind: "markdown", sourceMessageId: "message-1", sourceEventId: undefined },
       { kind: "diff", sourceMessageId: undefined, sourceEventId: "event-2" },
-      { kind: "tool", sourceMessageId: undefined, sourceEventId: "event-5" },
     ]);
-    expect(artifacts.find((artifact) => artifact.kind === "tool")?.content).toContain('"status": "completed"');
     expect(workspaceArtifacts(artifacts, "preview").map((artifact) => artifact.kind)).toEqual(["image"]);
-    expect(workspaceArtifacts(artifacts, "code").map((artifact) => artifact.kind)).toEqual(["code", "diff", "tool"]);
+    expect(workspaceArtifacts(artifacts, "code").map((artifact) => artifact.kind)).toEqual(["code", "diff"]);
     expect(workspaceArtifacts(artifacts, "docs").map((artifact) => artifact.kind)).toEqual(["markdown"]);
-    expect(artifacts.map(artifactWorkspaceMode)).toEqual(["preview", "code", "docs", "code", "code"]);
+    expect(artifacts.map(artifactWorkspaceMode)).toEqual(["preview", "code", "docs", "code"]);
   });
 
   it("enforces five files and 50 MiB across the composed message", () => {
     expect(attachmentReservationError([1, 1, 1, 1, 1], 1)).toBe("count");
     expect(attachmentReservationError([30 * 1024 * 1024], 21 * 1024 * 1024)).toBe("size");
     expect(attachmentReservationError([30 * 1024 * 1024], 20 * 1024 * 1024)).toBeNull();
+  });
+
+  it("keeps generated image attachment and source-message links in Preview", () => {
+    const artifacts = projectBraiChatArtifacts([], [
+      event("event-image", "CUSTOM", custom("brai.artifact.v1", {
+        kind: "image",
+        source_event_id: "image-tool",
+        source_message_id: "assistant-message",
+        attachment_id: "generated-attachment",
+        name: "spring.png",
+        status: "ready",
+      }), 1),
+    ]);
+    expect(artifacts).toEqual([
+      expect.objectContaining({
+        kind: "image",
+        attachmentId: "generated-attachment",
+        sourceMessageId: "assistant-message",
+        sourceEventId: "event-image",
+      }),
+    ]);
   });
 
   it("turns only literal search markers into highlight parts", () => {

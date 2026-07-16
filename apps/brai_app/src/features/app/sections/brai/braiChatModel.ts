@@ -2,7 +2,7 @@ import type { BraiChatEvent, BraiChatMessage } from "@/shared/types/braiChat";
 
 export type BraiChatArtifact = {
   id: string;
-  kind: "image" | "code" | "markdown" | "diff" | "tool";
+  kind: "image" | "code" | "markdown" | "diff";
   label: string;
   content: string;
   attachmentId?: string;
@@ -11,6 +11,7 @@ export type BraiChatArtifact = {
 };
 
 export type BraiWorkspaceMode = "preview" | "code" | "docs";
+export type BraiContextPanel = "none" | BraiWorkspaceMode;
 
 /** Assigns each persisted artifact projection to its Dojo workspace view. */
 export function artifactWorkspaceMode(artifact: BraiChatArtifact): BraiWorkspaceMode {
@@ -60,47 +61,23 @@ export function projectBraiChatArtifacts(messages: BraiChatMessage[], events: Br
       const rawKind = stringValue(custom.value.kind);
       const kind = rawKind === "file_change" || rawKind === "diff" ? "diff" : rawKind === "image" ? "image" : null;
       if (!kind) continue;
+      const attachmentId = stringValue(custom.value.attachment_id);
+      if (kind === "image" && !attachmentId) continue;
       const id = `artifact:${source}`;
       artifacts.set(id, {
         id,
         kind,
         label: stringValue(custom.value.name) ?? (kind === "diff" ? "Изменения файлов" : "Изображение"),
         content: JSON.stringify(custom.value, null, 2),
-        attachmentId: stringValue(custom.value.attachment_id),
+        attachmentId,
+        sourceMessageId: stringValue(custom.value.source_message_id),
         sourceEventId: event.id,
       });
       continue;
     }
 
-    const detailValue = custom?.name === "brai.detail.v1" ? custom.value : null;
-    const standardToolResult = event.type === "TOOL_CALL_RESULT" ? event.safe_payload : null;
-    const result = detailValue?.result ?? standardToolResult?.content ?? standardToolResult?.result;
-    if (typeof result !== "string") continue;
-    const source = stringValue(detailValue?.source_event_id)
-      ?? stringValue(standardToolResult?.toolCallId)
-      ?? stringValue(standardToolResult?.tool_call_id)
-      ?? event.id;
-    const id = `tool:${source}`;
-    artifacts.set(id, {
-      id,
-      kind: "tool",
-      label: stringValue(detailValue?.label) ?? stringValue(detailValue?.kind) ?? "Результат инструмента",
-      content: detailValue ? JSON.stringify(detailValue, null, 2) : eventPayloadText(event.safe_payload),
-      sourceEventId: event.id,
-    });
   }
   return [...artifacts.values()];
-}
-
-/** Formats the already-sanitized event payload for the details inspector. */
-export function eventPayloadText(payload: Record<string, unknown>): string {
-  return JSON.stringify(payload, null, 2);
-}
-
-export function eventLabel(event: BraiChatEvent): string {
-  const custom = customEvent(event);
-  const value = custom?.value.label ?? custom?.value.command ?? custom?.value.kind ?? custom?.name ?? event.safe_payload.label ?? event.safe_payload.command ?? event.type;
-  return typeof value === "string" ? value : event.type;
 }
 
 /** Returns the composed-message attachment limit violation, if any. */

@@ -60,6 +60,43 @@ test('Brai chat migration is idempotent, described, RLS-protected and cascades a
     assert.equal((await pool.query(`
       SELECT count(*)::int AS count FROM schema_migrations WHERE version = 67
     `)).rows[0].count, 1);
+    assert.equal((await pool.query(`
+      SELECT count(*)::int AS count FROM schema_migrations WHERE version = 68
+    `)).rows[0].count, 1);
+    const titleAgent = (await pool.query(`
+      SELECT id, version, target, kind, status, llm_provider, llm_model,
+        llm_prompt_template, llm_timeout_ms, fallback_description, source_module,
+        prompt_version, schema_version, runtime_service, metadata_json
+      FROM agents WHERE id = 'brai.chat-title'
+    `)).rows[0];
+    assert.equal(titleAgent.version, '1');
+    assert.equal(titleAgent.target, 'brai_chat_threads');
+    assert.equal(titleAgent.kind, 'runtime');
+    assert.equal(titleAgent.status, 'active');
+    assert.equal(titleAgent.llm_provider, 'codex');
+    assert.equal(titleAgent.llm_model, '');
+    assert.match(titleAgent.llm_prompt_template, /основном языке диалога пользователя/);
+    assert.equal(titleAgent.llm_timeout_ms, 30_000);
+    assert.match(titleAgent.fallback_description, /оставляет «Новый чат»/);
+    assert.equal(titleAgent.source_module, 'services/brai_codex_broker/src/broker.mjs');
+    assert.equal(titleAgent.prompt_version, 'brai-chat-title.v1');
+    assert.equal(titleAgent.schema_version, 'brai.chat-title.result.v1');
+    assert.equal(titleAgent.runtime_service, 'brai-codex-broker');
+    assert.equal(titleAgent.metadata_json.log_schema, 'brai.chat_title.ai_log.v1');
+    await pool.query(`
+      INSERT INTO "user" ("id", "name", "email", "emailVerified", "createdAt", "updatedAt")
+      VALUES ('generated-title-owner', 'Owner', 'generated-title@example.test', true, now(), now());
+      INSERT INTO brai_chat_threads (
+        id, user_id, title, title_source, created_at_utc, updated_at_utc
+      ) VALUES (
+        'generated-title-thread', 'generated-title-owner', 'Смысловой заголовок',
+        'generated', now()::text, now()::text
+      )
+    `);
+    assert.equal((await pool.query(`
+      SELECT title_source FROM brai_chat_threads WHERE id = 'generated-title-thread'
+    `)).rows[0].title_source, 'generated');
+    await pool.query(`DELETE FROM "user" WHERE id = 'generated-title-owner'`);
 
     const indexes = await pool.query(`
       SELECT indexname FROM pg_indexes

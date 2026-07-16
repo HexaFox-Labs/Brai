@@ -8,7 +8,8 @@ import { BraiChatTurnCoordinator, createBraiChatRuntime } from '../src/brai-chat
 class FakeBroker extends EventEmitter {
   constructor({
     readThread = null, modelPages = null, modelError = null, startTurnError = null,
-    steerTurn = null, steerTurnError = null, onInterrupt = null
+    steerTurn = null, steerTurnError = null, onInterrupt = null,
+    generatedArtifactError = null, generatedCleanupError = null
   } = {}) {
     super();
     this.listener = null;
@@ -20,6 +21,8 @@ class FakeBroker extends EventEmitter {
     this.steerTurn = steerTurn;
     this.steerTurnError = steerTurnError;
     this.onInterrupt = onInterrupt;
+    this.generatedArtifactError = generatedArtifactError;
+    this.generatedCleanupError = generatedCleanupError;
     this.subscriptionSequence = 0;
     this.notificationSequence = 0;
     this.notificationEpoch = 'fake-broker-epoch';
@@ -56,6 +59,22 @@ class FakeBroker extends EventEmitter {
       const index = params.cursor ? Number(params.cursor.slice(1)) : 0;
       return this.modelPages?.[index] ?? { data: [], nextCursor: null };
     }
+    if (method === 'exportGeneratedArtifact') {
+      if (this.generatedArtifactError) throw this.generatedArtifactError;
+      return {
+        id: params.attachmentId,
+        original_name: 'spring.png',
+        relative_path: `Brai/Chat/${params.publicThreadId}/${params.attachmentId}`,
+        media_type: 'image/png',
+        byte_size: 8,
+        checksum_sha256: 'a'.repeat(64)
+      };
+    }
+    if (method === 'removeExportedArtifact') return { removed: true };
+    if (method === 'cleanupGeneratedArtifacts') {
+      if (this.generatedCleanupError) throw this.generatedCleanupError;
+      return { cleaned: params.attachmentIds.length, pending: 0 };
+    }
     return {};
   }
 
@@ -76,13 +95,19 @@ class FakeBroker extends EventEmitter {
 function fakeStore() {
   const events = [];
   const messages = [];
+  const attachments = [];
+  const aiLogs = [];
   const messageAttachments = new Map();
   return {
     events,
     messages,
+    attachments,
+    aiLogs,
     messageAttachments,
     thread: {
       id: 'public-thread',
+      title: 'Новый чат',
+      title_source: 'default',
       model: 'gpt-test',
       reasoning_effort: 'medium',
       archived_at_utc: null,
@@ -98,6 +123,20 @@ function fakeStore() {
     replayCalls: [],
     onReplay: null,
     getBraiChatThreadRuntime() { return { ...this.thread }; },
+    setBraiChatGeneratedTitle(_threadId, title) {
+      if (this.thread.title_source !== 'default') return { ...this.thread };
+      this.thread.title = title;
+      this.thread.title_source = 'generated';
+      return { ...this.thread };
+    },
+    recordAiLog(input) {
+      const existing = input.llmCallId
+        ? this.aiLogs.find((item) => item.llmCallId === input.llmCallId) : null;
+      if (existing) return existing.id;
+      const saved = { id: this.aiLogs.length + 1, ...structuredClone(input) };
+      this.aiLogs.push(saved);
+      return saved.id;
+    },
     setBraiChatCodexThreadId(_threadId, codexThreadId) { this.thread.codex_thread_id = codexThreadId; },
     setBraiChatActiveTurn(_threadId, active = {}) {
       this.thread.active_turn_id = active.runId ?? null;
@@ -135,8 +174,50 @@ function fakeStore() {
         && message.turnId === turnId && message.role === 'user'
         && ['pending', 'failed'].includes(message.dispatch_status));
     },
-    linkBraiChatAttachments({ attachmentIds }) {
-      return attachmentIds.map((id) => ({ id }));
+    addBraiChatAttachments(threadId, records) {
+      return records.map((record) => {
+        const saved = {
+          version: 1,
+          id: record.id,
+          thread_id: threadId,
+          message_id: null,
+          filename: record.original_name,
+          media_type: record.media_type,
+          byte_size: record.byte_size,
+          checksum_sha256: record.checksum_sha256
+        };
+        this.attachments.push(saved);
+        return saved;
+      });
+    },
+    getBraiChatAttachment(attachmentId) {
+      return this.attachments.find((item) => item.id === attachmentId) ?? null;
+    },
+    deleteUnlinkedBraiChatAttachment(attachmentId) {
+      const index = this.attachments.findIndex((item) =>
+        item.id === attachmentId && item.message_id == null);
+      if (index < 0) return null;
+      return this.attachments.splice(index, 1)[0];
+    },
+    linkBraiChatAttachments({ messageId, attachmentIds }) {
+      return attachmentIds.map((id) => {
+        let attachment = this.attachments.find((item) => item.id === id);
+        if (!attachment) {
+          attachment = {
+            version: 1,
+            id,
+            thread_id: 'public-thread',
+            message_id: null,
+            filename: `${id}.png`,
+            media_type: 'image/png',
+            byte_size: 8,
+            checksum_sha256: 'a'.repeat(64)
+          };
+          this.attachments.push(attachment);
+        }
+        attachment.message_id = messageId;
+        return attachment;
+      });
     },
     putBraiChatUserMessageWithAttachments({ message, attachmentIds }) {
       const existing = this.messages.find((item) => item.id === message.id);
@@ -176,6 +257,34 @@ function fakeStore() {
         items,
         next_cursor: items.length === limit ? String(items.at(-1).sequence) : null
       };
+    },
+    findBraiChatReplayBoundary(_threadId, after) {
+      const nextIndex = this.events.findIndex((_event, index) => index + 1 > after);
+      if (nextIndex < 0) return 0;
+      const next = this.events[nextIndex];
+      const nextPayload = next.safePayload ?? next.safe_payload;
+      const nextTurnId = next.turnId ?? next.turn_id ?? null;
+      if (nextPayload?.type === EventType.RUN_STARTED || !nextTurnId) return 0;
+      for (let index = nextIndex - 1; index >= 0; index -= 1) {
+        const event = this.events[index];
+        const payload = event.safePayload ?? event.safe_payload;
+        const turnId = event.turnId ?? event.turn_id ?? null;
+        if (turnId === nextTurnId && payload?.type === EventType.RUN_STARTED) {
+          return index + 1;
+        }
+      }
+      return 0;
+    },
+    listBraiChatReadyGeneratedAttachmentIds() {
+      return [...new Set(this.events.flatMap((event) => {
+        const payload = event.safePayload ?? event.safe_payload;
+        return payload?.type === EventType.CUSTOM
+          && payload.name === 'brai.artifact.v1'
+          && payload.value?.kind === 'image'
+          && payload.value?.status === 'ready'
+          && typeof payload.value?.attachment_id === 'string'
+          ? [payload.value.attachment_id] : [];
+      }))];
     }
   };
 }
@@ -289,6 +398,500 @@ test('connect replays only persisted safe AG-UI payloads', async () => {
   }).subscribe({ next: (event) => replayed.push(event), error: reject, complete: resolve }));
 
   assert.deepEqual(replayed, [{ type: EventType.TEXT_MESSAGE_CONTENT, messageId: 'public-message', delta: 'Сохранено' }]);
+});
+
+test('safe reasoning streams through standard AG-UI events and survives reconnect', async () => {
+  const broker = new FakeBroker();
+  const store = fakeStore();
+  const coordinator = new BraiChatTurnCoordinator({ broker, turnTimeoutMs: 10_000 });
+  coordinator.run({
+    store, userId: 'user-a', publicThreadId: 'public-thread',
+    input: {
+      runId: 'reasoning-run',
+      messages: [{ id: 'reasoning-user', role: 'user', content: 'Проверь решение' }]
+    }
+  }).subscribe(() => {});
+  await waitFor(() => broker.requests.some((request) => request.method === 'startTurn'));
+
+  broker.notify('item/reasoning/summaryTextDelta', {
+    threadId: 'internal-thread-secret', turnId: 'internal-turn-secret',
+    itemId: 'private-reasoning-item', summaryIndex: 0, delta: 'Сверяю ограничения'
+  });
+  broker.notify('item/completed', {
+    threadId: 'internal-thread-secret', turnId: 'internal-turn-secret',
+    item: { type: 'reasoning', id: 'private-reasoning-item', summary: ['Сверяю ограничения'] }
+  });
+  broker.notify('turn/completed', {
+    threadId: 'internal-thread-secret', turn: { id: 'internal-turn-secret', status: 'completed' }
+  });
+  await waitFor(() => store.thread.active_turn_id === null);
+
+  const replayed = [];
+  await new Promise((resolve, reject) => coordinator.connect({
+    store, userId: 'user-a', publicThreadId: 'public-thread'
+  }).subscribe({ next: (event) => replayed.push(event), error: reject, complete: resolve }));
+  assert.deepEqual(replayed.filter((event) => event.type.startsWith('REASONING_'))
+    .map((event) => event.type), [
+    EventType.REASONING_START,
+    EventType.REASONING_MESSAGE_START,
+    EventType.REASONING_MESSAGE_CONTENT,
+    EventType.REASONING_MESSAGE_END,
+    EventType.REASONING_END
+  ]);
+  assert.equal(replayed.find((event) =>
+    event.type === EventType.REASONING_MESSAGE_CONTENT).delta, 'Сверяю ограничения');
+  assert.equal(JSON.stringify(store.events).includes('private-reasoning-item'), false);
+});
+
+test('tool and image-only run remains visible in durable history after reconnect', async () => {
+  const broker = new FakeBroker();
+  const store = fakeStore();
+  const coordinator = new BraiChatTurnCoordinator({ broker, turnTimeoutMs: 10_000 });
+  coordinator.run({
+    store, userId: 'user-a', publicThreadId: 'public-thread',
+    input: {
+      runId: 'image-only-run',
+      messages: [{ id: 'image-only-user', role: 'user', content: 'Создай изображение' }]
+    }
+  }).subscribe(() => {});
+  await waitFor(() => broker.requests.some((request) => request.method === 'startTurn'));
+
+  broker.notify('item/started', {
+    threadId: 'internal-thread-secret', turnId: 'internal-turn-secret',
+    item: { type: 'imageGeneration', id: 'private-image-item', status: 'inProgress' }
+  });
+  broker.notify('item/completed', {
+    threadId: 'internal-thread-secret', turnId: 'internal-turn-secret',
+    item: {
+      type: 'imageGeneration', id: 'private-image-item',
+      status: 'completed', path: '/tmp/private-output.png'
+    }
+  });
+  broker.notify('turn/completed', {
+    threadId: 'internal-thread-secret', turn: { id: 'internal-turn-secret', status: 'completed' }
+  });
+  await waitFor(() => store.thread.active_turn_id === null);
+
+  const replayed = [];
+  await new Promise((resolve, reject) => coordinator.connect({
+    store, userId: 'user-a', publicThreadId: 'public-thread'
+  }).subscribe({ next: (event) => replayed.push(event), error: reject, complete: resolve }));
+
+  const toolStart = replayed.find((event) => event.type === EventType.TOOL_CALL_START);
+  assert.match(toolStart.parentMessageId, /^assistant:/);
+  assert.ok(replayed.some((event) => event.type === EventType.TOOL_CALL_RESULT));
+  const imageArtifact = replayed.find((event) =>
+    event.type === EventType.CUSTOM && event.name === 'brai.artifact.v1'
+      && event.value.kind === 'image');
+  assert.equal(imageArtifact.value.status, 'ready');
+  assert.match(imageArtifact.value.attachment_id, /^attachment_/);
+  assert.equal(imageArtifact.value.source_message_id, toolStart.parentMessageId);
+  assert.equal(store.attachments.length, 1);
+  assert.equal(store.attachments[0].message_id, toolStart.parentMessageId);
+  assert.ok(broker.requests.some(({ method, params }) =>
+    method === 'exportGeneratedArtifact'
+      && params.itemId === 'private-image-item'
+      && !Object.hasOwn(params, 'path')));
+  assert.ok(broker.requests.some(({ method, params }) =>
+    method === 'cleanupGeneratedArtifacts'
+      && params.publicThreadId === 'public-thread'
+      && params.attachmentIds.length === 1
+      && params.attachmentIds[0] === imageArtifact.value.attachment_id
+      && !Object.hasOwn(params, 'path')));
+  assert.ok(replayed.some((event) => event.type === EventType.RUN_FINISHED));
+  assert.equal(JSON.stringify(replayed).includes('/tmp/private-output.png'), false);
+  assert.equal(JSON.stringify(replayed).includes('private-image-item'), false);
+});
+
+test('generated image export failure keeps the tool-only history and exposes a retryable artifact error', async () => {
+  const broker = new FakeBroker({
+    generatedArtifactError: Object.assign(new Error('unavailable'), {
+      code: 'BRAI_GENERATED_ARTIFACT_UNAVAILABLE'
+    })
+  });
+  const store = fakeStore();
+  const coordinator = new BraiChatTurnCoordinator({ broker, turnTimeoutMs: 10_000 });
+  coordinator.run({
+    store, userId: 'user-a', publicThreadId: 'public-thread',
+    input: {
+      runId: 'image-failure-run',
+      messages: [{ id: 'image-failure-user', role: 'user', content: 'Создай изображение' }]
+    }
+  }).subscribe(() => {});
+  await waitFor(() => broker.requests.some((request) => request.method === 'startTurn'));
+
+  broker.notify('item/started', {
+    threadId: 'internal-thread-secret', turnId: 'internal-turn-secret',
+    item: { type: 'imageGeneration', id: 'private-failed-image', status: 'inProgress' }
+  });
+  broker.notify('item/completed', {
+    threadId: 'internal-thread-secret', turnId: 'internal-turn-secret',
+    item: {
+      type: 'imageGeneration', id: 'private-failed-image',
+      status: 'failed', path: '/tmp/failed-output.png'
+    }
+  });
+  broker.notify('turn/completed', {
+    threadId: 'internal-thread-secret', turn: { id: 'internal-turn-secret', status: 'completed' }
+  });
+  await waitFor(() => store.thread.active_turn_id === null);
+
+  const artifact = store.events.map((event) => event.safePayload).find((event) =>
+    event?.type === EventType.CUSTOM && event.name === 'brai.artifact.v1');
+  assert.equal(artifact.value.status, 'failed');
+  assert.equal(artifact.value.retryable, true);
+  assert.equal(store.attachments.length, 0);
+  assert.ok(store.events.some((event) => event.safePayload?.type === EventType.TOOL_CALL_RESULT));
+  assert.ok(store.events.some((event) => event.safePayload?.type === EventType.RUN_FINISHED));
+  assert.equal(JSON.stringify(store.events).includes('/tmp/failed-output.png'), false);
+});
+
+test('generated source cleanup failure preserves durable history and reconnect retries opaque cleanup', async () => {
+  const cleanupError = Object.assign(new Error('temporary cleanup failure'), {
+    code: 'BRAI_GENERATED_ARTIFACT_CLEANUP_FAILED'
+  });
+  const broker = new FakeBroker({ generatedCleanupError: cleanupError });
+  const store = fakeStore();
+  const coordinator = new BraiChatTurnCoordinator({ broker, turnTimeoutMs: 10_000 });
+  coordinator.run({
+    store, userId: 'user-a', publicThreadId: 'public-thread',
+    input: {
+      runId: 'image-cleanup-run',
+      messages: [{ id: 'image-cleanup-user', role: 'user', content: 'Создай изображение' }]
+    }
+  }).subscribe(() => {});
+  await waitFor(() => broker.requests.some((request) => request.method === 'startTurn'));
+
+  broker.notify('item/completed', {
+    threadId: 'internal-thread-secret', turnId: 'internal-turn-secret',
+    item: {
+      type: 'imageGeneration', id: 'private-cleanup-image',
+      status: 'completed', path: '/tmp/cleanup-output.png'
+    }
+  });
+  broker.notify('turn/completed', {
+    threadId: 'internal-thread-secret', turn: { id: 'internal-turn-secret', status: 'completed' }
+  });
+  await waitFor(() => store.thread.active_turn_id === null);
+  await waitFor(() => broker.requests.filter(({ method }) =>
+    method === 'cleanupGeneratedArtifacts').length === 1);
+
+  const beforeReconnect = JSON.stringify({
+    events: store.events, messages: store.messages, attachments: store.attachments
+  });
+  const readyArtifact = store.events.map((event) => event.safePayload).find((event) =>
+    event?.type === EventType.CUSTOM && event.name === 'brai.artifact.v1'
+      && event.value?.status === 'ready');
+  assert.ok(readyArtifact);
+  assert.equal(store.attachments[0].message_id, readyArtifact.value.source_message_id);
+
+  broker.generatedCleanupError = null;
+  await new Promise((resolve, reject) => coordinator.connect({
+    store, userId: 'user-a', publicThreadId: 'public-thread',
+    headers: { 'last-event-id': String(store.events.length) }
+  }).subscribe({ error: reject, complete: resolve }));
+  await waitFor(() => broker.requests.filter(({ method }) =>
+    method === 'cleanupGeneratedArtifacts').length === 2);
+
+  const cleanupRequests = broker.requests.filter(({ method }) =>
+    method === 'cleanupGeneratedArtifacts');
+  assert.deepEqual(cleanupRequests.map(({ params }) => params.attachmentIds), [
+    [readyArtifact.value.attachment_id],
+    [readyArtifact.value.attachment_id]
+  ]);
+  assert.ok(cleanupRequests.every(({ params }) =>
+    !Object.hasOwn(params, 'path')
+      && Object.keys(params).sort().join(',') === 'attachmentIds,publicThreadId,userId'));
+  assert.equal(JSON.stringify({
+    events: store.events, messages: store.messages, attachments: store.attachments
+  }), beforeReconnect);
+});
+
+test('generated image recovery always repairs the assistant message link for an existing attachment row', async () => {
+  const broker = new FakeBroker();
+  const store = fakeStore();
+  const runId = 'image-recovery-run';
+  const itemId = 'private-image-recovery-item';
+  const attachmentId = `attachment_${crypto.createHash('sha256')
+    .update(`user-a\0public-thread\0${runId}\0${itemId}`)
+    .digest('hex').slice(0, 32)}`;
+  store.attachments.push({
+    version: 1,
+    id: attachmentId,
+    thread_id: 'public-thread',
+    message_id: null,
+    filename: 'spring.png',
+    media_type: 'image/png',
+    byte_size: 8,
+    checksum_sha256: 'a'.repeat(64)
+  });
+  const coordinator = new BraiChatTurnCoordinator({ broker, turnTimeoutMs: 10_000 });
+  coordinator.run({
+    store, userId: 'user-a', publicThreadId: 'public-thread',
+    input: {
+      runId,
+      messages: [{ id: 'image-recovery-user', role: 'user', content: 'Верни изображение' }]
+    }
+  }).subscribe(() => {});
+  await waitFor(() => broker.requests.some((request) => request.method === 'startTurn'));
+
+  broker.notify('item/completed', {
+    threadId: 'internal-thread-secret', turnId: 'internal-turn-secret',
+    item: {
+      type: 'imageGeneration', id: itemId,
+      status: 'completed', path: '/tmp/recovered-output.png'
+    }
+  });
+  broker.notify('turn/completed', {
+    threadId: 'internal-thread-secret', turn: { id: 'internal-turn-secret', status: 'completed' }
+  });
+  await waitFor(() => store.thread.active_turn_id === null);
+
+  assert.equal(broker.requests.some(({ method }) => method === 'exportGeneratedArtifact'), false);
+  assert.match(store.attachments[0].message_id, /^assistant:/);
+  assert.ok(store.messages.some((message) =>
+    message.id === store.attachments[0].message_id && message.role === 'assistant'));
+});
+
+test('upstream error publishes one terminal event and completes before a late turn notification', async () => {
+  const broker = new FakeBroker();
+  const store = fakeStore();
+  const coordinator = new BraiChatTurnCoordinator({ broker, turnTimeoutMs: 10_000 });
+  coordinator.run({
+    store, userId: 'user-a', publicThreadId: 'public-thread',
+    input: {
+      runId: 'error-run',
+      messages: [{ id: 'error-user', role: 'user', content: 'Сломайся безопасно' }]
+    }
+  }).subscribe(() => {});
+  await waitFor(() => broker.requests.some((request) => request.method === 'startTurn'));
+
+  broker.notify('error', {
+    threadId: 'internal-thread-secret',
+    turnId: 'internal-turn-secret',
+    error: { message: 'private upstream failure' }
+  });
+  await waitFor(() => store.thread.active_turn_id === null);
+  broker.notify('turn/completed', {
+    threadId: 'internal-thread-secret',
+    turn: { id: 'internal-turn-secret', status: 'failed' }
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const terminals = store.events.map((event) => event.safePayload)
+    .filter((event) => event?.type === EventType.RUN_ERROR
+      || event?.type === EventType.RUN_FINISHED);
+  assert.deepEqual(terminals.map((event) => event.type), [EventType.RUN_ERROR]);
+});
+
+test('successful first assistant turn selects a semantic title while manual rename wins', async () => {
+  const broker = new FakeBroker();
+  const store = fakeStore();
+  const titleInputs = [];
+  const coordinator = new BraiChatTurnCoordinator({
+    broker,
+    turnTimeoutMs: 10_000,
+    titleGenerator: async (input) => {
+      titleInputs.push(input);
+      return 'Хайку про весну';
+    }
+  });
+  coordinator.run({
+    store, userId: 'user-a', publicThreadId: 'public-thread',
+    input: {
+      runId: 'title-run',
+      messages: [{ id: 'title-user', role: 'user', content: 'напиши хайку про весну' }]
+    }
+  }).subscribe(() => {});
+  await waitFor(() => broker.requests.some((request) => request.method === 'startTurn'));
+  assert.equal(store.thread.title, 'Новый чат');
+
+  broker.notify('item/agentMessage/delta', {
+    threadId: 'internal-thread-secret', turnId: 'internal-turn-secret',
+    itemId: 'title-assistant', delta: 'Весенний ветер'
+  });
+  broker.notify('item/completed', {
+    threadId: 'internal-thread-secret', turnId: 'internal-turn-secret',
+    item: { type: 'agentMessage', id: 'title-assistant', text: 'Весенний ветер' }
+  });
+  broker.notify('turn/completed', {
+    threadId: 'internal-thread-secret', turn: { id: 'internal-turn-secret', status: 'completed' }
+  });
+  await waitFor(() => store.thread.active_turn_id === null);
+  await waitFor(() => store.thread.title_source === 'generated');
+  assert.equal(store.thread.title, 'Хайку про весну');
+  assert.equal(store.thread.title_source, 'generated');
+  assert.equal(titleInputs[0].userId, 'user-a');
+  assert.equal(titleInputs[0].userMessage, 'напиши хайку про весну');
+  assert.deepEqual(titleInputs[0].assistantMessages, ['Весенний ветер']);
+  await waitFor(() => store.aiLogs.length === 1);
+  assert.equal(store.aiLogs[0].agentId, 'brai.chat-title');
+  assert.equal(store.aiLogs[0].agentVersion, '1');
+  assert.equal(store.aiLogs[0].status, 'done');
+  assert.equal(store.aiLogs[0].jsonData.schema, 'brai.chat_title.ai_log.v1');
+  assert.equal(store.aiLogs[0].jsonData.title_applied, true);
+  assert.equal(JSON.stringify(store.aiLogs[0]).includes('напиши хайку'), false);
+  assert.equal(JSON.stringify(store.aiLogs[0]).includes('Весенний ветер'), false);
+  assert.equal(JSON.stringify(store.aiLogs[0]).includes('Хайку про весну'), false);
+
+  store.thread.title = 'Моё название';
+  store.thread.title_source = 'manual';
+  assert.equal(store.setBraiChatGeneratedTitle('public-thread', 'Другое название').title,
+    'Моё название');
+});
+
+test('semantic title generator failure leaves the default title unchanged', async () => {
+  for (const titleGenerator of [
+    async () => null,
+    async () => { throw new Error('title model unavailable'); }
+  ]) {
+    const broker = new FakeBroker();
+    const store = fakeStore();
+    const coordinator = new BraiChatTurnCoordinator({
+      broker, turnTimeoutMs: 10_000, titleGenerator
+    });
+    coordinator.run({
+      store, userId: 'user-a', publicThreadId: 'public-thread',
+      input: {
+        runId: crypto.randomUUID(),
+        messages: [{ id: crypto.randomUUID(), role: 'user', content: 'Не копируй меня в title' }]
+      }
+    }).subscribe(() => {});
+    await waitFor(() => broker.requests.some((request) => request.method === 'startTurn'));
+    broker.notify('item/agentMessage/delta', {
+      threadId: 'internal-thread-secret', turnId: 'internal-turn-secret',
+      itemId: 'title-failure-assistant', delta: 'Ответ'
+    });
+    broker.notify('item/completed', {
+      threadId: 'internal-thread-secret', turnId: 'internal-turn-secret',
+      item: { type: 'agentMessage', id: 'title-failure-assistant', text: 'Ответ' }
+    });
+    broker.notify('turn/completed', {
+      threadId: 'internal-thread-secret', turn: { id: 'internal-turn-secret', status: 'completed' }
+    });
+    await waitFor(() => store.thread.active_turn_id === null);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(store.thread.title, 'Новый чат');
+    assert.equal(store.thread.title_source, 'default');
+    await waitFor(() => store.aiLogs.length === 1);
+    assert.equal(store.aiLogs[0].status, 'failed');
+    assert.equal(store.aiLogs[0].jsonData.title_applied, false);
+    assert.equal(JSON.stringify(store.aiLogs[0]).includes('Не копируй меня'), false);
+  }
+});
+
+test('manual rename during background title generation wins and records one completed AI call', async () => {
+  let resolveTitle;
+  const titleResult = new Promise((resolve) => { resolveTitle = resolve; });
+  const broker = new FakeBroker();
+  const store = fakeStore();
+  const coordinator = new BraiChatTurnCoordinator({
+    broker,
+    turnTimeoutMs: 10_000,
+    titleGenerator: () => titleResult
+  });
+  coordinator.run({
+    store, userId: 'user-a', publicThreadId: 'public-thread',
+    input: {
+      runId: 'manual-title-race-run',
+      messages: [{ id: 'manual-title-user', role: 'user', content: 'Подбери название' }]
+    }
+  }).subscribe(() => {});
+  await waitFor(() => broker.requests.some((request) => request.method === 'startTurn'));
+  broker.notify('item/agentMessage/delta', {
+    threadId: 'internal-thread-secret', turnId: 'internal-turn-secret',
+    itemId: 'manual-title-assistant', delta: 'Готово'
+  });
+  broker.notify('item/completed', {
+    threadId: 'internal-thread-secret', turnId: 'internal-turn-secret',
+    item: { type: 'agentMessage', id: 'manual-title-assistant', text: 'Готово' }
+  });
+  broker.notify('turn/completed', {
+    threadId: 'internal-thread-secret', turn: { id: 'internal-turn-secret', status: 'completed' }
+  });
+  await waitFor(() => store.thread.active_turn_id === null);
+  store.thread.title = 'Ручной заголовок';
+  store.thread.title_source = 'manual';
+  resolveTitle('Модельный заголовок');
+  await waitFor(() => store.aiLogs.length === 1);
+
+  assert.equal(store.thread.title, 'Ручной заголовок');
+  assert.equal(store.thread.title_source, 'manual');
+  assert.equal(store.aiLogs[0].status, 'done');
+  assert.equal(store.aiLogs[0].jsonData.title_applied, false);
+  assert.equal(store.aiLogs.length, 1);
+});
+
+test('restart recovery generates a title from already persisted assistant output', async () => {
+  const store = fakeStore();
+  store.thread.active_turn_id = 'recovered-title-run';
+  store.thread.active_codex_turn_id = 'internal-recovered-title-turn';
+  store.thread.active_user_message_id = 'internal-recovered-title-user';
+  store.thread.codex_thread_id = 'internal-thread-secret';
+  store.events.push(
+    {
+      turnId: 'recovered-title-run',
+      safePayload: {
+        type: EventType.RUN_STARTED,
+        threadId: 'public-thread',
+        runId: 'recovered-title-run',
+        input: {
+          messages: [{ id: 'recovered-user', role: 'user', content: 'О чём этот диалог?' }]
+        }
+      }
+    },
+    {
+      turnId: 'recovered-title-run',
+      safePayload: {
+        type: EventType.TEXT_MESSAGE_START,
+        messageId: 'recovered-assistant',
+        role: 'assistant'
+      }
+    },
+    {
+      turnId: 'recovered-title-run',
+      safePayload: {
+        type: EventType.TEXT_MESSAGE_CONTENT,
+        messageId: 'recovered-assistant',
+        delta: 'О весеннем ветре'
+      }
+    },
+    {
+      turnId: 'recovered-title-run',
+      safePayload: {
+        type: EventType.TEXT_MESSAGE_END,
+        messageId: 'recovered-assistant'
+      }
+    }
+  );
+  const broker = new FakeBroker({
+    readThread: {
+      thread: {
+        turns: [{
+          id: 'internal-recovered-title-turn',
+          status: 'completed',
+          items: []
+        }]
+      }
+    }
+  });
+  const titleInputs = [];
+  const coordinator = new BraiChatTurnCoordinator({
+    broker,
+    titleGenerator: async (input) => {
+      titleInputs.push(input);
+      return 'Весенний разговор';
+    }
+  });
+
+  await new Promise((resolve, reject) => coordinator.connect({
+    store, userId: 'user-a', publicThreadId: 'public-thread'
+  }).subscribe({ error: reject, complete: resolve }));
+  await waitFor(() => store.thread.title_source === 'generated');
+
+  assert.equal(store.thread.title, 'Весенний разговор');
+  assert.equal(titleInputs[0].userMessage, 'О чём этот диалог?');
+  assert.deepEqual(titleInputs[0].assistantMessages, ['О весеннем ветре']);
 });
 
 test('concurrent run is rejected and client message id is stable and broker-safe', async () => {
@@ -748,6 +1351,125 @@ test('connect paginates replay strictly after the acknowledged sequence', async 
   assert.equal(replayed[0], 501);
   assert.equal(replayed.at(-1), 1_105);
   assert.deepEqual(store.replayCalls, [{ after: 500, limit: 500 }, { after: 1_000, limit: 500 }]);
+});
+
+test('cold replay immediately before a terminal event includes its matching run start', async (t) => {
+  for (const terminalType of [EventType.RUN_FINISHED, EventType.RUN_ERROR]) {
+    await t.test(terminalType, async () => {
+      const store = fakeStore();
+      const terminal = terminalType === EventType.RUN_FINISHED
+        ? {
+            type: EventType.RUN_FINISHED,
+            threadId: 'public-thread',
+            runId: 'historic-run',
+            outcome: { type: 'success' }
+          }
+        : {
+            type: EventType.RUN_ERROR,
+            code: 'upstream_unavailable',
+            message: 'Codex временно недоступен. Попробуйте позже.'
+          };
+      store.events.push(
+        {
+          turnId: 'historic-run',
+          safePayload: {
+            type: EventType.RUN_STARTED,
+            threadId: 'public-thread',
+            runId: 'historic-run'
+          }
+        },
+        {
+          turnId: 'historic-run',
+          safePayload: {
+            type: EventType.TEXT_MESSAGE_START,
+            messageId: 'historic-message',
+            role: 'assistant'
+          }
+        },
+        {
+          turnId: 'historic-run',
+          safePayload: {
+            type: EventType.TEXT_MESSAGE_CONTENT,
+            messageId: 'historic-message',
+            delta: 'Первая '
+          }
+        },
+        {
+          turnId: 'historic-run',
+          safePayload: {
+            type: EventType.TEXT_MESSAGE_CONTENT,
+            messageId: 'historic-message',
+            delta: 'часть'
+          }
+        },
+        {
+          turnId: 'historic-run',
+          safePayload: {
+            type: EventType.TEXT_MESSAGE_END,
+            messageId: 'historic-message'
+          }
+        },
+        { turnId: 'historic-run', safePayload: terminal }
+      );
+      const coordinator = new BraiChatTurnCoordinator({ broker: new FakeBroker() });
+      const replayed = [];
+      await new Promise((resolve, reject) => coordinator.connect({
+        store,
+        userId: 'user-a',
+        publicThreadId: 'public-thread',
+        headers: { 'last-event-id': '5' }
+      }).subscribe({ next: (event) => replayed.push(event), error: reject, complete: resolve }));
+
+      assert.equal(replayed[0].type, EventType.RUN_STARTED);
+      assert.equal(replayed[0].runId, 'historic-run');
+      assert.deepEqual(replayed.filter((event) => event.type === EventType.TEXT_MESSAGE_CONTENT)
+        .map((event) => event.delta), ['Первая часть']);
+      assert.equal(replayed.at(-1).type, terminalType);
+      assert.deepEqual(store.replayCalls, [{ after: 0, limit: 500 }]);
+    });
+  }
+});
+
+test('standalone pre-start RUN_ERROR does not borrow a prior run boundary', async () => {
+  const store = fakeStore();
+  store.events.push(
+    {
+      turnId: 'previous-run',
+      safePayload: {
+        type: EventType.RUN_STARTED,
+        threadId: 'public-thread',
+        runId: 'previous-run'
+      }
+    },
+    {
+      turnId: 'previous-run',
+      safePayload: {
+        type: EventType.RUN_FINISHED,
+        threadId: 'public-thread',
+        runId: 'previous-run',
+        outcome: { type: 'success' }
+      }
+    },
+    {
+      turnId: 'prestart-error-run',
+      safePayload: {
+        type: EventType.RUN_ERROR,
+        code: 'upstream_unavailable',
+        message: 'Codex временно недоступен. Попробуйте позже.'
+      }
+    }
+  );
+  const coordinator = new BraiChatTurnCoordinator({ broker: new FakeBroker() });
+  const replayed = [];
+  await new Promise((resolve, reject) => coordinator.connect({
+    store,
+    userId: 'user-a',
+    publicThreadId: 'public-thread',
+    headers: { 'last-event-id': '2' }
+  }).subscribe({ next: (event) => replayed.push(event), error: reject, complete: resolve }));
+
+  assert.deepEqual(replayed.map((event) => event.type), [EventType.RUN_ERROR]);
+  assert.deepEqual(store.replayCalls, [{ after: 2, limit: 500 }]);
 });
 
 test('connect closes the replay/live handoff without dropping or duplicating a boundary event', async () => {

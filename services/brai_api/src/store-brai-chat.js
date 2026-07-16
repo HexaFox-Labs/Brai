@@ -82,6 +82,17 @@ export const braiChatStoreMethods = {
     return this.getBraiChatThread(threadId);
   },
 
+  setBraiChatGeneratedTitle(threadId, title, nowIso = new Date().toISOString()) {
+    const userId = requireUser();
+    if (!ownedThread(this, threadId)) return null;
+    const generatedTitle = requiredTitle(title);
+    this.db.prepare(`
+      UPDATE brai_chat_threads SET title = ?, title_source = 'generated', updated_at_utc = ?
+      WHERE user_id = ? AND id = ? AND title_source = 'default'
+    `).run(generatedTitle, nowIso, userId, threadId);
+    return this.getBraiChatThread(threadId);
+  },
+
   archiveBraiChatThread(threadId, archived, nowIso = new Date().toISOString()) {
     const userId = requireUser();
     const result = this.db.prepare(`
@@ -170,11 +181,7 @@ export const braiChatStoreMethods = {
         dispatchStatus, next, model, reasoningEffort, nowIso, nowIso);
       return this.db.prepare('SELECT * FROM brai_chat_messages WHERE user_id = ? AND id = ?').get(userId, id);
     })();
-    if (!insert) return null;
-    if (role === 'user' && normalizedContent.trim()) {
-      tryAutoTitle(this, userId, threadId, normalizedContent, nowIso);
-    }
-    return formatBraiChatMessage(insert);
+    return insert ? formatBraiChatMessage(insert) : null;
   },
 
   getBraiChatMessage(threadId, messageId) {
@@ -307,6 +314,43 @@ export const braiChatStoreMethods = {
       ORDER BY sequence LIMIT ?
     `).all(userId, threadId, after, limit);
     return page(rows.map(formatBraiChatEvent), limit);
+  },
+
+  findBraiChatReplayBoundary(threadId, after = 0) {
+    const userId = requireUser();
+    if (!ownedThread(this, threadId)) return null;
+    const cursor = Number.isSafeInteger(Number(after)) && Number(after) >= 0 ? Number(after) : 0;
+    const next = this.db.prepare(`
+      SELECT sequence, event_type, turn_id FROM brai_chat_events
+      WHERE user_id = ? AND brai_chat_threads_id = ? AND sequence > ?
+      ORDER BY sequence LIMIT 1
+    `).get(userId, threadId, cursor);
+    if (!next || next.event_type === 'RUN_STARTED' || !next.turn_id) return 0;
+    const row = this.db.prepare(`
+      SELECT COALESCE(MAX(sequence), 0) AS boundary FROM brai_chat_events
+      WHERE user_id = ? AND brai_chat_threads_id = ? AND turn_id = ?
+        AND sequence < ? AND event_type = 'RUN_STARTED'
+    `).get(userId, threadId, next.turn_id, next.sequence);
+    return Number(row?.boundary) || 0;
+  },
+
+  listBraiChatReadyGeneratedAttachmentIds(threadId, limit = 1_000) {
+    const userId = requireUser();
+    if (!ownedThread(this, threadId)) return null;
+    const bounded = Math.max(1, Math.min(Number(limit) || 1_000, 1_000));
+    return this.db.prepare(`
+      SELECT safe_payload_json->'value'->>'attachment_id' AS attachment_id
+      FROM brai_chat_events
+      WHERE user_id = ? AND brai_chat_threads_id = ?
+        AND event_type = 'CUSTOM'
+        AND safe_payload_json->>'name' = 'brai.artifact.v1'
+        AND safe_payload_json->'value'->>'kind' = 'image'
+        AND safe_payload_json->'value'->>'status' = 'ready'
+        AND safe_payload_json->'value'->>'attachment_id' IS NOT NULL
+      GROUP BY safe_payload_json->'value'->>'attachment_id'
+      ORDER BY MAX(sequence) DESC
+      LIMIT ?
+    `).all(userId, threadId, bounded).map((row) => row.attachment_id);
   },
 
   addBraiChatAttachments(threadId, attachments, nowIso = new Date().toISOString()) {
@@ -555,19 +599,6 @@ function normalizedAttachmentIds(value) {
   if (ids.length === 0 || ids.length > 5
     || ids.some((id) => typeof id !== 'string' || !id.trim())) return null;
   return ids;
-}
-
-function tryAutoTitle(store, userId, threadId, content, nowIso) {
-  try {
-    const title = content.trim().replace(/\s+/g, ' ').split(' ').slice(0, 8).join(' ').slice(0, 80).trim();
-    if (!title) return;
-    store.db.prepare(`
-      UPDATE brai_chat_threads SET title = ?, title_source = 'auto', updated_at_utc = ?
-      WHERE user_id = ? AND id = ? AND title_source = 'default'
-    `).run(title, nowIso, userId, threadId);
-  } catch {
-    // Title generation is best-effort and must never fail the accepted message.
-  }
 }
 
 function page(items, limit) {

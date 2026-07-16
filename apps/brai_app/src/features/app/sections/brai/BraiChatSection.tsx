@@ -13,7 +13,7 @@ import { Input } from "@/shared/ui/input";
 import { ScrollArea } from "@/shared/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 import { cx } from "../../appUtils";
-import { MobileContextSheet } from "../../chrome/AppChrome";
+import { IconButton, MobileContextSheet } from "../../chrome/AppChrome";
 import type { ThemeMode } from "../../appModel";
 import { requestMobileProfileDrawerClose } from "../../navigation/MobileProfileDrawer";
 import { useMobileNavigationViewport } from "../../navigation/useSectionSwipeNavigation";
@@ -23,22 +23,32 @@ import {
   projectBraiChatArtifacts,
   splitSearchSnippet,
   type BraiChatArtifact,
+  type BraiContextPanel,
   type BraiWorkspaceMode,
 } from "./braiChatModel";
 
-const LIVE_EVENT_POLL_MS = 1_000;
 type PendingAnchor = { kind: "message" | "event"; id: string; threadId: string };
 type RetryLast = () => Promise<void>;
+const GENERATED_TITLE_REFRESH_DELAYS_MS = [2_000, 10_000, 35_000] as const;
+const CONTEXT_PANEL_LABELS: Record<BraiWorkspaceMode, string> = {
+  preview: "Preview",
+  code: "Code",
+  docs: "Docs",
+};
 const BraiCopilotSurface = dynamic(() => import("./BraiCopilotSurface").then((module) => module.BraiCopilotSurface), {
   ssr: false,
   loading: () => <div className="grid h-full place-items-center text-sm text-muted-foreground">Подключение к Браю</div>,
 });
 
 export function BraiChatSection({
+  contextPanel,
+  onContextPanelChange,
   theme = "dark",
   userId,
   onRailContent,
 }: {
+  contextPanel: BraiContextPanel;
+  onContextPanelChange: (panel: BraiContextPanel) => void;
   theme?: ThemeMode;
   userId?: string | null;
   onRailContent?: (content: ReactNode | null) => void;
@@ -55,13 +65,11 @@ export function BraiChatSection({
   const [chatError, setChatError] = useState("");
   const [retryableError, setRetryableError] = useState(false);
   const [retryAvailable, setRetryAvailable] = useState(false);
-  const [runActive, setRunActive] = useState(false);
   const [pendingAnchor, setPendingAnchor] = useState<PendingAnchor | null>(null);
-  const [workspaceMode, setWorkspaceMode] = useState<BraiWorkspaceMode>("preview");
   const [workspaceTargetId, setWorkspaceTargetId] = useState<string | null>(null);
-  const [mobileWorkspaceOpen, setMobileWorkspaceOpen] = useState(false);
   const activeThreadIdRef = useRef<string | null>(null);
-  const eventsRef = useRef<BraiChatEvent[]>([]);
+  const archivedRef = useRef(false);
+  const generatedTitleRefreshTimersRef = useRef<number[]>([]);
   const retryLastRef = useRef<RetryLast | null>(null);
   const mobileViewport = useMobileNavigationViewport();
   const activeThread = threads.find((thread) => thread.id === activeThreadId) ?? null;
@@ -87,10 +95,8 @@ export function BraiChatSection({
     setEvents([]);
     setPendingAnchor(null);
     setWorkspaceTargetId(null);
-    setMobileWorkspaceOpen(false);
     retryLastRef.current = null;
     setRetryAvailable(false);
-    setRunActive(false);
   }, []);
 
   const activateThread = useCallback((id: string | null) => {
@@ -98,12 +104,23 @@ export function BraiChatSection({
     setActiveThreadId(id);
   }, []);
 
+  const setArchivedMode = useCallback((value: boolean) => {
+    archivedRef.current = value;
+    setArchived(value);
+  }, []);
+
+  const clearGeneratedTitleRefreshTimers = useCallback(() => {
+    for (const timer of generatedTitleRefreshTimersRef.current) window.clearTimeout(timer);
+    generatedTitleRefreshTimersRef.current = [];
+  }, []);
+
+  useEffect(() => clearGeneratedTitleRefreshTimers, [activeThreadId, archived, clearGeneratedTitleRefreshTimers]);
+
   const chooseWorkspaceMode = useCallback((mode: BraiWorkspaceMode, targetId: string | null = null) => {
-    setWorkspaceMode(mode);
     setWorkspaceTargetId(targetId);
-    if (mobileViewport) setMobileWorkspaceOpen(true);
+    onContextPanelChange(mode);
     requestMobileProfileDrawerClose();
-  }, [mobileViewport]);
+  }, [onContextPanelChange]);
 
   const openArtifact = useCallback((artifact: BraiChatArtifact) => {
     chooseWorkspaceMode(artifactWorkspaceMode(artifact), artifact.id);
@@ -121,10 +138,7 @@ export function BraiChatSection({
       setStatus(next.length > 0 ? "" : showArchived ? "Архив пуст" : "Создайте первый чат");
       return true;
     } catch {
-      resetProjections();
-      setThreads([]);
-      activateThread(null);
-      setStatus("Брай временно недоступен");
+      if (!activeThreadIdRef.current) setStatus("Брай временно недоступен");
       reportChatError("Брай временно недоступен");
       return false;
     }
@@ -153,32 +167,6 @@ export function BraiChatSection({
     });
     return () => { cancelled = true; };
   }, [activeThreadId, api, reportChatError]);
-
-  useEffect(() => {
-    eventsRef.current = events;
-  }, [events]);
-
-  useEffect(() => {
-    if (!activeThreadId || !runActive) return;
-    let cancelled = false;
-    let timer: number | null = null;
-    const poll = async () => {
-      const after = eventsRef.current.reduce((sequence, event) => Math.max(sequence, event.sequence), 0);
-      try {
-        const incoming = await api.events(activeThreadId, after);
-        if (!cancelled && incoming.length > 0) setEvents((current) => mergeEvents(current, incoming));
-      } catch {
-        // The terminal refresh remains authoritative; transient polling failures stay quiet.
-      } finally {
-        if (!cancelled) timer = window.setTimeout(() => void poll(), LIVE_EVENT_POLL_MS);
-      }
-    };
-    void poll();
-    return () => {
-      cancelled = true;
-      if (timer != null) window.clearTimeout(timer);
-    };
-  }, [activeThreadId, api, runActive]);
 
   useEffect(() => {
     if (!pendingAnchor || pendingAnchor.kind !== "event" || pendingAnchor.threadId !== activeThreadId) return;
@@ -215,7 +203,7 @@ export function BraiChatSection({
   const createThread = useCallback(async () => {
     try {
       const thread = await api.createThread();
-      setArchived(false);
+      setArchivedMode(false);
       setThreads((current) => [thread, ...current.filter((item) => item.id !== thread.id)]);
       resetProjections();
       activateThread(thread.id);
@@ -226,7 +214,7 @@ export function BraiChatSection({
       setStatus("Новый чат не создан");
       reportChatError("Новый чат не создан");
     }
-  }, [activateThread, api, clearChatError, reportChatError, resetProjections]);
+  }, [activateThread, api, clearChatError, reportChatError, resetProjections, setArchivedMode]);
 
   const selectThread = useCallback((id: string) => {
     resetProjections();
@@ -275,7 +263,7 @@ export function BraiChatSection({
     try {
       const targetArchived = Boolean(hit.archived_at_utc);
       const nextThreads = targetArchived === archived ? threads : await api.threads(targetArchived);
-      setArchived(targetArchived);
+      setArchivedMode(targetArchived);
       setThreads(nextThreads);
       if (hit.thread_id !== activeThreadId) resetProjections();
       activateThread(hit.thread_id);
@@ -288,7 +276,7 @@ export function BraiChatSection({
     } catch {
       reportChatError("Результат поиска не открыт. Попробуйте ещё раз");
     }
-  }, [activateThread, activeThreadId, api, archived, clearChatError, reportChatError, resetProjections, threads]);
+  }, [activateThread, activeThreadId, api, archived, clearChatError, reportChatError, resetProjections, setArchivedMode, threads]);
 
   const updateSettings = useCallback(async (patch: Partial<Pick<BraiChatThread, "model" | "reasoning_effort">>) => {
     if (!activeThread) return;
@@ -304,16 +292,32 @@ export function BraiChatSection({
 
   const refreshAfterRun = useCallback(async () => {
     if (!activeThreadId) return;
+    const completedThreadId = activeThreadId;
+    const completedArchived = archived;
     try {
-      const [nextMessages, nextEvents, nextThreads] = await Promise.all([api.messages(activeThreadId), api.events(activeThreadId), api.threads(archived)]);
+      const [nextMessages, nextEvents, nextThreads] = await Promise.all([api.messages(completedThreadId), api.events(completedThreadId), api.threads(completedArchived)]);
+      if (activeThreadIdRef.current !== completedThreadId || archivedRef.current !== completedArchived) return;
       setMessages(nextMessages);
       setEvents(nextEvents);
       setThreads(nextThreads);
       clearChatError();
+      clearGeneratedTitleRefreshTimers();
+      for (const delayMs of GENERATED_TITLE_REFRESH_DELAYS_MS) {
+        const timer = window.setTimeout(() => {
+          generatedTitleRefreshTimersRef.current = generatedTitleRefreshTimersRef.current.filter((candidate) => candidate !== timer);
+          if (activeThreadIdRef.current !== completedThreadId || archivedRef.current !== completedArchived) return;
+          void api.threads(completedArchived).then((latestThreads) => {
+            if (activeThreadIdRef.current === completedThreadId && archivedRef.current === completedArchived) {
+              setThreads(latestThreads);
+            }
+          }).catch(() => undefined);
+        }, delayMs);
+        generatedTitleRefreshTimersRef.current.push(timer);
+      }
     } catch {
       reportChatError("Ответ завершён, но историю не удалось обновить. Переключите чат для повтора");
     }
-  }, [activeThreadId, api, archived, clearChatError, reportChatError]);
+  }, [activeThreadId, api, archived, clearChatError, clearGeneratedTitleRefreshTimers, reportChatError]);
 
   const steer = useCallback(async (messageId: string, text: string) => {
     if (!activeThreadId) throw new Error("brai_chat_thread_missing");
@@ -325,9 +329,9 @@ export function BraiChatSection({
       ?? events.find((event) => event.id === artifact.sourceEventId)?.message_id
       ?? undefined;
     if (!messageId || !activeThreadId) return;
-    setMobileWorkspaceOpen(false);
+    if (mobileViewport) onContextPanelChange("none");
     setPendingAnchor({ kind: "message", id: messageId, threadId: activeThreadId });
-  }, [activeThreadId, events]);
+  }, [activeThreadId, events, mobileViewport, onContextPanelChange]);
 
   const rail = useMemo(() => (
     <BraiThreadRail
@@ -336,17 +340,15 @@ export function BraiChatSection({
       searchResults={searchResults}
       status={status}
       threads={threads}
-      workspaceMode={workspaceMode}
       onArchive={toggleArchive}
-      onArchived={setArchived}
+      onArchived={setArchivedMode}
       onCreate={createThread}
       onRename={renameThread}
       onSearch={search}
       onSearchHit={openSearchHit}
       onSelect={selectThread}
-      onWorkspaceMode={chooseWorkspaceMode}
     />
-  ), [activeThreadId, archived, chooseWorkspaceMode, createThread, openSearchHit, renameThread, search, searchResults, selectThread, status, threads, toggleArchive, workspaceMode]);
+  ), [activeThreadId, archived, createThread, openSearchHit, renameThread, search, searchResults, selectThread, setArchivedMode, status, threads, toggleArchive]);
 
   useEffect(() => {
     if (!onRailContent) return;
@@ -357,10 +359,15 @@ export function BraiChatSection({
   const selectedModel = models.find((model) => model.id === activeThread?.model) ?? null;
   const reasoningEfforts = selectedModel?.reasoning_efforts ?? [];
   const providerHeaders = userId ? { "x-brai-expected-user-id": userId } : undefined;
-  const WorkspaceIcon = workspaceMode === "preview" ? Eye : workspaceMode === "code" ? Code2 : BookOpen;
 
   return (
-    <div className="brai-chat-workspace grid h-full min-h-0 grid-cols-[minmax(0,5fr)_minmax(0,7fr)] overflow-hidden border-t border-border max-[860px]:grid-cols-1" data-nav-swipe-exclusion>
+    <div
+      className={cx(
+        "brai-chat-workspace grid h-full min-h-0 gap-7 overflow-hidden max-[860px]:block max-[860px]:overflow-visible",
+        contextPanel === "none" ? "grid-cols-[minmax(0,1fr)]" : "grid-cols-[minmax(0,1fr)_minmax(0,1fr)]",
+      )}
+      data-nav-swipe-exclusion
+    >
       <section className="brai-chat-pane grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] bg-background" aria-label="Чат с Браем">
         <div className="flex min-h-12 flex-wrap items-center gap-2 border-b border-border px-3 py-2">
           <p className="m-0 min-w-24 flex-1 truncate text-sm font-semibold">{activeThread?.title ?? "Брай"}</p>
@@ -373,9 +380,6 @@ export function BraiChatSection({
             <SelectContent>{reasoningEfforts.map((effort) => <SelectItem key={effort} value={effort}>{effort}</SelectItem>)}</SelectContent>
           </Select>
           <Badge variant="secondary" className="gap-1"><LockKeyhole className="size-3" aria-hidden="true" />Только чтение</Badge>
-          <Button type="button" size="icon-sm" variant="ghost" className="min-[861px]:hidden" aria-label={`Открыть ${workspaceMode}`} onClick={() => setMobileWorkspaceOpen(true)}>
-            <WorkspaceIcon aria-hidden="true" />
-          </Button>
         </div>
         <div className="relative min-h-0 overflow-hidden">
           {chatError ? (
@@ -402,7 +406,6 @@ export function BraiChatSection({
               onError={reportChatError}
               onRetryChange={handleRetryChange}
               onRunFinished={refreshAfterRun}
-              onRunStateChange={setRunActive}
               onSteer={steer}
               onDeleteAttachment={(id) => api.deleteUnlinkedAttachment(id)}
               onUpload={async (file) => {
@@ -416,21 +419,23 @@ export function BraiChatSection({
           )}
         </div>
       </section>
-      <aside className="hidden min-h-0 min-w-0 border-l border-border bg-card min-[861px]:block" aria-label="Рабочая область Брая">
+      {contextPanel !== "none" ? (
+      <aside className="relative z-10 hidden h-full min-h-0 min-w-0 min-[861px]:block" aria-label={`Панель ${CONTEXT_PANEL_LABELS[contextPanel]}`} data-galaxy-interaction-block>
         <BraiChatWorkspace
           instance="desktop"
-          mode={workspaceMode}
+          mode={contextPanel}
           artifacts={artifacts}
           targetId={workspaceTargetId}
           attachmentUrl={(id) => api.attachmentUrl(id)}
           onSource={navigateToSource}
         />
       </aside>
-      {mobileWorkspaceOpen && mobileViewport ? (
-        <MobileContextSheet label={`Рабочая область: ${workspaceMode}`} variant="detail" scroll={false} onClose={() => setMobileWorkspaceOpen(false)}>
+      ) : null}
+      {contextPanel !== "none" && mobileViewport ? (
+        <MobileContextSheet label={CONTEXT_PANEL_LABELS[contextPanel]} variant="detail" scroll={false} onClose={() => onContextPanelChange("none")}>
           <BraiChatWorkspace
             instance="mobile"
-            mode={workspaceMode}
+            mode={contextPanel}
             artifacts={artifacts}
             targetId={workspaceTargetId}
             attachmentUrl={(id) => api.attachmentUrl(id)}
@@ -442,13 +447,26 @@ export function BraiChatSection({
   );
 }
 
-function BraiThreadRail({ activeThreadId, archived, searchResults, status, threads, workspaceMode, onArchive, onArchived, onCreate, onRename, onSearch, onSearchHit, onSelect, onWorkspaceMode }: {
+export function BraiContextPanelActions({ panel, onPanelChange }: {
+  panel: BraiContextPanel;
+  onPanelChange: (panel: BraiContextPanel) => void;
+}) {
+  const toggle = (next: BraiWorkspaceMode) => onPanelChange(panel === next ? "none" : next);
+  return (
+    <>
+      <IconButton icon={Eye} label="Preview" active={panel === "preview"} onClick={() => toggle("preview")} />
+      <IconButton icon={Code2} label="Code" active={panel === "code"} onClick={() => toggle("code")} />
+      <IconButton icon={BookOpen} label="Docs" active={panel === "docs"} className="min-[861px]:mr-5" onClick={() => toggle("docs")} />
+    </>
+  );
+}
+
+function BraiThreadRail({ activeThreadId, archived, searchResults, status, threads, onArchive, onArchived, onCreate, onRename, onSearch, onSearchHit, onSelect }: {
   activeThreadId: string | null;
   archived: boolean;
   searchResults: BraiChatSearchHit[];
   status: string;
   threads: BraiChatThread[];
-  workspaceMode: BraiWorkspaceMode;
   onArchive: (thread: BraiChatThread) => Promise<void>;
   onArchived: (archived: boolean) => void;
   onCreate: () => Promise<void>;
@@ -456,26 +474,17 @@ function BraiThreadRail({ activeThreadId, archived, searchResults, status, threa
   onSearch: (query: string, includeArchived: boolean) => Promise<void>;
   onSearchHit: (hit: BraiChatSearchHit) => Promise<void>;
   onSelect: (id: string) => void;
-  onWorkspaceMode: (mode: BraiWorkspaceMode) => void;
 }) {
   const [query, setQuery] = useState("");
   const [includeArchived, setIncludeArchived] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
 
   return (
-    <div className="grid h-full min-h-0 grid-rows-[auto_auto_auto_minmax(0,1fr)]">
+    <div className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)]">
       <div className="flex items-center gap-2 border-b border-border p-3">
         <Button type="button" className="flex-1" size="sm" onClick={() => void onCreate()}><Plus aria-hidden="true" />Новый чат</Button>
         <Button type="button" size="icon-sm" variant={archived ? "secondary" : "ghost"} aria-label={archived ? "Показать активные чаты" : "Показать архив чатов"} onClick={() => onArchived(!archived)}><Archive aria-hidden="true" /></Button>
       </div>
-      <section className="grid gap-2 border-b border-border p-3" aria-labelledby="brai-workspace-view-label">
-        <h2 id="brai-workspace-view-label" className="m-0 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Вид</h2>
-        <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted p-1" role="tablist" aria-label="Режим правой рабочей области">
-          <WorkspaceModeButton icon={Eye} label="Preview" mode="preview" selected={workspaceMode} onSelect={onWorkspaceMode} />
-          <WorkspaceModeButton icon={Code2} label="Code" mode="code" selected={workspaceMode} onSelect={onWorkspaceMode} />
-          <WorkspaceModeButton icon={BookOpen} label="Docs" mode="docs" selected={workspaceMode} onSelect={onWorkspaceMode} />
-        </div>
-      </section>
       <form className="grid gap-2 border-b border-border p-3" onSubmit={(event) => { event.preventDefault(); void onSearch(query, includeArchived); }}>
         <div className="flex gap-1"><Input id="brai-chat-search" name="query" type="search" value={query} aria-label="Поиск по чатам" placeholder="Поиск" onChange={(event) => setQuery(event.target.value)} /><Button type="submit" size="icon-sm" variant="ghost" aria-label="Найти"><Search aria-hidden="true" /></Button></div>
         <label className="flex items-center gap-2 text-xs text-muted-foreground"><input type="checkbox" checked={includeArchived} onChange={(event) => setIncludeArchived(event.target.checked)} />Искать в архиве</label>
@@ -498,31 +507,10 @@ function BraiThreadRail({ activeThreadId, archived, searchResults, status, threa
   );
 }
 
-function WorkspaceModeButton({ icon: Icon, label, mode, selected, onSelect }: {
-  icon: typeof Eye;
-  label: string;
-  mode: BraiWorkspaceMode;
-  selected: BraiWorkspaceMode;
-  onSelect: (mode: BraiWorkspaceMode) => void;
-}) {
-  const active = mode === selected;
-  return (
-    <Button type="button" role="tab" size="sm" variant={active ? "secondary" : "ghost"} className="min-w-0 gap-1 px-2" aria-selected={active} onClick={() => onSelect(mode)}>
-      <Icon className="size-3" aria-hidden="true" /><span className="truncate">{label}</span>
-    </Button>
-  );
-}
-
 function SearchSnippet({ snippet }: { snippet: string }) {
   return (
     <span className="mt-1 block line-clamp-2 text-xs text-muted-foreground">
       {splitSearchSnippet(snippet).map((part, index) => part.highlighted ? <mark key={index} className="bg-accent text-accent-foreground">{part.text}</mark> : part.text)}
     </span>
   );
-}
-
-function mergeEvents(current: BraiChatEvent[], incoming: BraiChatEvent[]): BraiChatEvent[] {
-  const events = new Map(current.map((event) => [event.id, event]));
-  for (const event of incoming) events.set(event.id, event);
-  return [...events.values()].sort((left, right) => left.sequence - right.sequence);
 }

@@ -28,6 +28,13 @@ function safeId(value, fallback) {
   return typeof value === 'string' && /^[A-Za-z0-9._:-]{1,200}$/.test(value) ? value : fallback;
 }
 
+export function assistantMessageIdForRun(runId) {
+  const safeRunId = safeId(runId, 'run');
+  const digest = crypto.createHash('sha256')
+    .update(`${safeRunId}\0assistant`).digest('hex').slice(0, 24);
+  return `assistant:${digest}`;
+}
+
 function toolName(item) {
   if (item.type === 'commandExecution') return 'command';
   if (item.type === 'fileChange') return 'file_change';
@@ -134,8 +141,15 @@ export class CodexAguiNormalizer {
     this.finished = false;
     this.input = input;
     this.textItems = new Map();
+    this.reasoningItems = new Map();
+    this.reasoningStarted = false;
+    this.reasoningEnded = false;
     this.toolItems = new Map();
     this.publicItemIds = new Map();
+    this.toolParentMessageId = assistantMessageIdForRun(this.runId);
+    const reasoningDigest = crypto.createHash('sha256')
+      .update(`${this.runId}\0reasoning`).digest('hex').slice(0, 24);
+    this.reasoningGroupId = `reasoning:${reasoningDigest}`;
   }
 
   translate(method, params = {}) {
@@ -170,13 +184,35 @@ export class CodexAguiNormalizer {
     }
 
     if (method === 'item/reasoning/summaryTextDelta') {
-      const delta = sanitizeBraiChatText(params.delta, { maxBytes: 8_192 });
+      const itemId = this.#itemId(params.itemId, 'reasoning');
+      const state = this.reasoningItems.get(itemId) || {
+        started: false, ended: false, outputBytes: 0, truncated: false
+      };
+      const delta = boundedItemDelta(state, params.delta, 8_192);
       if (!delta) return [];
-      return [custom('brai.reasoning_summary.v1', {
-        item_id: this.#itemId(params.itemId, 'summary'),
-        index: Number.isSafeInteger(params.summaryIndex) ? params.summaryIndex : 0,
+      const reasoningEvents = [];
+      if (!this.reasoningStarted) {
+        this.reasoningStarted = true;
+        reasoningEvents.push({
+          type: EventType.REASONING_START,
+          messageId: this.reasoningGroupId
+        });
+      }
+      if (!state.started) {
+        state.started = true;
+        reasoningEvents.push({
+          type: EventType.REASONING_MESSAGE_START,
+          messageId: itemId,
+          role: 'reasoning'
+        });
+      }
+      reasoningEvents.push({
+        type: EventType.REASONING_MESSAGE_CONTENT,
+        messageId: itemId,
         delta
-      })];
+      });
+      this.reasoningItems.set(itemId, state);
+      return reasoningEvents;
     }
 
     if (method === 'item/commandExecution/outputDelta') {
@@ -200,10 +236,13 @@ export class CodexAguiNormalizer {
 
     if (method === 'error') {
       const safe = safeBraiChatError(params.error);
-      return [
-        { type: EventType.RUN_ERROR, ...safe },
-        custom('brai.turn_status.v1', { status: 'failed', code: safe.code, run_id: this.runId })
+      const events = [
+        custom('brai.turn_status.v1', { status: 'failed', code: safe.code, run_id: this.runId }),
+        ...this.#closeReasoning(),
+        { type: EventType.RUN_ERROR, ...safe }
       ];
+      this.finished = true;
+      return events;
     }
 
     if (method === 'turn/completed') return this.#turnCompleted(params.turn);
@@ -213,6 +252,14 @@ export class CodexAguiNormalizer {
   #itemStarted(item) {
     if (!item || typeof item !== 'object') return [];
     const itemId = this.#itemId(item.id, item.type || 'item');
+    if (item.type === 'reasoning') {
+      if (!this.reasoningItems.has(itemId)) {
+        this.reasoningItems.set(itemId, {
+          started: false, ended: false, outputBytes: 0, truncated: false
+        });
+      }
+      return [];
+    }
     if (item.type === 'agentMessage') {
       if (this.textItems.has(itemId)) return [];
       this.textItems.set(itemId, { hasDelta: false, ended: false, outputBytes: 0, truncated: false });
@@ -224,7 +271,12 @@ export class CodexAguiNormalizer {
       item: { ...item, id: itemId }, output: '', ended: false, outputBytes: 0, truncated: false
     });
     return [
-      { type: EventType.TOOL_CALL_START, toolCallId: itemId, toolCallName: toolName(item) },
+      {
+        type: EventType.TOOL_CALL_START,
+        toolCallId: itemId,
+        toolCallName: toolName(item),
+        parentMessageId: this.toolParentMessageId
+      },
       { type: EventType.TOOL_CALL_ARGS, toolCallId: itemId, delta: JSON.stringify(toolArgs(item)) },
       custom('brai.detail.v1', {
         kind: item.type,
@@ -238,6 +290,13 @@ export class CodexAguiNormalizer {
   #itemCompleted(item, turnId) {
     if (!item || typeof item !== 'object') return [];
     const itemId = this.#itemId(item.id, item.type || 'item');
+    if (item.type === 'reasoning') {
+      const state = this.reasoningItems.get(itemId);
+      if (!state?.started || state.ended) return [];
+      state.ended = true;
+      this.reasoningItems.set(itemId, state);
+      return [{ type: EventType.REASONING_MESSAGE_END, messageId: itemId }];
+    }
     if (item.type === 'agentMessage') {
       const state = this.textItems.get(itemId) || {
         hasDelta: false, ended: false, outputBytes: 0, truncated: false
@@ -280,7 +339,7 @@ export class CodexAguiNormalizer {
   }
 
   #turnCompleted(turn = {}) {
-    const events = [];
+    const events = this.#closeReasoning();
     for (const [messageId, state] of this.textItems) {
       if (!state.ended) events.push({ type: EventType.TEXT_MESSAGE_END, messageId });
     }
@@ -307,6 +366,21 @@ export class CodexAguiNormalizer {
       });
     }
     this.finished = true;
+    return events;
+  }
+
+  #closeReasoning() {
+    const events = [];
+    for (const [messageId, state] of this.reasoningItems) {
+      if (state.started && !state.ended) {
+        state.ended = true;
+        events.push({ type: EventType.REASONING_MESSAGE_END, messageId });
+      }
+    }
+    if (this.reasoningStarted && !this.reasoningEnded) {
+      this.reasoningEnded = true;
+      events.push({ type: EventType.REASONING_END, messageId: this.reasoningGroupId });
+    }
     return events;
   }
 

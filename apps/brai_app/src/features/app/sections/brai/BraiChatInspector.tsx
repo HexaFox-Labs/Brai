@@ -13,8 +13,8 @@ export type WorkspaceInstance = "desktop" | "mobile";
 
 const MODE_COPY: Record<BraiWorkspaceMode, { empty: string; label: string; icon: typeof Eye }> = {
   preview: { empty: "Изображения и визуальные результаты появятся здесь", label: "Preview", icon: Eye },
-  code: { empty: "Код, diff и результаты инструментов появятся здесь", label: "Code", icon: Code2 },
-  docs: { empty: "Большие Markdown-документы появятся здесь", label: "Docs", icon: BookOpen },
+  code: { empty: "Код, diff и файлы появятся здесь", label: "Code", icon: Code2 },
+  docs: { empty: "Документы и большие Markdown-ответы появятся здесь", label: "Docs", icon: BookOpen },
 };
 
 export function BraiChatWorkspace({
@@ -47,10 +47,10 @@ export function BraiChatWorkspace({
   }, [instance, mode, targetId, visibleArtifacts]);
 
   return (
-    <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] bg-card">
-      <header className="flex min-h-12 items-center gap-3 border-b border-border px-4">
+    <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]">
+      <header className="mb-3 flex min-h-9 items-center gap-3">
         <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
-        <h2 className="m-0 text-sm font-semibold">{copy.label}</h2>
+        <h2 className="m-0 text-xl font-semibold leading-tight">{copy.label}</h2>
         <span className="text-xs text-muted-foreground">{visibleArtifacts.length || ""}</span>
       </header>
       {visibleArtifacts.length === 0 ? (
@@ -62,7 +62,7 @@ export function BraiChatWorkspace({
         </div>
       ) : (
         <ScrollArea className="min-h-0" contentInset="balanced">
-          <div className="grid gap-4 p-4">
+          <div className="grid gap-4 pr-1">
             {visibleArtifacts.map((artifact) => (
               <article
                 key={artifact.id}

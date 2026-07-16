@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawn as nodeSpawn } from "node:child_process";
 import { EventEmitter, once } from "node:events";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -13,6 +14,9 @@ const USER_B = "user_00000002";
 const THREAD = "thread_00000001";
 const TURN = "turn_000000001";
 const ATTACHMENT = "attach_0000001";
+const IMAGE_ITEM = "image_item_0001";
+const GENERATED_ATTACHMENT = "generated_attach_0001";
+const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 class FakeDocker {
   calls = [];
@@ -23,6 +27,8 @@ class FakeDocker {
   emitTurnStarted = true;
   hangOnClose = false;
   stopExitCode = 0;
+  execLocally = false;
+  titleResponse = "Хайку о весне";
   config = {
     config: {
       approval_policy: "never",
@@ -50,6 +56,9 @@ class FakeDocker {
   spawn = (command, args, options) => {
     this.calls.push({ command, args, options });
     if (args[0] === "stop") return exitedChild(this.stopExitCode);
+    if (args[0] === "exec" && this.execLocally) {
+      return nodeSpawn(args[2], args.slice(3), options);
+    }
     assert.equal(args[0], "run");
     const child = new EventEmitter();
     child.stdin = new PassThrough();
@@ -116,6 +125,29 @@ class FakeDocker {
         respond({ thread: { id: request.params.threadId, turns: [{ id: TURN, status: this.turnStatus, items: [...this.turnItems] }] } });
         break;
       case "turn/start":
+        if (request.params.input?.[0]?.text?.startsWith("Придумай краткий смысловой заголовок")) {
+          const titleTurnId = `title_turn_${++this.sequence}`;
+          respond({ turn: { id: titleTurnId } });
+          queueMicrotask(() => {
+            child.stdout.write(`${JSON.stringify({
+              method: "item/agentMessage/delta",
+              params: {
+                threadId: request.params.threadId,
+                turnId: titleTurnId,
+                itemId: `title_item_${this.sequence}`,
+                delta: this.titleResponse,
+              },
+            })}\n`);
+            child.stdout.write(`${JSON.stringify({
+              method: "turn/completed",
+              params: {
+                threadId: request.params.threadId,
+                turn: { id: titleTurnId, status: "completed" },
+              },
+            })}\n`);
+          });
+          break;
+        }
         this.turnItems = [{
           type: "userMessage", id: "upstream-start-user", clientId: request.params.clientUserMessageId,
         }];
@@ -278,6 +310,469 @@ test("selected images are signature-checked and reject final or parent symlinks"
   await parentSymlinkManager.close();
 });
 
+test("generated images export from an allowlisted container item into the owner Vault", async () => {
+  const fixture = await createFixture();
+  const docker = new FakeDocker();
+  const copied = [];
+  const manager = fixture.manager(docker, {
+    generatedPathAccess: async ({ operation, sourcePath, destinationPath }) => {
+      assert.equal(operation, "read");
+      copied.push(sourcePath);
+      await fs.writeFile(destinationPath, PNG_BYTES);
+    },
+  });
+  const runtime = await manager.ensureRuntime(USER_A);
+  const notification = once(manager, "notification");
+  runtime.child.stdout.write(`${JSON.stringify({
+    method: "item/completed",
+    params: {
+      threadId: THREAD,
+      turnId: TURN,
+      item: {
+        id: IMAGE_ITEM,
+        type: "imageGeneration",
+        status: "completed",
+        path: "/tmp/generated/spring.png",
+      },
+    },
+  })}\n`);
+  await notification;
+
+  await manager.ensureRuntime(USER_B);
+  await assert.rejects(
+    manager.exportGeneratedArtifact(USER_B, {
+      threadId: THREAD,
+      turnId: TURN,
+      itemId: IMAGE_ITEM,
+      publicThreadId: THREAD,
+      attachmentId: GENERATED_ATTACHMENT,
+    }),
+    (error) => error.code === "BRAI_GENERATED_ARTIFACT_UNAVAILABLE",
+  );
+
+  const metadata = await manager.exportGeneratedArtifact(USER_A, {
+    threadId: THREAD,
+    turnId: TURN,
+    itemId: IMAGE_ITEM,
+    publicThreadId: THREAD,
+    attachmentId: GENERATED_ATTACHMENT,
+  });
+  assert.deepEqual(copied, ["/tmp/generated/spring.png"]);
+  assert.equal(metadata.id, GENERATED_ATTACHMENT);
+  assert.equal(metadata.original_name, "spring.png");
+  assert.equal(metadata.media_type, "image/png");
+  assert.equal(metadata.byte_size, PNG_BYTES.length);
+  assert.equal(
+    await fs.readFile(path.join(fixture.attachments, USER_A, "Brai", "Chat", THREAD, GENERATED_ATTACHMENT), "hex"),
+    PNG_BYTES.toString("hex"),
+  );
+
+  assert.deepEqual(await manager.exportGeneratedArtifact(USER_A, {
+    threadId: THREAD,
+    turnId: TURN,
+    itemId: IMAGE_ITEM,
+    publicThreadId: THREAD,
+    attachmentId: GENERATED_ATTACHMENT,
+  }), metadata);
+  assert.equal(copied.length, 1);
+  assert.equal(await manager.removeExportedArtifact(USER_B, {
+    threadId: THREAD,
+    turnId: TURN,
+    itemId: IMAGE_ITEM,
+    publicThreadId: THREAD,
+    attachmentId: GENERATED_ATTACHMENT,
+  }), false);
+  assert.equal(
+    await fs.readFile(path.join(
+      fixture.attachments, USER_A, "Brai", "Chat", THREAD, GENERATED_ATTACHMENT
+    ), "hex"),
+    PNG_BYTES.toString("hex"),
+  );
+  assert.equal(await manager.removeExportedArtifact(USER_A, {
+    threadId: THREAD,
+    turnId: TURN,
+    itemId: IMAGE_ITEM,
+    publicThreadId: THREAD,
+    attachmentId: GENERATED_ATTACHMENT,
+  }), true);
+  await assert.rejects(
+    fs.stat(path.join(fixture.attachments, USER_A, "Brai", "Chat", THREAD, GENERATED_ATTACHMENT)),
+    (error) => error.code === "ENOENT",
+  );
+  await manager.exportGeneratedArtifact(USER_A, {
+    threadId: THREAD,
+    turnId: TURN,
+    itemId: IMAGE_ITEM,
+    publicThreadId: THREAD,
+    attachmentId: GENERATED_ATTACHMENT,
+  });
+  assert.equal(copied.length, 2);
+  await fs.unlink(path.join(
+    fixture.attachments, USER_A, "Brai", "Chat", THREAD, GENERATED_ATTACHMENT
+  ));
+  assert.equal(await manager.removeExportedArtifact(USER_A, {
+    threadId: THREAD,
+    turnId: TURN,
+    itemId: IMAGE_ITEM,
+    publicThreadId: THREAD,
+    attachmentId: GENERATED_ATTACHMENT,
+  }), false);
+  await manager.exportGeneratedArtifact(USER_A, {
+    threadId: THREAD,
+    turnId: TURN,
+    itemId: IMAGE_ITEM,
+    publicThreadId: THREAD,
+    attachmentId: GENERATED_ATTACHMENT,
+  });
+  assert.equal(copied.length, 3);
+  await manager.close();
+});
+
+test("generated image export remains idempotent after a broker restart", async () => {
+  const fixture = await createFixture();
+  const exportOnce = async (docker) => {
+    const manager = fixture.manager(docker, {
+      generatedPathAccess: async ({ operation, destinationPath }) => {
+        assert.equal(operation, "read");
+        await fs.writeFile(destinationPath, PNG_BYTES);
+      },
+    });
+    const runtime = await manager.ensureRuntime(USER_A);
+    const notification = once(manager, "notification");
+    runtime.child.stdout.write(`${JSON.stringify({
+      method: "item/completed",
+      params: {
+        threadId: THREAD,
+        turnId: TURN,
+        item: {
+          id: IMAGE_ITEM,
+          type: "imageGeneration",
+          status: "completed",
+          path: "/tmp/generated/spring.png",
+        },
+      },
+    })}\n`);
+    await notification;
+    const metadata = await manager.exportGeneratedArtifact(USER_A, {
+      threadId: THREAD,
+      turnId: TURN,
+      itemId: IMAGE_ITEM,
+      publicThreadId: THREAD,
+      attachmentId: GENERATED_ATTACHMENT,
+    });
+    return { manager, metadata };
+  };
+
+  const first = await exportOnce(new FakeDocker());
+  await first.manager.close();
+  const second = await exportOnce(new FakeDocker());
+  assert.deepEqual(second.metadata, first.metadata);
+  assert.equal(
+    await fs.readFile(path.join(
+      fixture.attachments, USER_A, "Brai", "Chat", THREAD, GENERATED_ATTACHMENT
+    ), "hex"),
+    PNG_BYTES.toString("hex"),
+  );
+  await second.manager.close();
+});
+
+test("generated image export rejects parent and final symlinks in the container source chain", async (t) => {
+  for (const kind of ["parent", "final"]) {
+    await t.test(kind, async () => {
+      const fixture = await createFixture();
+      const docker = new FakeDocker();
+      docker.execLocally = true;
+      const manager = fixture.manager(docker);
+      const runtime = await manager.ensureRuntime(USER_A);
+      const base = path.join(fixture.root, `export-${kind}`);
+      const targetDirectory = path.join(fixture.root, `export-${kind}-target`);
+      await fs.mkdir(base);
+      await fs.mkdir(targetDirectory);
+      const target = path.join(targetDirectory, "image.png");
+      await fs.writeFile(target, PNG_BYTES);
+      let sourcePath;
+      if (kind === "parent") {
+        const linkedParent = path.join(base, "generated");
+        await fs.symlink(targetDirectory, linkedParent);
+        sourcePath = path.join(linkedParent, "image.png");
+      } else {
+        sourcePath = path.join(base, "image.png");
+        await fs.symlink(target, sourcePath);
+      }
+
+      const notification = once(manager, "notification");
+      runtime.child.stdout.write(`${JSON.stringify({
+        method: "item/completed",
+        params: {
+          threadId: THREAD,
+          turnId: TURN,
+          item: {
+            id: IMAGE_ITEM,
+            type: "imageGeneration",
+            status: "completed",
+            path: sourcePath,
+          },
+        },
+      })}\n`);
+      await notification;
+      await assert.rejects(
+        manager.exportGeneratedArtifact(USER_A, {
+          threadId: THREAD,
+          turnId: TURN,
+          itemId: IMAGE_ITEM,
+          publicThreadId: THREAD,
+          attachmentId: GENERATED_ATTACHMENT,
+        }),
+        (error) => error.code === "BRAI_GENERATED_ARTIFACT_UNAVAILABLE",
+      );
+      assert.equal((await fs.readFile(target)).equals(PNG_BYTES), true);
+      const exec = docker.calls.find(({ args }) => args[0] === "exec");
+      assert.equal(exec.args[2], "/usr/local/bin/node");
+      assert.equal(exec.args.at(-2), "read");
+      assert.equal(exec.args.at(-1), sourcePath);
+      assert.ok(!exec.args.includes("/bin/sh"));
+      assert.ok(!docker.calls.some(({ args }) => args[0] === "cp"));
+      await manager.close();
+    });
+  }
+});
+
+test("generated source cleanup keeps parent and final symlink substitutions pending", async (t) => {
+  for (const kind of ["parent", "final"]) {
+    await t.test(kind, async () => {
+      const fixture = await createFixture();
+      const docker = new FakeDocker();
+      docker.execLocally = true;
+      const manager = fixture.manager(docker);
+      const runtime = await manager.ensureRuntime(USER_A);
+      const base = path.join(fixture.root, `cleanup-${kind}`);
+      const generated = path.join(base, "generated");
+      const sourcePath = path.join(generated, "image.png");
+      await fs.mkdir(generated, { recursive: true });
+      await fs.writeFile(sourcePath, PNG_BYTES);
+
+      const notification = once(manager, "notification");
+      runtime.child.stdout.write(`${JSON.stringify({
+        method: "item/completed",
+        params: {
+          threadId: THREAD,
+          turnId: TURN,
+          item: {
+            id: IMAGE_ITEM,
+            type: "imageGeneration",
+            status: "completed",
+            path: sourcePath,
+          },
+        },
+      })}\n`);
+      await notification;
+      await manager.exportGeneratedArtifact(USER_A, {
+        threadId: THREAD,
+        turnId: TURN,
+        itemId: IMAGE_ITEM,
+        publicThreadId: THREAD,
+        attachmentId: GENERATED_ATTACHMENT,
+      });
+
+      let protectedTarget;
+      if (kind === "parent") {
+        const original = path.join(base, "original");
+        await fs.rename(generated, original);
+        await fs.symlink(original, generated);
+        protectedTarget = path.join(original, "image.png");
+      } else {
+        protectedTarget = path.join(base, "protected.png");
+        await fs.writeFile(protectedTarget, PNG_BYTES);
+        await fs.unlink(sourcePath);
+        await fs.symlink(protectedTarget, sourcePath);
+      }
+
+      assert.deepEqual(await manager.cleanupGeneratedArtifacts(USER_A, {
+        publicThreadId: THREAD,
+        attachmentIds: [GENERATED_ATTACHMENT],
+      }), { cleaned: 0, pending: 1 });
+      assert.equal((await fs.readFile(protectedTarget)).equals(PNG_BYTES), true);
+      assert.equal(runtime.generatedArtifacts.size, 1);
+      assert.equal(runtime.exportedArtifacts.size, 1);
+      const cleanupExec = docker.calls.filter(({ args }) =>
+        args[0] === "exec" && args.at(-2) === "remove").at(-1);
+      assert.equal(cleanupExec.args.at(-1), sourcePath);
+      assert.ok(!cleanupExec.args.includes("/bin/sh"));
+      await manager.close();
+    });
+  }
+});
+
+test("generated source cleanup is bounded, retryable and idempotent across a long batch", async () => {
+  const fixture = await createFixture();
+  const docker = new FakeDocker();
+  const removals = [];
+  let failOnce = true;
+  const manager = fixture.manager(docker, {
+    generatedPathAccess: async ({ operation, sourcePath, destinationPath }) => {
+      if (operation === "read") {
+        await fs.writeFile(destinationPath, PNG_BYTES);
+        return;
+      }
+      removals.push(sourcePath);
+      if (sourcePath.endsWith("/source_13.png") && failOnce) {
+        failOnce = false;
+        throw new Error("temporary cleanup failure");
+      }
+    },
+  });
+  const runtime = await manager.ensureRuntime(USER_A);
+  const attachmentIds = [];
+  for (let index = 0; index < 32; index += 1) {
+    const suffix = String(index).padStart(2, "0");
+    const itemId = `image_item_${suffix}_0001`;
+    const attachmentId = `generated_attach_${suffix}_0001`;
+    const notification = once(manager, "notification");
+    runtime.child.stdout.write(`${JSON.stringify({
+      method: "item/completed",
+      params: {
+        threadId: THREAD,
+        turnId: TURN,
+        item: {
+          id: itemId,
+          type: "imageGeneration",
+          status: "completed",
+          path: `/tmp/generated/source_${suffix}.png`,
+        },
+      },
+    })}\n`);
+    await notification;
+    await manager.exportGeneratedArtifact(USER_A, {
+      threadId: THREAD,
+      turnId: TURN,
+      itemId,
+      publicThreadId: THREAD,
+      attachmentId,
+    });
+    attachmentIds.push(attachmentId);
+  }
+  assert.equal(runtime.generatedArtifacts.size, 32);
+  assert.equal(runtime.exportedArtifacts.size, 32);
+
+  assert.deepEqual(await manager.cleanupGeneratedArtifacts(USER_A, {
+    publicThreadId: THREAD,
+    attachmentIds,
+  }), { cleaned: 31, pending: 1 });
+  assert.equal(runtime.generatedArtifacts.size, 1);
+  assert.equal(runtime.exportedArtifacts.size, 1);
+  assert.equal(removals.length, 32);
+
+  assert.deepEqual(await manager.cleanupGeneratedArtifacts(USER_A, {
+    publicThreadId: THREAD,
+    attachmentIds,
+  }), { cleaned: 1, pending: 0 });
+  assert.equal(runtime.generatedArtifacts.size, 0);
+  assert.equal(runtime.exportedArtifacts.size, 0);
+  assert.equal(removals.length, 33);
+
+  assert.deepEqual(await manager.cleanupGeneratedArtifacts(USER_A, {
+    publicThreadId: THREAD,
+    attachmentIds,
+  }), { cleaned: 0, pending: 0 });
+  assert.equal(removals.length, 33);
+  await manager.close();
+});
+
+test("semantic title generation uses a private ephemeral thread without leaking its events", async () => {
+  const fixture = await createFixture();
+  const docker = new FakeDocker();
+  const manager = fixture.manager(docker);
+  const publicNotifications = [];
+  manager.on("notification", (event) => publicNotifications.push(event));
+  const userRuntime = await manager.ensureRuntime(USER_A);
+
+  const result = await manager.generateTitle(USER_A, {
+    userMessage: "Напиши хайку про весну",
+    assistantText: "Тает последний снег",
+    model: "gpt-5.4",
+    reasoningEffort: "medium",
+  });
+  assert.deepEqual(result, { title: "Хайку о весне" });
+  assert.equal(publicNotifications.length, 0);
+  assert.equal(manager.notificationWatermark(USER_A).sequence, 0);
+  assert.equal(docker.runtimes.length, 2);
+  assert.equal(manager.runtimes.get(USER_A), userRuntime);
+  const titleTurn = docker.runtimes[1].requests.find(({ method, params }) =>
+    method === "turn/start"
+      && params.input?.[0]?.text?.startsWith("Придумай краткий смысловой заголовок"));
+  assert.equal(titleTurn.params.approvalPolicy, "never");
+  assert.equal(titleTurn.params.permissions, "brai-chat");
+  assert.equal(titleTurn.params.model, "gpt-5.4");
+  assert.equal(titleTurn.params.effort, "medium");
+  assert.match(titleTurn.params.input[0].text, /основном языке диалога пользователя/);
+  await manager.close();
+});
+
+test("generated image export rejects unrecorded items and paths outside the container temp root", async () => {
+  const fixture = await createFixture();
+  const docker = new FakeDocker();
+  const manager = fixture.manager(docker, {
+    generatedPathAccess: async ({ operation, destinationPath }) => {
+      assert.equal(operation, "read");
+      await fs.writeFile(destinationPath, PNG_BYTES);
+    },
+  });
+  const runtime = await manager.ensureRuntime(USER_A);
+  const notification = once(manager, "notification");
+  runtime.child.stdout.write(`${JSON.stringify({
+    method: "item/completed",
+    params: {
+      threadId: THREAD,
+      turnId: TURN,
+      item: {
+        id: IMAGE_ITEM,
+        type: "imageGeneration",
+        status: "completed",
+        path: "/workspace/private.png",
+      },
+    },
+  })}\n`);
+  await notification;
+  await assert.rejects(
+    manager.exportGeneratedArtifact(USER_A, {
+      threadId: THREAD,
+      turnId: TURN,
+      itemId: IMAGE_ITEM,
+      publicThreadId: THREAD,
+      attachmentId: GENERATED_ATTACHMENT,
+    }),
+    (error) => error.code === "BRAI_GENERATED_ARTIFACT_UNAVAILABLE",
+  );
+
+  const failedItem = "failed_image_item";
+  const failedNotification = once(manager, "notification");
+  runtime.child.stdout.write(`${JSON.stringify({
+    method: "item/completed",
+    params: {
+      threadId: THREAD,
+      turnId: TURN,
+      item: {
+        id: failedItem,
+        type: "imageGeneration",
+        status: "failed",
+        path: "/tmp/generated/failed.png",
+      },
+    },
+  })}\n`);
+  await failedNotification;
+  await assert.rejects(
+    manager.exportGeneratedArtifact(USER_A, {
+      threadId: THREAD,
+      turnId: TURN,
+      itemId: failedItem,
+      publicThreadId: THREAD,
+      attachmentId: "failed_attachment",
+    }),
+    (error) => error.code === "BRAI_GENERATED_ARTIFACT_UNAVAILABLE",
+  );
+  await manager.close();
+});
+
 test("mounted image runtime remains usable for model, read and interrupt requests", async () => {
   const fixture = await createFixture();
   const docker = new FakeDocker();
@@ -399,6 +894,54 @@ test("Unix JSONL RPC rejects arbitrary input and forwards correlated safe notifi
   );
   await assert.rejects(
     client.call("startTurn", { userId: USER_A, threadId: THREAD, text: "hi", attachments: [{ id: "../../etc", threadId: THREAD }] }),
+    (error) => error.code === "BRAI_INVALID_REQUEST",
+  );
+  await assert.rejects(
+    client.call("exportGeneratedArtifact", {
+      userId: USER_A,
+      threadId: THREAD,
+      turnId: TURN,
+      itemId: IMAGE_ITEM,
+      publicThreadId: THREAD,
+      attachmentId: GENERATED_ATTACHMENT,
+      path: "/tmp/generated.png",
+    }),
+    (error) => error.code === "BRAI_INVALID_REQUEST",
+  );
+  await assert.rejects(
+    client.call("removeExportedArtifact", {
+      userId: USER_A,
+      publicThreadId: THREAD,
+      attachmentId: GENERATED_ATTACHMENT,
+    }),
+    (error) => error.code === "BRAI_INVALID_REQUEST",
+  );
+  await assert.rejects(
+    client.call("cleanupGeneratedArtifacts", {
+      userId: USER_A,
+      publicThreadId: THREAD,
+      attachmentIds: [GENERATED_ATTACHMENT],
+      path: "/tmp/generated.png",
+    }),
+    (error) => error.code === "BRAI_INVALID_REQUEST",
+  );
+  await assert.rejects(
+    client.call("cleanupGeneratedArtifacts", {
+      userId: USER_A,
+      publicThreadId: THREAD,
+      attachmentIds: [GENERATED_ATTACHMENT, GENERATED_ATTACHMENT],
+    }),
+    (error) => error.code === "BRAI_INVALID_REQUEST",
+  );
+  await assert.rejects(
+    client.call("cleanupGeneratedArtifacts", {
+      userId: USER_A,
+      publicThreadId: THREAD,
+      attachmentIds: Array.from(
+        { length: 1_001 },
+        (_, index) => `generated_attach_${String(index).padStart(4, "0")}`
+      ),
+    }),
     (error) => error.code === "BRAI_INVALID_REQUEST",
   );
   const notification = once(client, "notification");

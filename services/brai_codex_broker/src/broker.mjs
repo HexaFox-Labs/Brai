@@ -14,9 +14,82 @@ const EFFORT = /^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/;
 const MAX_LINE_BYTES = 1024 * 1024;
 const MAX_TEXT_BYTES = 256 * 1024;
 const MAX_ATTACHMENTS = 5;
+const MAX_GENERATED_ARTIFACT_CLEANUP = 1_000;
 const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;
 const DEFAULT_IDLE_MS = 15 * 60 * 1000;
+const TITLE_TIMEOUT_MS = 30 * 1000;
 const WORKSPACE = "/workspace";
+const GENERATED_ROOT = "/tmp";
+const GENERATED_ARTIFACT_HELPER_SCRIPT = String.raw`
+const fs = require("node:fs");
+const fsp = require("node:fs/promises");
+const path = require("node:path").posix;
+const ROOT = "/tmp";
+const MAX_BYTES = 50 * 1024 * 1024;
+
+async function inspect(candidate) {
+  if (typeof candidate !== "string" || candidate.includes("\0")) throw new Error("invalid");
+  const resolved = path.resolve(candidate);
+  const relative = path.relative(ROOT, resolved);
+  if (!relative || relative === ".." || relative.startsWith("../") || path.isAbsolute(relative)) {
+    throw new Error("outside");
+  }
+  const root = await fsp.lstat(ROOT);
+  if (root.isSymbolicLink() || !root.isDirectory() || await fsp.realpath(ROOT) !== ROOT) {
+    throw new Error("root");
+  }
+  const segments = relative.split("/");
+  let current = ROOT;
+  for (const [index, segment] of segments.entries()) {
+    current = path.join(current, segment);
+    const stat = await fsp.lstat(current);
+    if (stat.isSymbolicLink()) throw new Error("symlink");
+    if (index < segments.length - 1 && !stat.isDirectory()) throw new Error("parent");
+    if (index === segments.length - 1 && !stat.isFile()) throw new Error("file");
+  }
+  if (await fsp.realpath(resolved) !== resolved) throw new Error("realpath");
+  return resolved;
+}
+
+async function main() {
+  const [operation, candidate] = process.argv.slice(1);
+  if (operation !== "read" && operation !== "remove") throw new Error("operation");
+  const resolved = await inspect(candidate);
+  const handle = await fsp.open(resolved, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  try {
+    const opened = await handle.stat();
+    if (!opened.isFile() || opened.size <= 0 || opened.size > MAX_BYTES) throw new Error("size");
+    if (await fsp.realpath("/proc/self/fd/" + handle.fd) !== resolved) throw new Error("fd");
+    await inspect(candidate);
+    const current = await fsp.lstat(resolved);
+    if (current.isSymbolicLink() || !current.isFile()
+      || current.dev !== opened.dev || current.ino !== opened.ino) throw new Error("changed");
+    if (operation === "read") {
+      const data = await handle.readFile();
+      if (data.length !== opened.size) throw new Error("changed");
+      await inspect(candidate);
+      if (!process.stdout.write(data)) {
+        await new Promise((resolve, reject) => {
+          process.stdout.once("drain", resolve);
+          process.stdout.once("error", reject);
+        });
+      }
+      return;
+    }
+    await inspect(candidate);
+    const beforeUnlink = await fsp.lstat(resolved);
+    if (beforeUnlink.isSymbolicLink() || !beforeUnlink.isFile()
+      || beforeUnlink.dev !== opened.dev || beforeUnlink.ino !== opened.ino) {
+      throw new Error("changed");
+    }
+    await fsp.unlink(resolved);
+  } finally {
+    await handle.close();
+  }
+}
+
+main().catch(() => process.exit(23));
+`;
 const ASSISTANT_INSTRUCTIONS = [
   "Ты — Брай на базе Codex.",
   "Отвечай на языке пользователя.",
@@ -161,9 +234,11 @@ export class RuntimeManager extends EventEmitter {
     this.network = requireOpaque(options.network ?? "brai-codex-egress", "network");
     this.idleMs = positiveInteger(options.idleMs ?? DEFAULT_IDLE_MS, "idleMs");
     this.stopGraceMs = positiveInteger(options.stopGraceMs ?? 5_000, "stopGraceMs");
+    this.generatedPathAccess = options.generatedPathAccess ?? null;
     this.runtimes = new Map();
     this.runtimeStarts = new Map();
     this.steerRequests = new Map();
+    this.titleRequests = new Map();
     this.ready = false;
   }
 
@@ -279,6 +354,9 @@ export class RuntimeManager extends EventEmitter {
           if (turn.status === "completed" || turn.status === "interrupted" || turn.status === "failed") {
             runtime.activeTurns.delete(turn.id);
           }
+          for (const item of turn.items ?? []) {
+            this.#rememberGeneratedArtifact(runtime, result.thread.id, turn.id, item);
+          }
         }
       }
       return result;
@@ -304,6 +382,235 @@ export class RuntimeManager extends EventEmitter {
   notificationWatermark(userId) {
     const runtime = this.runtimes.get(userId);
     return { sequence: runtime?.notificationSequence ?? 0, epoch: runtime?.notificationEpoch ?? null };
+  }
+
+  async exportGeneratedArtifact(userId, {
+    threadId, turnId, itemId, publicThreadId, attachmentId
+  }) {
+    requireOpaque(userId, "userId");
+    requireOpaque(threadId, "threadId");
+    requireOpaque(turnId, "turnId");
+    requireOpaque(itemId, "itemId");
+    requireOpaque(publicThreadId, "publicThreadId");
+    requireOpaque(attachmentId, "attachmentId");
+    const runtime = this.runtimes.get(userId);
+    if (!runtime) {
+      throw new BrokerError("BRAI_GENERATED_ARTIFACT_UNAVAILABLE", "Generated image is unavailable");
+    }
+    const key = generatedArtifactKey(threadId, turnId, itemId);
+    const previous = runtime.exportedArtifacts.get(key);
+    if (previous) {
+      if (previous.attachmentId !== attachmentId || previous.publicThreadId !== publicThreadId) {
+        throw new BrokerError("BRAI_GENERATED_ARTIFACT_CONFLICT", "Generated image export conflicts with an existing attachment");
+      }
+      return previous.metadata;
+    }
+    const artifact = runtime.generatedArtifacts.get(key);
+    if (!artifact) {
+      throw new BrokerError("BRAI_GENERATED_ARTIFACT_UNAVAILABLE", "Generated image is unavailable");
+    }
+
+    const staging = contained(this.stateRoot, path.join("exports", randomUUID()));
+    await this.fs.mkdir(path.dirname(staging), { recursive: true, mode: 0o700 });
+    try {
+      if (this.generatedPathAccess) {
+        await this.generatedPathAccess({
+          operation: "read", runtime,
+          sourcePath: artifact.path, destinationPath: staging
+        });
+      } else {
+        const data = await this.#accessGeneratedPath(runtime, "read", artifact.path);
+        await this.fs.writeFile(staging, data, { flag: "wx", mode: 0o600 });
+      }
+      const stat = await this.fs.lstat(staging);
+      if (!stat.isFile() || stat.isSymbolicLink() || stat.size <= 0 || stat.size > MAX_ATTACHMENT_BYTES) {
+        throw new BrokerError("BRAI_GENERATED_ARTIFACT_INVALID", "Generated image is invalid");
+      }
+      const data = await this.fs.readFile(staging);
+      if (data.length !== stat.size) {
+        throw new BrokerError("BRAI_GENERATED_ARTIFACT_INVALID", "Generated image is invalid");
+      }
+      const detected = detectImage(data);
+      if (!detected) {
+        throw new BrokerError("BRAI_GENERATED_ARTIFACT_INVALID", "Generated image format is unsupported");
+      }
+      await this.#writeAttachment(userId, publicThreadId, attachmentId, data);
+      const metadata = {
+        id: attachmentId,
+        original_name: generatedFilename(artifact.path, detected.extension),
+        relative_path: path.posix.join("Brai", "Chat", publicThreadId, attachmentId),
+        media_type: detected.mediaType,
+        byte_size: data.length,
+        checksum_sha256: createHash("sha256").update(data).digest("hex"),
+      };
+      runtime.exportedArtifacts.set(key, {
+        attachmentId, publicThreadId, metadata
+      });
+      return metadata;
+    } catch (error) {
+      if (error instanceof BrokerError) throw error;
+      throw new BrokerError("BRAI_GENERATED_ARTIFACT_EXPORT_FAILED", "Generated image could not be exported");
+    } finally {
+      await this.fs.rm(staging, { force: true, recursive: true });
+    }
+  }
+
+  async removeExportedArtifact(userId, {
+    threadId, turnId, itemId, publicThreadId, attachmentId
+  }) {
+    requireOpaque(userId, "userId");
+    requireOpaque(threadId, "threadId");
+    requireOpaque(turnId, "turnId");
+    requireOpaque(itemId, "itemId");
+    requireOpaque(publicThreadId, "publicThreadId");
+    requireOpaque(attachmentId, "attachmentId");
+    const runtime = this.runtimes.get(userId);
+    const key = generatedArtifactKey(threadId, turnId, itemId);
+    const exported = runtime?.exportedArtifacts.get(key);
+    if (!exported || exported.publicThreadId !== publicThreadId
+      || exported.attachmentId !== attachmentId) return false;
+    const directories = [];
+    try {
+      let current = await this.fs.open(
+        this.attachmentRoot,
+        fsConstants.O_RDONLY | fsConstants.O_DIRECTORY | fsConstants.O_NOFOLLOW
+      );
+      directories.push(current);
+      for (const segment of [userId, "Brai", "Chat", publicThreadId]) {
+        const next = await this.fs.open(
+          `/proc/self/fd/${current.fd}/${segment}`,
+          fsConstants.O_RDONLY | fsConstants.O_DIRECTORY | fsConstants.O_NOFOLLOW
+        );
+        directories.push(next);
+        current = next;
+      }
+      await this.fs.unlink(`/proc/self/fd/${current.fd}/${attachmentId}`);
+      runtime.exportedArtifacts.delete(key);
+      return true;
+    } catch (error) {
+      if (error?.code === "ENOENT") {
+        runtime.exportedArtifacts.delete(key);
+        return false;
+      }
+      if (error?.code === "ELOOP" || error?.code === "ENOTDIR") {
+        throw new BrokerError("BRAI_GENERATED_ARTIFACT_INVALID", "Generated image path is invalid");
+      }
+      throw error;
+    } finally {
+      await Promise.allSettled(directories.reverse().map((handle) => handle.close()));
+    }
+  }
+
+  async cleanupGeneratedArtifacts(userId, { publicThreadId, attachmentIds }) {
+    requireOpaque(userId, "userId");
+    requireOpaque(publicThreadId, "publicThreadId");
+    const selected = opaqueIds(
+      attachmentIds, MAX_GENERATED_ARTIFACT_CLEANUP, "attachmentIds"
+    );
+    const runtime = this.runtimes.get(userId);
+    if (!runtime || selected.length === 0) return { cleaned: 0, pending: 0 };
+
+    const requested = new Set(selected);
+    let cleaned = 0;
+    let pending = 0;
+    for (const [key, exported] of runtime.exportedArtifacts) {
+      if (exported.publicThreadId !== publicThreadId
+        || !requested.has(exported.attachmentId)) continue;
+      const artifact = runtime.generatedArtifacts.get(key);
+      if (!artifact) {
+        runtime.exportedArtifacts.delete(key);
+        continue;
+      }
+      try {
+        if (this.generatedPathAccess) {
+          await this.generatedPathAccess({
+            operation: "remove", runtime, sourcePath: artifact.path
+          });
+        } else {
+          await this.#accessGeneratedPath(runtime, "remove", artifact.path);
+        }
+        runtime.generatedArtifacts.delete(key);
+        runtime.exportedArtifacts.delete(key);
+        cleaned += 1;
+      } catch {
+        pending += 1;
+      }
+    }
+    return { cleaned, pending };
+  }
+
+  async generateTitle(userId, {
+    userMessage, assistantText, model = null, reasoningEffort = null
+  }) {
+    requireOpaque(userId, "userId");
+    const previous = this.titleRequests.get(userId) ?? Promise.resolve();
+    const request = previous.catch(() => undefined).then(() =>
+      this.#generateTitleInIsolatedRuntime(userId, {
+        userMessage, assistantText, model, reasoningEffort
+      }));
+    this.titleRequests.set(userId, request);
+    try {
+      return await request;
+    } finally {
+      if (this.titleRequests.get(userId) === request) this.titleRequests.delete(userId);
+    }
+  }
+
+  async #generateTitleInIsolatedRuntime(userId, {
+    userMessage, assistantText, model = null, reasoningEffort = null
+  }) {
+    const titleIdentity = `title_${createHash("sha256").update(userId).digest("hex").slice(0, 32)}`;
+    const runtime = await this.#startRuntime(titleIdentity, []);
+    let threadId;
+    let collector;
+    let timer;
+    try {
+      const started = await this.#requestRuntime(runtime, "thread/start", safeThreadParams({
+        ephemeral: true,
+        model: optionalModel(model),
+      }));
+      requirePermissionProfile(started);
+      threadId = started?.thread?.id;
+      if (!threadId) {
+        throw new BrokerError("BRAI_UPSTREAM_ERROR", "Codex runtime did not return a title thread");
+      }
+      const completion = new Promise((resolve, reject) => {
+        collector = { resolve, reject, text: "", turnId: null };
+      });
+      runtime.privateThreads.set(threadId, collector);
+      const turn = await this.#requestRuntime(runtime, "turn/start", safeTurnParams({
+        threadId,
+        text: titlePrompt(userMessage, assistantText),
+        model,
+        reasoningEffort,
+      }));
+      collector.turnId = turn?.turn?.id;
+      if (!collector.turnId) {
+        throw new BrokerError("BRAI_UPSTREAM_ERROR", "Codex runtime did not return a title turn");
+      }
+      const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(
+          new BrokerError("BRAI_TITLE_TIMEOUT", "Chat title generation timed out")
+        ), TITLE_TIMEOUT_MS);
+        timer.unref?.();
+      });
+      const title = await Promise.race([completion, timeout]);
+      return { title: boundedString(title.trim(), 512, "title") };
+    } catch (error) {
+      if (collector?.turnId && runtime.activeTurns.has(collector.turnId)) {
+        await this.#requestRuntime(runtime, "turn/interrupt", {
+          threadId, turnId: collector.turnId
+        }).catch(() => undefined);
+      }
+      throw safeUpstreamError(error);
+    } finally {
+      if (timer) clearTimeout(timer);
+      if (threadId) {
+        runtime.privateThreads.delete(threadId);
+        runtime.loadedThreads.delete(threadId);
+      }
+      await this.#stopRuntime(runtime);
+    }
   }
 
   async steer(userId, { threadId, turnId, text, clientUserMessageId, attachments = [] }) {
@@ -339,6 +646,7 @@ export class RuntimeManager extends EventEmitter {
 
   async close() {
     await Promise.allSettled([...this.runtimeStarts.values()].map(({ promise }) => promise));
+    await Promise.allSettled([...this.titleRequests.values()]);
     await Promise.all([...this.runtimes.values()].map((runtime) => this.#stopRuntime(runtime)));
   }
 
@@ -393,6 +701,9 @@ export class RuntimeManager extends EventEmitter {
       deliveredSteers: new Set(),
       notificationSequence: 0,
       notificationEpoch: randomUUID(),
+      generatedArtifacts: new Map(),
+      exportedArtifacts: new Map(),
+      privateThreads: new Map(),
       lastUsed: this.now(),
       stopping: null,
     };
@@ -417,14 +728,166 @@ export class RuntimeManager extends EventEmitter {
 
   #onNotification(runtime, message) {
     runtime.lastUsed = this.now();
-    runtime.notificationSequence += 1;
-    const { turnId } = correlation(message.params);
+    const { threadId, turnId } = correlation(message.params);
     if (message.method === "turn/started" && turnId) runtime.activeTurns.add(turnId);
     if (message.method === "turn/completed" && turnId) runtime.activeTurns.delete(turnId);
+    const privateThread = threadId ? runtime.privateThreads.get(threadId) : null;
+    if (privateThread) {
+      this.#onPrivateThreadNotification(privateThread, message);
+      return;
+    }
+    runtime.notificationSequence += 1;
+    if (message.method === "item/completed") {
+      this.#rememberGeneratedArtifact(runtime, threadId, turnId, message.params?.item);
+    }
     this.emit("notification", {
       userId: runtime.userId, sequence: runtime.notificationSequence,
       epoch: runtime.notificationEpoch, message,
     });
+  }
+
+  #onPrivateThreadNotification(collector, message) {
+    if (message.method === "item/agentMessage/delta") {
+      collector.text = boundedAppend(collector.text, message.params?.delta, 4_096);
+      return;
+    }
+    if (message.method === "item/completed"
+      && message.params?.item?.type === "agentMessage"
+      && !collector.text) {
+      collector.text = boundedAppend("", message.params.item.text, 4_096);
+      return;
+    }
+    if (message.method === "turn/completed") {
+      if (message.params?.turn?.status === "completed" && collector.text.trim()) {
+        collector.resolve(collector.text);
+      } else {
+        collector.reject(new BrokerError("BRAI_TITLE_UNAVAILABLE", "Chat title generation failed"));
+      }
+      return;
+    }
+    if (message.method === "error") {
+      collector.reject(new BrokerError("BRAI_TITLE_UNAVAILABLE", "Chat title generation failed"));
+    }
+  }
+
+  #rememberGeneratedArtifact(runtime, threadId, turnId, item) {
+    if (!threadId || !turnId || !item?.id
+      || (item.type !== "imageGeneration" && item.type !== "imageView")) return;
+    if (["failed", "interrupted", "cancelled", "canceled"].includes(item.status)) return;
+    const generatedPath = generatedContainerPath(item.path);
+    if (!generatedPath) return;
+    runtime.generatedArtifacts.set(generatedArtifactKey(threadId, turnId, item.id), {
+      path: generatedPath
+    });
+  }
+
+  async #accessGeneratedPath(runtime, operation, sourcePath) {
+    const access = this.spawn(
+      this.dockerBin,
+      [
+        "exec", runtime.name, "/usr/local/bin/node",
+        "--input-type=commonjs", "-e", GENERATED_ARTIFACT_HELPER_SCRIPT,
+        "--", operation, sourcePath
+      ],
+      { stdio: ["ignore", "pipe", "pipe"] }
+    );
+    access.stderr?.resume();
+    const output = (async () => {
+      const chunks = [];
+      let bytes = 0;
+      for await (const chunk of access.stdout) {
+        bytes += chunk.length;
+        if (bytes > MAX_ATTACHMENT_BYTES) {
+          access.kill?.("SIGKILL");
+          throw new BrokerError(
+            "BRAI_GENERATED_ARTIFACT_INVALID", "Generated image is invalid"
+          );
+        }
+        chunks.push(chunk);
+      }
+      return Buffer.concat(chunks, bytes);
+    })();
+    const exit = new Promise((resolve, reject) => {
+      access.once("error", reject);
+      access.once("exit", (exitCode, exitSignal) =>
+        resolve({ code: exitCode, signal: exitSignal }));
+    });
+    const [data, { code, signal }] = await Promise.all([output, exit]);
+    if (code !== 0 || signal != null) {
+      const codeName = operation === "read"
+        ? "BRAI_GENERATED_ARTIFACT_UNAVAILABLE"
+        : "BRAI_GENERATED_ARTIFACT_CLEANUP_FAILED";
+      throw new BrokerError(codeName, operation === "read"
+        ? "Generated image is unavailable" : "Generated image cleanup failed");
+    }
+    return data;
+  }
+
+  async #writeAttachment(userId, threadId, attachmentId, data) {
+    const directoryFlags = fsConstants.O_RDONLY | fsConstants.O_DIRECTORY | fsConstants.O_NOFOLLOW;
+    const directories = [];
+    let temporaryFile;
+    let temporaryPath;
+    try {
+      let current = await this.fs.open(this.attachmentRoot, directoryFlags);
+      directories.push(current);
+      for (const segment of [userId, "Brai", "Chat", threadId]) {
+        const candidate = `/proc/self/fd/${current.fd}/${segment}`;
+        await this.fs.mkdir(candidate, { mode: 0o770 }).catch((error) => {
+          if (error.code !== "EEXIST") throw error;
+        });
+        const next = await this.fs.open(candidate, directoryFlags);
+        directories.push(next);
+        current = next;
+      }
+      const destination = `/proc/self/fd/${current.fd}/${attachmentId}`;
+      const verifyExisting = async () => {
+        let existing;
+        try {
+          existing = await this.fs.open(destination, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+          const stat = await existing.stat();
+          if (!stat.isFile() || stat.size !== data.length) {
+            throw new BrokerError("BRAI_GENERATED_ARTIFACT_CONFLICT", "Generated image attachment already exists");
+          }
+          const existingData = await existing.readFile();
+          if (!existingData.equals(data)) {
+            throw new BrokerError("BRAI_GENERATED_ARTIFACT_CONFLICT", "Generated image attachment already exists");
+          }
+        } finally {
+          await existing?.close();
+        }
+      };
+      const temporaryName = `tmp_${attachmentId}_${randomUUID().replaceAll("-", "")}`;
+      temporaryPath = `/proc/self/fd/${current.fd}/${temporaryName}`;
+      temporaryFile = await this.fs.open(
+        temporaryPath,
+        fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_NOFOLLOW,
+        0o660
+      );
+      const stat = await temporaryFile.stat();
+      if (!stat.isFile()) {
+        throw new BrokerError("BRAI_GENERATED_ARTIFACT_INVALID", "Generated image destination is invalid");
+      }
+      await temporaryFile.writeFile(data);
+      await temporaryFile.sync();
+      await temporaryFile.close();
+      temporaryFile = null;
+      try {
+        await this.fs.link(temporaryPath, destination);
+      } catch (error) {
+        if (error?.code !== "EEXIST") throw error;
+        await verifyExisting();
+      }
+    } catch (error) {
+      if (error?.code === "ELOOP" || error?.code === "ENOTDIR") {
+        throw new BrokerError("BRAI_GENERATED_ARTIFACT_INVALID", "Generated image destination is invalid");
+      }
+      throw error;
+    } finally {
+      await temporaryFile?.close();
+      if (temporaryPath) await this.fs.unlink(temporaryPath).catch(() => undefined);
+      await Promise.allSettled(directories.reverse().map((handle) => handle.close()));
+    }
   }
 
   async #stopRuntime(runtime) {
@@ -689,6 +1152,77 @@ export class BrokerServer {
           threadId: requireOpaque(params.threadId, "threadId"), turnId: requireOpaque(params.turnId, "turnId"),
         });
       }
+      case "generateTitle": {
+        exactObject(
+          params,
+          ["userId", "userMessage", "assistantText", "model", "reasoningEffort"],
+          ["userId", "userMessage", "assistantText"]
+        );
+        return this.manager.generateTitle(
+          requireOpaque(params.userId, "userId"),
+          {
+            userMessage: boundedString(params.userMessage, 16 * 1024, "userMessage", true),
+            assistantText: boundedString(params.assistantText, 32 * 1024, "assistantText", true),
+            model: optionalModel(params.model),
+            reasoningEffort: params.reasoningEffort == null
+              ? null : requirePattern(params.reasoningEffort, EFFORT, "reasoningEffort"),
+          }
+        );
+      }
+      case "exportGeneratedArtifact": {
+        exactObject(
+          params,
+          ["userId", "threadId", "turnId", "itemId", "publicThreadId", "attachmentId"],
+          ["userId", "threadId", "turnId", "itemId", "publicThreadId", "attachmentId"]
+        );
+        return this.manager.exportGeneratedArtifact(
+          requireOpaque(params.userId, "userId"),
+          {
+            threadId: requireOpaque(params.threadId, "threadId"),
+            turnId: requireOpaque(params.turnId, "turnId"),
+            itemId: requireOpaque(params.itemId, "itemId"),
+            publicThreadId: requireOpaque(params.publicThreadId, "publicThreadId"),
+            attachmentId: requireOpaque(params.attachmentId, "attachmentId"),
+          }
+        );
+      }
+      case "removeExportedArtifact": {
+        exactObject(
+          params,
+          ["userId", "threadId", "turnId", "itemId", "publicThreadId", "attachmentId"],
+          ["userId", "threadId", "turnId", "itemId", "publicThreadId", "attachmentId"]
+        );
+        return {
+          removed: await this.manager.removeExportedArtifact(
+            requireOpaque(params.userId, "userId"),
+            {
+              threadId: requireOpaque(params.threadId, "threadId"),
+              turnId: requireOpaque(params.turnId, "turnId"),
+              itemId: requireOpaque(params.itemId, "itemId"),
+              publicThreadId: requireOpaque(params.publicThreadId, "publicThreadId"),
+              attachmentId: requireOpaque(params.attachmentId, "attachmentId"),
+            }
+          )
+        };
+      }
+      case "cleanupGeneratedArtifacts": {
+        exactObject(
+          params,
+          ["userId", "publicThreadId", "attachmentIds"],
+          ["userId", "publicThreadId", "attachmentIds"]
+        );
+        return this.manager.cleanupGeneratedArtifacts(
+          requireOpaque(params.userId, "userId"),
+          {
+            publicThreadId: requireOpaque(params.publicThreadId, "publicThreadId"),
+            attachmentIds: opaqueIds(
+              params.attachmentIds,
+              MAX_GENERATED_ARTIFACT_CLEANUP,
+              "attachmentIds"
+            ),
+          }
+        );
+      }
       case "subscribe": {
         exactObject(params, ["userId", "threadId", "turnId"], ["userId"]);
         const subscriptionId = randomUUID();
@@ -757,6 +1291,28 @@ function safeTurnParams(params) {
     ...(params.reasoningEffort != null ? { effort: requirePattern(params.reasoningEffort, EFFORT, "reasoningEffort") } : {}),
     ...(params.clientUserMessageId != null ? { clientUserMessageId: requireOpaque(params.clientUserMessageId, "clientUserMessageId") } : {}),
   };
+}
+
+function titlePrompt(userMessage, assistantText) {
+  const request = boundedString(userMessage, 16 * 1024, "userMessage", true);
+  const response = boundedString(assistantText, 32 * 1024, "assistantText", true);
+  return [
+    "Придумай краткий смысловой заголовок для диалога.",
+    "Верни только заголовок без кавычек, Markdown и пояснений.",
+    "Заголовок должен быть на основном языке диалога пользователя.",
+    "Не копируй запрос дословно. Не более 7 слов и 80 символов.",
+    "",
+    `Запрос пользователя: ${request}`,
+    `Ответ ассистента: ${response}`,
+  ].join("\n");
+}
+
+function boundedAppend(current, delta, maxBytes) {
+  if (typeof delta !== "string" || !delta) return current;
+  const remaining = Math.max(0, maxBytes - Buffer.byteLength(current));
+  if (!remaining) return current;
+  const chunk = Buffer.from(delta).subarray(0, remaining).toString("utf8").replace(/\uFFFD$/u, "");
+  return `${current}${chunk}`;
 }
 
 function requirePermissionProfile(result) {
@@ -874,6 +1430,17 @@ function optionalOpaque(value, name) {
   return value == null ? null : requireOpaque(value, name);
 }
 
+function opaqueIds(value, maxItems, name) {
+  if (!Array.isArray(value) || value.length > maxItems) {
+    throw new BrokerError("BRAI_INVALID_REQUEST", `Invalid ${name}`);
+  }
+  const ids = value.map((item, index) => requireOpaque(item, `${name}[${index}]`));
+  if (new Set(ids).size !== ids.length) {
+    throw new BrokerError("BRAI_INVALID_REQUEST", `Invalid ${name}`);
+  }
+  return ids;
+}
+
 function optionalModel(value) {
   return value == null ? null : requirePattern(value, MODEL_ID, "model");
 }
@@ -912,11 +1479,40 @@ function bindMount(source, target, readonly = false) {
   return `type=bind,src=${source},dst=${target}${readonly ? ",readonly" : ""}`;
 }
 
-function hasImageSignature(buffer) {
+function generatedArtifactKey(threadId, turnId, itemId) {
+  return `${threadId}\0${turnId}\0${itemId}`;
+}
+
+function generatedContainerPath(value) {
+  if (typeof value !== "string" || value.includes("\0") || value.length > 4_096) return null;
+  const candidate = path.posix.resolve(value);
+  return candidate.startsWith(`${GENERATED_ROOT}/`) ? candidate : null;
+}
+
+function generatedFilename(sourcePath, extension) {
+  const basename = path.posix.basename(sourcePath).normalize("NFKC")
+    .replace(/[^\p{L}\p{N}._ -]+/gu, "_").slice(0, 100);
+  const stem = basename.replace(/\.[A-Za-z0-9]{1,8}$/u, "").replace(/^\.+$/u, "").trim();
+  return `${stem || "generated-image"}.${extension}`;
+}
+
+function detectImage(buffer) {
   const head = buffer.subarray(0, 12);
-  return head.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))
-    || head.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
-    || (head.subarray(0, 4).toString("ascii") === "RIFF" && head.subarray(8, 12).toString("ascii") === "WEBP");
+  if (head.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))) {
+    return { mediaType: "image/jpeg", extension: "jpg" };
+  }
+  if (head.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
+    return { mediaType: "image/png", extension: "png" };
+  }
+  if (head.subarray(0, 4).toString("ascii") === "RIFF"
+    && head.subarray(8, 12).toString("ascii") === "WEBP") {
+    return { mediaType: "image/webp", extension: "webp" };
+  }
+  return null;
+}
+
+function hasImageSignature(buffer) {
+  return Boolean(detectImage(buffer));
 }
 
 function send(socket, message) {

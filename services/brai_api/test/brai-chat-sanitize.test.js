@@ -46,14 +46,26 @@ test('adapter drops raw reasoning and exposes only safe summaries', () => {
   const normalizer = new CodexAguiNormalizer({ publicThreadId: 'public-thread', runId: 'run-1' });
 
   assert.deepEqual(normalizer.translate('item/reasoning/textDelta', { delta: 'private chain of thought' }), []);
-  const [summary] = normalizer.translate('item/reasoning/summaryTextDelta', {
+  const summary = normalizer.translate('item/reasoning/summaryTextDelta', {
     itemId: 'reasoning-1',
     summaryIndex: 0,
     delta: 'Проверяю безопасный вариант'
   });
-  assert.equal(summary.type, EventType.CUSTOM);
-  assert.equal(summary.name, 'brai.reasoning_summary.v1');
+  assert.deepEqual(summary.map((event) => event.type), [
+    EventType.REASONING_START,
+    EventType.REASONING_MESSAGE_START,
+    EventType.REASONING_MESSAGE_CONTENT
+  ]);
+  assert.equal(summary[1].role, 'reasoning');
+  assert.equal(summary[2].messageId, summary[1].messageId);
+  assert.equal(summary[2].delta, 'Проверяю безопасный вариант');
   assert.equal(JSON.stringify(summary).includes('chain of thought'), false);
+  assert.deepEqual(normalizer.translate('item/completed', {
+    item: { type: 'reasoning', id: 'reasoning-1' }
+  }).map((event) => event.type), [EventType.REASONING_MESSAGE_END]);
+  assert.equal(normalizer.translate('turn/completed', {
+    turn: { status: 'completed' }
+  })[0].type, EventType.REASONING_END);
 });
 
 test('adapter preserves AG-UI message ordering without duplicating completed text', () => {
@@ -91,12 +103,30 @@ test('adapter exposes sanitized command details and bounded tool result', () => 
     })
   ];
   const serialized = JSON.stringify(events);
+  const started = events.find((event) => event.type === EventType.TOOL_CALL_START);
   const result = events.find((event) => event.type === EventType.TOOL_CALL_RESULT);
 
   assert.equal(serialized.includes(privateHomePath), false);
   assert.equal(serialized.includes('/srv/secret'), false);
   assert.equal(serialized.includes('token=secret'), false);
+  assert.match(started.parentMessageId, /^assistant:/);
   assert.ok(Buffer.byteLength(result.content, 'utf8') <= BRAI_CHAT_OUTPUT_LIMIT_BYTES);
+});
+
+test('adapter binds every tool in a turn to one stable public assistant message', () => {
+  const first = new CodexAguiNormalizer({ publicThreadId: 'public-thread', runId: 'run-tools' });
+  const second = new CodexAguiNormalizer({ publicThreadId: 'public-thread', runId: 'run-tools' });
+  const start = (normalizer, id) => normalizer.translate('item/started', {
+    item: { type: 'imageGeneration', id, status: 'inProgress' }
+  }).find((event) => event.type === EventType.TOOL_CALL_START);
+
+  const firstTool = start(first, 'image-one');
+  const secondTool = start(first, 'image-two');
+  const replayedTool = start(second, 'image-one');
+
+  assert.equal(firstTool.parentMessageId, secondTool.parentMessageId);
+  assert.equal(firstTool.parentMessageId, replayedTool.parentMessageId);
+  assert.notEqual(firstTool.toolCallId, secondTool.toolCallId);
 });
 
 test('adapter applies one total output limit per streaming item and drops later deltas', () => {

@@ -1,4 +1,4 @@
-import type { ComponentType, CSSProperties, ReactNode } from "react";
+import type { ButtonHTMLAttributes, ComponentType, CSSProperties, ElementType, ReactNode } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BraiCopilotSurface } from "@/features/app/sections/brai/BraiCopilotSurface";
@@ -8,16 +8,20 @@ type FakeAttachment = { id: string; status: "uploading" | "ready"; metadata?: Re
 type FakeViewProps = {
   attachments?: FakeAttachment[];
   input?: {
-    addMenuButton?: Record<string, unknown>;
-    sendButton?: Record<string, unknown>;
-    textArea?: Record<string, unknown>;
+    addMenuButton?: ElementType<ButtonHTMLAttributes<HTMLButtonElement> & { onAddFile?: () => void }>;
+    sendButton?: ComponentType<ButtonHTMLAttributes<HTMLButtonElement>>;
+    textArea?: ElementType<Record<string, unknown>>;
   };
   isRunning?: boolean;
   messages?: FakeMessage[];
-  messageView?: { assistantMessage?: ComponentType<FakeAssistantProps> };
+  messageView?: {
+    assistantMessage?: ComponentType<FakeAssistantProps>;
+    reasoningMessage?: ComponentType<Record<string, unknown>>;
+  };
   onInputChange?: (value: string) => void;
   onRemoveAttachment?: (id: string) => void;
   onSubmitMessage?: (value: string) => void;
+  scrollView?: ElementType<{ children?: ReactNode }>;
 };
 type FakeAssistantProps = FakeViewProps & { message: FakeMessage; id?: string; onRegenerate?: () => void };
 type FakeChatProps = {
@@ -36,6 +40,7 @@ const fake = vi.hoisted(() => ({
   attachments: [] as FakeAttachment[],
   chatProps: null as FakeChatProps | null,
   configureSuggestions: vi.fn(),
+  defaultRenderTool: vi.fn(),
   finishRun: null as (() => void) | null,
   inputChange: vi.fn(),
   removeAttachment: vi.fn(),
@@ -50,8 +55,16 @@ vi.mock("@copilotkit/react-core/v2", async () => {
   function FakeView(props: FakeViewProps) {
     fake.viewProps = props;
     const Assistant = props.messageView?.assistantMessage;
+    const AddMenuButton = props.input?.addMenuButton;
+    const SendButton = props.input?.sendButton;
+    const ScrollView = props.scrollView;
+    const TextArea = props.input?.textArea;
     return (
       <div>
+        {AddMenuButton ? <AddMenuButton onAddFile={() => undefined} /> : null}
+        {TextArea ? <TextArea /> : null}
+        {SendButton ? <SendButton /> : null}
+        {ScrollView ? <ScrollView><span>История</span></ScrollView> : null}
         <button type="button" onClick={() => props.onSubmitMessage?.("Уточнение")}>Отправить тест</button>
         {props.attachments?.map((attachment) => <button key={attachment.id} type="button" onClick={() => props.onRemoveAttachment?.(attachment.id)}>Удалить {attachment.id}</button>)}
         {Assistant ? props.messages?.filter((message) => message.role === "assistant").map((message) => (
@@ -92,15 +105,39 @@ vi.mock("@copilotkit/react-core/v2", async () => {
     return <div id={props.id}>{props.message.content}</div>;
   }
 
+  function FakeReasoningMessage() {
+    return <div>Reasoning</div>;
+  }
+
+  function FakeDefaultScrollView({ children, scrollToBottomButton: ScrollToBottomButton }: {
+    children?: ReactNode;
+    scrollToBottomButton?: ComponentType<ButtonHTMLAttributes<HTMLButtonElement>>;
+  }) {
+    return (
+      <div data-testid="copilot-default-scroll-view">
+        {children}
+        {ScrollToBottomButton ? <ScrollToBottomButton /> : null}
+      </div>
+    );
+  }
+
+  const FakeViewWithSlots = Object.assign(FakeView, {
+    ScrollToBottomButton: () => null,
+    ScrollView: FakeDefaultScrollView,
+  });
+
   return {
-    CopilotChat: Object.assign(FakeChat, { View: FakeView }),
+    CopilotChat: Object.assign(FakeChat, { View: FakeViewWithSlots }),
     CopilotChatAssistantMessage: FakeAssistantMessage,
+    CopilotChatInput: { SendButton: () => null },
+    CopilotChatReasoningMessage: FakeReasoningMessage,
     CopilotChatUserMessage: FakeUserMessage,
     CopilotKit: ({ children }: { children: ReactNode }) => children,
     UseAgentUpdate: { OnRunStatusChanged: "OnRunStatusChanged" },
     useAgent: () => ({ agent: fake.agent }),
     useConfigureSuggestions: fake.configureSuggestions,
     useCopilotKit: () => ({ copilotkit: { runAgent: fake.runAgent } }),
+    useDefaultRenderTool: fake.defaultRenderTool,
   };
 });
 
@@ -113,6 +150,7 @@ describe("BraiCopilotSurface", () => {
     fake.attachments = [];
     fake.chatProps = null;
     fake.configureSuggestions.mockReset();
+    fake.defaultRenderTool.mockReset();
     fake.finishRun = null;
     fake.inputChange.mockReset();
     fake.removeAttachment.mockReset();
@@ -124,11 +162,12 @@ describe("BraiCopilotSurface", () => {
   it("names the composer controls and fields for assistive technology", () => {
     renderSurface();
 
-    expect(fake.viewProps?.input).toMatchObject({
-      addMenuButton: { "aria-label": "Добавить изображение" },
-      sendButton: { "aria-label": "Отправить сообщение" },
-      textArea: { id: "brai-chat-message", name: "message", "aria-label": "Сообщение Браю" },
-    });
+    expect(screen.getByRole("button", { name: "Добавить изображение" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Сообщение Браю" })).toHaveAttribute("id", "brai-chat-message");
+    expect(screen.getByRole("textbox", { name: "Сообщение Браю" })).toHaveAttribute("name", "message");
+    expect(screen.getByRole("textbox", { name: "Сообщение Браю" })).toHaveAttribute("data-slot", "textarea");
+    expect(screen.getByRole("textbox", { name: "Сообщение Браю" })).toHaveAttribute("placeholder", "Напишите Браю…");
+    expect(screen.getByRole("button", { name: "Отправить сообщение" })).toBeInTheDocument();
   });
 
   it("keeps the stock chat while inheriting every semantic Brai theme token", () => {
@@ -136,18 +175,27 @@ describe("BraiCopilotSurface", () => {
 
     expect(container.querySelector(".dark")).toBeInTheDocument();
     expect(fake.chatProps?.style).toMatchObject({
-      "--background": "inherit",
-      "--foreground": "inherit",
-      "--card": "inherit",
-      "--primary": "inherit",
-      "--border": "inherit",
+      "--background": "var(--brai-copilot-background)",
+      "--foreground": "var(--brai-copilot-foreground)",
+      "--card": "var(--brai-copilot-card)",
+      "--primary": "var(--brai-copilot-primary)",
+      "--border": "var(--brai-copilot-border)",
       "--cpk-default-font-family": "var(--font-app-sans)",
     });
+    expect(Object.values(fake.chatProps?.style ?? {})).not.toContain("inherit");
+    expect(container.querySelector<HTMLElement>(".brai-copilot-surface")?.style.getPropertyValue("--brai-copilot-background")).toBe("var(--background)");
     expect(fake.configureSuggestions).toHaveBeenCalledWith(expect.objectContaining({
       available: "before-first-message",
       consumerAgentId: "brai-codex",
       suggestions: expect.arrayContaining([expect.objectContaining({ title: "Помоги с кодом" })]),
     }));
+    expect(fake.defaultRenderTool).toHaveBeenCalledOnce();
+    expect(fake.chatProps?.messageView?.reasoningMessage).toBeTypeOf("function");
+    expect(fake.viewProps?.input?.addMenuButton).toBeTypeOf("function");
+    expect(fake.viewProps?.input?.textArea).toBeTruthy();
+    expect(fake.viewProps?.scrollView).toBeTypeOf("function");
+    expect(screen.getByTestId("copilot-default-scroll-view")).toHaveTextContent("История");
+    expect(screen.getByRole("button", { name: "Прокрутить к последнему сообщению" })).toBeInTheDocument();
   });
 
   it("steers an active run with one stable optimistic user-message id", async () => {
@@ -203,13 +251,10 @@ describe("BraiCopilotSurface", () => {
   it("refreshes after a run transition and releases upload reservations on remove", async () => {
     fake.agent.isRunning = true;
     const onRunFinished = vi.fn();
-    const onRunStateChange = vi.fn();
     const onError = vi.fn();
     const onDeleteAttachment = vi.fn(async () => undefined);
     const onUpload = vi.fn(async (file: File) => ({ id: file.name, mediaType: file.type, url: `/private/${file.name}` }));
-    const view = renderSurface({ onDeleteAttachment, onError, onRunFinished, onRunStateChange, onUpload });
-
-    await waitFor(() => expect(onRunStateChange).toHaveBeenCalledWith(true));
+    const view = renderSurface({ onDeleteAttachment, onError, onRunFinished, onUpload });
 
     const config = fake.chatProps?.attachments as { onUpload: (file: File) => Promise<{ metadata?: Record<string, unknown> }> };
     const uploads = [];
@@ -218,14 +263,13 @@ describe("BraiCopilotSurface", () => {
     expect(onError).toHaveBeenCalledWith("К одному сообщению можно прикрепить не больше 5 изображений");
 
     fake.attachments = [{ id: "upload-0", status: "ready", metadata: uploads[0].metadata }];
-    view.rerender(surface({ onDeleteAttachment, onError, onRunFinished, onRunStateChange, onUpload }));
+    view.rerender(surface({ onDeleteAttachment, onError, onRunFinished, onUpload }));
     fireEvent.click(screen.getByRole("button", { name: "Удалить upload-0" }));
     await waitFor(() => expect(onDeleteAttachment).toHaveBeenCalledWith("image-0.png"));
     await expect((fake.chatProps?.attachments as typeof config).onUpload(image("image-6.png", 1))).resolves.toBeDefined();
 
     fireEvent.click(screen.getByRole("button", { name: "Завершить run" }));
     await waitFor(() => expect(onRunFinished).toHaveBeenCalledOnce());
-    expect(onRunStateChange).toHaveBeenLastCalledWith(false);
   });
 });
 
@@ -238,7 +282,6 @@ function surface(overrides: {
   onDeleteAttachment?: (id: string) => Promise<void>;
   onRetryChange?: (retry: (() => Promise<void>) | null) => void;
   onRunFinished?: () => void;
-  onRunStateChange?: (running: boolean) => void;
   onSteer?: (messageId: string, text: string) => Promise<void>;
   onUpload?: (file: File) => Promise<{ id: string; mediaType: string; url: string }>;
 } = {}) {
@@ -251,7 +294,6 @@ function surface(overrides: {
       onError={overrides.onError ?? vi.fn()}
       onRetryChange={overrides.onRetryChange ?? vi.fn()}
       onRunFinished={overrides.onRunFinished ?? vi.fn()}
-      onRunStateChange={overrides.onRunStateChange ?? vi.fn()}
       onSteer={overrides.onSteer ?? vi.fn(async () => undefined)}
       onUpload={overrides.onUpload ?? vi.fn(async (file) => ({ id: file.name, mediaType: file.type, url: `/private/${file.name}` }))}
     />

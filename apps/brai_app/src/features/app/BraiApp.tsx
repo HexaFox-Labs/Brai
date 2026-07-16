@@ -31,7 +31,8 @@ import { ActionsInfoPanel } from "./sections/actions/ActionsInfoPanel";
 import { ArchiveSection } from "./sections/actions/ArchiveSection";
 import { ActionsSidebarContent } from "./sections/actions/ActionsSidebarContent";
 import { BraiCmdSection } from "./sections/brai-cmd/BraiCmdSection";
-import { BraiChatSection } from "./sections/brai/BraiChatSection";
+import { BraiChatSection, BraiContextPanelActions } from "./sections/brai/BraiChatSection";
+import type { BraiContextPanel } from "./sections/brai/braiChatModel";
 import { DrawsSection } from "./sections/draws/DrawsSection";
 import { EvilEyeSection } from "./sections/EvilEyeSection";
 import { EngineSection } from "./sections/engine/EngineSection";
@@ -63,6 +64,7 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
   const router = useRouter();
   const nativeAndroid = useMountedNativeAndroid();
   const [mobileDockMenu, setMobileDockMenu] = useState<"left" | "right" | null>(null);
+  const [braiContextPanel, setBraiContextPanel] = useState<BraiContextPanel>("none");
   const [startupIntroComplete, setStartupIntroComplete] = useState(false);
   const [onboardingStartupActive, setOnboardingStartupActive] = useState(true);
   const [onboardingVisible, setOnboardingVisible] = useState(() => shouldShowOnboarding(false) || (isNativeAndroid() && shouldKeepStoredLockedOnboarding()));
@@ -354,6 +356,7 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
             syncStatus={app.displaySyncStatus}
             pendingCount={app.totalPendingCount}
             leading={isPrimarySection(screenSection) || isContextualRailSection(screenSection) ? <MobileMenuButton onClick={openMobileMenu} /> : null}
+            denseMobileActions={screenSection === "brai"}
             desktopLeading={screenSection === "brai" ? (
               <div className="flex items-center gap-2">
                 <BraiBrandIcon />
@@ -381,7 +384,9 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
               </button>
             ) : undefined}
             trailing={
-              screenSection === "actions" && mobileViewport ? (
+              screenSection === "brai" ? (
+                <BraiContextPanelActions panel={braiContextPanel} onPanelChange={setBraiContextPanel} />
+              ) : screenSection === "actions" && mobileViewport ? (
                 <IconButton icon={Info} label="Информация о действиях" active={app.actionsInfoActive} onClick={app.toggleActionsInfoPanel} />
               ) : screenSection === "inbox" && mobileViewport ? (
                 <IconButton icon={Info} label="Информация о входящих" active={app.inboxInfoActive} onClick={app.toggleInboxInfoPanel} />
@@ -406,7 +411,13 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
             onVerifyOtp={app.onVerifyOtp}
           />
         ) : screenSection === "brai" ? (
-          <BraiChatSection theme={app.theme} userId={app.authUser?.id} onRailContent={isActivePage ? registerBraiRail : undefined} />
+          <BraiChatSection
+            contextPanel={braiContextPanel}
+            theme={app.theme}
+            userId={app.authUser?.id}
+            onContextPanelChange={setBraiContextPanel}
+            onRailContent={isActivePage ? registerBraiRail : undefined}
+          />
         ) : screenSection === "actions" ? (
           <ActionsSection
             state={app.actions}
