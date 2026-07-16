@@ -13,7 +13,7 @@ test('public version history is normalized, filtered, cursor-paginated, and safe
     seedWork(fixture, 303, 'work_api_303', '2099-07-14T10:03:00.000Z');
     const pool = fixture.openDatabasePool();
     try {
-      await pool.query(fs.readFileSync(path.resolve(import.meta.dirname, '../../../supabase/migrations/0031_normalize_version_work_history.sql'), 'utf8'));
+      await pool.query(fs.readFileSync(path.resolve(import.meta.dirname, '../../../supabase/migrations/0033_normalize_version_work_history.sql'), 'utf8'));
     } finally {
       await pool.end();
     }

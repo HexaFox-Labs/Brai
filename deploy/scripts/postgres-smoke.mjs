@@ -58,7 +58,7 @@ try {
     `),
     scalar("SELECT COUNT(*)::int FROM build_version_counters WHERE version_type_id IN ('apk', 'build') AND (SELECT COUNT(*) FROM build_version_counters) = 2"),
     scalar("SELECT COUNT(*)::int FROM schema_migrations WHERE version = 67"),
-    scalar("SELECT COUNT(*)::int FROM supabase_migration_files WHERE version = '0031' AND name = '0031_normalize_version_work_history.sql'"),
+    scalar("SELECT COUNT(*)::int FROM supabase_migration_files WHERE version = '0033' AND name = '0033_normalize_version_work_history.sql'"),
     scalar(`
       SELECT COUNT(*)::int
       FROM information_schema.tables

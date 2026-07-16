@@ -238,7 +238,7 @@ Production runtime credentials live in `/etc/brai/brai-api.env`, including `BRAI
 Preview and Dev runtime credentials live in `/srv/projects/brai-envs/<environment>/brai-api.env`
 and are deploy-writable so CI can update schema-scoped DSNs after Supabase schema creation.
 After `BRAI_SUPAVISOR_TENANT_ISOLATION=true` is enabled by the accepted maintenance rollout,
-production DSNs must use `brightos-prod`; Dev and Preview DSNs must use `brightos-nonprod`.
+production DSNs must use `brai-prod`; Dev and Preview DSNs must use `brai-nonprod`.
 Deployment rewrites only the Supavisor tenant suffix in the URL username and preserves the password,
 database, query parameters, and schema `search_path`. Deployment fails before service cutover when
 the target DSN has the wrong tenant.
@@ -256,8 +256,10 @@ sudo /srv/opt/brai-supabase-maintenance.sh --apply reconfigure-pooler
 The command takes production, Dev, Preview A-E, staging, release, and preview-slot locks in canonical
 order; stops dependent API services; recreates only Supavisor; starts production first; and returns
 previously active non-production services one by one only after health/auth canaries. The wrapper
-must create both tenants before any runtime DSN is switched. Failed Preview slots remain stopped and
-are restored only by their normal deploy workflow. If a canary fails, leave the offending
+must delete persistent metadata for legacy `brightos`, `brightos-prod`, and `brightos-nonprod`
+tenants, recreate only `brai-prod` and `brai-nonprod`, and verify that exact target set before any
+runtime DSN is switched or API client is restarted. Failed Preview slots remain stopped and are
+restored only by their normal deploy workflow. If a canary fails, leave the offending
 non-production service stopped, reset only Supavisor, and repeat the production canary. Never widen
 the recovery into a whole-stack or database recreation.
 

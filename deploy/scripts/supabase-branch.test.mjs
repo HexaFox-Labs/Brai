@@ -64,7 +64,7 @@ test("production seed loads only explicitly marked idempotent migrations into th
     "utf8"
   );
   const versionHistoryMigration = fs.readFileSync(
-    path.join(repoRoot, "supabase/migrations/0031_normalize_version_work_history.sql"),
+    path.join(repoRoot, "supabase/migrations/0033_normalize_version_work_history.sql"),
     "utf8"
   );
   const seedStart = script.indexOf("async function seedTestDataFromProduction");
@@ -160,8 +160,11 @@ test("production copy reseeds copied tables before repair migrations and before 
   const copyFunction = script.slice(copyStart, inspectStart);
   const begin = 'client.query("BEGIN ISOLATION LEVEL REPEATABLE READ")';
   const searchPath = "SET LOCAL search_path TO";
+  const dropPostSeedIndex = "DROP INDEX IF EXISTS";
+  const legacyImportFlag = "set_config('brai.allow_legacy_operation_import', 'on', true)";
   const constraintsImmediate = 'client.query("SET CONSTRAINTS ALL IMMEDIATE")';
   const reapply = "for (const { sql } of postSeedMigrations) await client.query(sql)";
+  const flushDeferredTriggers = 'client.query("SET CONSTRAINTS ALL IMMEDIATE")';
   const reseed = "await reseedOwnedSequences(client, { schema: targetSchema, tables: copyTables })";
   const firstReseed = copyFunction.indexOf(reseed);
   const secondReseed = copyFunction.indexOf(reseed, firstReseed + reseed.length);
@@ -169,18 +172,23 @@ test("production copy reseeds copied tables before repair migrations and before 
   assert.match(copyFunction, /const client = await pool\.connect\(\)/);
   assert.ok(copyFunction.indexOf(begin) > 0);
   assert.ok(copyFunction.indexOf(searchPath) > 0);
+  assert.ok(copyFunction.indexOf(dropPostSeedIndex) > copyFunction.indexOf(searchPath));
   assert.ok(copyFunction.indexOf(reapply) > 0);
   assert.ok(firstReseed > 0);
   assert.ok(secondReseed > firstReseed);
   assert.ok(copyFunction.indexOf(begin) < copyFunction.indexOf(searchPath));
+  assert.ok(copyFunction.indexOf(legacyImportFlag) > copyFunction.indexOf(searchPath));
+  assert.ok(copyFunction.indexOf(legacyImportFlag) < copyFunction.indexOf("TRUNCATE TABLE"));
   assert.match(copyFunction, /TRUNCATE TABLE .* CONTINUE IDENTITY CASCADE/);
   assert.doesNotMatch(copyFunction, /RESTART IDENTITY/);
-  assert.ok(copyFunction.indexOf(searchPath) < copyFunction.indexOf("TRUNCATE TABLE"));
+  assert.ok(copyFunction.indexOf(dropPostSeedIndex) < copyFunction.indexOf("TRUNCATE TABLE"));
   assert.ok(copyFunction.indexOf(reapply) > copyFunction.indexOf("OVERRIDING SYSTEM VALUE"));
   assert.ok(firstReseed > copyFunction.indexOf("OVERRIDING SYSTEM VALUE"));
   assert.ok(copyFunction.indexOf(constraintsImmediate) > firstReseed);
   assert.ok(copyFunction.indexOf(constraintsImmediate) < copyFunction.indexOf(reapply));
   assert.ok(firstReseed < copyFunction.indexOf(reapply));
+  assert.ok(copyFunction.indexOf(flushDeferredTriggers) > firstReseed);
+  assert.ok(copyFunction.indexOf(flushDeferredTriggers) < copyFunction.indexOf(reapply));
   assert.ok(secondReseed > copyFunction.indexOf(reapply));
   assert.ok(secondReseed < copyFunction.indexOf('client.query("COMMIT")'));
   assert.doesNotMatch(copyFunction, /tables: truncatableTables/);

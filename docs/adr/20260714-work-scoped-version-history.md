@@ -41,7 +41,7 @@ Postgres хранит work lifecycle, полные публичные GitHub PR 
 ## Ссылки
 
 - `openspec/changes/normalize-version-work-history/`
-- `supabase/migrations/0031_normalize_version_work_history.sql`
+- `supabase/migrations/0033_normalize_version_work_history.sql`
 - `services/brai_api/src/store-version-history.js`
 - `scripts/brai-task.mjs`
 
