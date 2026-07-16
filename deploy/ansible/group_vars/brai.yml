@@ -33,6 +33,8 @@ brai_deploy_user: brai-deploy
 brai_deploy_writers: []
 brai_operation_maintainers:
   - mark
+brai_db_admin_members: "{{ ([brai_deploy_user] + brai_operation_maintainers) | unique | sort }}"
+brai_db_admin_members_state: "{{ brai_protected_env_dir }}/.brai-db-admin-members"
 brai_source_group: mark
 brai_service_user: brai
 brai_service_group: brai

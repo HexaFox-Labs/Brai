@@ -36,6 +36,54 @@
       - /usr/bin/getent
       - group
       - "{{ brai_db_admin_group }}"
+  register: brai_db_admin_group_before
+  changed_when: false
+  failed_when: brai_db_admin_group_before.rc not in [0, 2]
+  check_mode: false
+  tags:
+    - brai-env-contract
+    - targeted-infra-apply
+
+- name: Reconcile exact production database administrator membership
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/gpasswd
+      - --members
+      - "{{ brai_db_admin_members | join(',') }}"
+      - "{{ brai_db_admin_group }}"
+  changed_when: true
+  when:
+    - not ansible_check_mode
+    - brai_db_admin_group_before.rc == 0
+    - (brai_db_admin_group_before.stdout.split(':')[3].split(',') | reject('equalto', '') | list | sort) != (brai_db_admin_members | sort)
+  tags:
+    - brai-env-contract
+    - targeted-infra-apply
+
+- name: Check applied production database administrator membership contract
+  ansible.builtin.stat:
+    path: "{{ brai_db_admin_members_state }}"
+  register: brai_db_admin_members_contract
+  tags:
+    - brai-env-contract
+    - targeted-infra-apply
+
+- name: Read applied production database administrator membership contract
+  ansible.builtin.slurp:
+    src: "{{ brai_db_admin_members_state }}"
+  register: brai_db_admin_members_contract_content
+  when: brai_db_admin_members_contract.stat.exists
+  no_log: true
+  tags:
+    - brai-env-contract
+    - targeted-infra-apply
+
+- name: Refresh isolated Brai database administrator group membership
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/getent
+      - group
+      - "{{ brai_db_admin_group }}"
   register: brai_db_admin_group_status
   changed_when: false
   failed_when: brai_db_admin_group_status.rc not in [0, 2]
@@ -44,51 +92,30 @@
     - brai-env-contract
     - targeted-infra-apply
 
-- name: Grant production database administration only to deploy and maintainers
-  ansible.builtin.user:
-    name: "{{ item }}"
-    groups: "{{ brai_db_admin_group }}"
-    append: true
-  loop: "{{ [brai_deploy_user] + brai_operation_maintainers }}"
-  when: brai_db_admin_group_status.rc == 0
-  tags:
-    - brai-env-contract
-    - targeted-infra-apply
-
-- name: Read Brai service identity group memberships
-  ansible.builtin.command:
-    argv:
-      - /usr/bin/id
-      - -nG
-      - "{{ item }}"
-  loop:
-    - "{{ brai_service_user }}"
-    - "{{ brai_goal_agent_user }}"
-  register: brai_db_admin_service_groups
-  changed_when: false
-  check_mode: false
-  when: brai_db_admin_group_status.rc == 0
-  tags:
-    - brai-env-contract
-    - targeted-infra-apply
-
-- name: Remove Brai service identities from production database administration
-  ansible.builtin.command:
-    argv:
-      - /usr/bin/gpasswd
-      - --delete
-      - "{{ item.item }}"
-      - "{{ brai_db_admin_group }}"
-  loop: "{{ brai_db_admin_service_groups.results | default([]) }}"
-  loop_control:
-    label: "{{ item.item | default('unknown') }}"
-  register: brai_db_admin_service_removal
-  changed_when: brai_db_admin_service_removal.rc == 0
-  failed_when: brai_db_admin_service_removal.rc != 0
+- name: Assert exact production database administrator membership
+  ansible.builtin.assert:
+    that:
+      - (brai_db_admin_group_status.stdout.split(':')[3].split(',') | reject('equalto', '') | list | sort) == (brai_db_admin_members | sort)
+      - brai_service_user not in brai_db_admin_members
+      - brai_goal_agent_user not in brai_db_admin_members
+    fail_msg: "brai-db-admin membership must contain only brai-deploy and current maintainers."
   when:
-    - not ansible_check_mode
     - brai_db_admin_group_status.rc == 0
-    - brai_db_admin_group in item.stdout.split()
+    - not ansible_check_mode or (
+        brai_db_admin_members_contract.stat.exists
+        and (brai_db_admin_members_contract_content.content | b64decode | trim) == (brai_db_admin_members | join(','))
+      )
+  tags:
+    - brai-env-contract
+    - targeted-infra-apply
+
+- name: Record applied production database administrator membership contract
+  ansible.builtin.copy:
+    content: "{{ brai_db_admin_members | join(',') }}\n"
+    dest: "{{ brai_db_admin_members_state }}"
+    owner: root
+    group: root
+    mode: "0600"
   tags:
     - brai-env-contract
     - targeted-infra-apply
@@ -263,4 +290,4 @@
 
       **Как используется:** source of truth — `deploy/ansible/` в Brai repo; check/apply выполняются только из clean synchronized `main`: `deploy/scripts/apply-main-infra.sh --check brai-auth-bootstrap`, затем `--apply brai-auth-bootstrap` и повторный `--check`.
 
-      **Где находится:** `/srv/opt/brai-auth/compose.yml`, `/srv/opt/brai-auth-runtime.sh`, `/srv/opt/brai-prod-api-env.sh`, `/etc/brai/.brai-prod-api-env`, `/etc/brai/brai-api.env`, `/etc/brai/supabase-deploy.env`, `/etc/sudoers.d/brai-auth`, `/etc/sudoers.d/brai-deploy`, `/etc/systemd/system/brai-api*.service`, `/srv/opt/brai-db-telegram-backup.sh`, `/etc/caddy/brai-auth/<environment>/route.caddy`, `/srv/projects/brai-envs/<environment>/brai-auth.env`, `/srv/projects/brai-envs/<environment>/.auth-operation.lock`, `/srv/opt/brai-auth/caddy.lock`.
+      **Где находится:** `/srv/opt/brai-auth/compose.yml`, `/srv/opt/brai-auth-runtime.sh`, `/srv/opt/brai-prod-api-env.sh`, `/etc/brai/.brai-prod-api-env`, `/etc/brai/.brai-db-admin-members`, `/etc/brai/brai-api.env`, `/etc/brai/supabase-deploy.env`, `/etc/sudoers.d/brai-auth`, `/etc/sudoers.d/brai-deploy`, `/etc/systemd/system/brai-api*.service`, `/srv/opt/brai-db-telegram-backup.sh`, `/etc/caddy/brai-auth/<environment>/route.caddy`, `/srv/projects/brai-envs/<environment>/brai-auth.env`, `/srv/projects/brai-envs/<environment>/.auth-operation.lock`, `/srv/opt/brai-auth/caddy.lock`.
