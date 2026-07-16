@@ -8,6 +8,7 @@ import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { ThemeMode } from "../../appModel";
 import { BraiApi, type BraiApiError, type DrawSceneSummary } from "@/shared/api/braiApi";
 import { defaultApiBase } from "@/shared/config/runtime";
+import { formatDisplayDateTime } from "@/shared/time/format";
 import { Button } from "@/shared/ui/button";
 import { Card, CardPanel } from "@/shared/ui/card";
 import { ScrollArea } from "@/shared/ui/scroll-area";
@@ -419,7 +420,5 @@ function saveStatusLabel(status: SaveStatus): string {
 }
 
 function formatUpdatedAt(value: string): string {
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return "";
-  return new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(date);
+  return formatDisplayDateTime(value, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
