@@ -7,12 +7,14 @@ import test from "node:test";
 
 const repoRoot = path.resolve(import.meta.dirname, "../..");
 const helper = path.join(repoRoot, "deploy/ansible/files/brai-auth-runtime.sh");
+const prodApiEnvHelper = path.join(repoRoot, "deploy/ansible/files/brai-prod-api-env.sh");
 const compose = path.join(repoRoot, "deploy/ansible/files/brai-auth-compose.yml");
 const authSudoers = path.join(repoRoot, "deploy/ansible/templates/brai-auth-sudoers.j2");
 const deploySudoers = path.join(repoRoot, "deploy/ansible/templates/brai-deploy-sudoers.j2");
 const authTasks = path.join(repoRoot, "deploy/ansible/tasks/brai-auth-bootstrap.yml");
 const playbook = path.join(repoRoot, "deploy/ansible/brai.yml");
 const apiService = path.join(repoRoot, "deploy/ansible/templates/brai-api.service.j2");
+const groupVars = path.join(repoRoot, "deploy/ansible/group_vars/brai.yml");
 const digest = `ghcr.io/sergobright/brai-auth@sha256:${"a".repeat(64)}`;
 const priorDigest = `ghcr.io/sergobright/brai-auth@sha256:${"b".repeat(64)}`;
 const branch = "codex/auth-service";
@@ -40,11 +42,71 @@ test("auth sudoers grants are isolated from the shared deploy boundary", () => {
   assert.match(isolated, /brai_auth_runtime_helper \}\} pull-only \*/);
   assert.match(isolated, /brai_auth_runtime_helper \}\} deploy \*/);
   assert.match(isolated, /brai_auth_runtime_helper \}\} preflight-rollback \*/);
+  assert.match(isolated, /brai_prod_api_env_helper \}\} stage \*/);
+  assert.match(isolated, /brai_prod_api_env_helper \}\} rollback \*/);
+  assert.match(isolated, /brai_prod_api_env_helper \}\} commit \*/);
+  assert.doesNotMatch(isolated, /brai_prod_api_env_helper \}\} \*/);
   assert.match(isolated, /apply-main-infra\.sh --check brai-auth-bootstrap/);
   assert.match(isolated, /apply-main-infra\.sh --apply brai-auth-bootstrap/);
   assert.match(isolated, /brai_operation_maintainers/);
   assert.doesNotMatch(shared, /brai_auth_runtime_helper|brai-auth-bootstrap/);
   assert.match(tasks, /name: Install isolated Brai auth sudoers boundary[\s\S]*?dest: \/etc\/sudoers\.d\/brai-auth[\s\S]*?validate: "visudo -cf %s"/);
+});
+
+test("auth bootstrap isolates database administration and installs the fixed production API env helper", () => {
+  const tasks = fs.readFileSync(authTasks, "utf8");
+  const variables = fs.readFileSync(groupVars, "utf8");
+  const playbookSource = fs.readFileSync(playbook, "utf8");
+  const helperSource = fs.readFileSync(prodApiEnvHelper, "utf8");
+
+  assert.match(variables, /^brai_db_admin_group: brai-db-admin$/m);
+  assert.match(variables, /^brai_db_admin_members: "\{\{ \(\[brai_deploy_user\] \+ brai_operation_maintainers\) \| unique \| sort \}\}"$/m);
+  assert.match(variables, /^brai_db_admin_members_state: "\{\{ brai_protected_env_dir \}\}\/\.brai-db-admin-members"$/m);
+  assert.match(variables, /^brai_prod_api_env_helper: \/srv\/opt\/brai-prod-api-env\.sh$/m);
+  assert.match(variables, /^brai_prod_api_env_state_root: "\{\{ brai_protected_env_dir \}\}\/\.brai-prod-api-env"$/m);
+  assert.match(tasks, /name: Create isolated Brai database administrator group[\s\S]*?name: "\{\{ brai_db_admin_group \}\}"[\s\S]*?system: true/);
+  assert.match(tasks, /name: Reconcile exact production database administrator membership[\s\S]*?\/usr\/bin\/gpasswd[\s\S]*?--members[\s\S]*?brai_db_admin_members \| join\(','\)/);
+  assert.match(tasks, /name: Assert exact production database administrator membership[\s\S]*?brai_service_user not in brai_db_admin_members[\s\S]*?brai_goal_agent_user not in brai_db_admin_members/);
+  assert.match(tasks, /name: Record applied production database administrator membership contract[\s\S]*?dest: "\{\{ brai_db_admin_members_state \}\}"[\s\S]*?mode: "0600"/);
+  assert.doesNotMatch(tasks, /name: Grant production database administration[\s\S]*?append: true/);
+  assert.match(tasks, /name: Isolate protected Supabase deploy environment from runtime identities[\s\S]*?owner: root[\s\S]*?group: "\{\{ brai_db_admin_group \}\}"[\s\S]*?mode: "0640"/);
+  assert.match(tasks, /name: Assert Brai service identities cannot read Supabase deploy credentials[\s\S]*?\/usr\/bin\/test[\s\S]*?- "!"[\s\S]*?- -r/);
+  assert.match(tasks, /name: Assert production database administrators can read Supabase deploy credentials/);
+  assert.match(tasks, /name: Install fixed production API environment transaction helper[\s\S]*?src: "\{\{ playbook_dir \}\}\/files\/brai-prod-api-env\.sh"[\s\S]*?dest: "\{\{ brai_prod_api_env_helper \}\}"[\s\S]*?mode: "0755"/);
+  assert.match(tasks, /name: Provision root-only production API environment transaction state[\s\S]*?mode: "0700"/);
+  assert.match(tasks, /name: Provision root-only production API environment transaction lock[\s\S]*?mode: "0600"/);
+  assert.equal((playbookSource.match(/brai_supabase_deploy_env_source/g) ?? []).length, 0);
+  assert.match(helperSource, /TARGET=".*\/etc\/brai\/brai-api\.env"/);
+  assert.match(helperSource, /STATE_ROOT=".*\/etc\/brai\/\.brai-prod-api-env"/);
+  assert.doesNotMatch(helperSource, /brai-auth-runtime\.sh/);
+});
+
+test("database administrator reconciliation removes a stale former maintainer", () => {
+  const tasks = fs.readFileSync(authTasks, "utf8");
+  const desiredMembers = ["brai-deploy", "mark"];
+  const existingMembers = [...desiredMembers, "former-maintainer"];
+  const reconciledMembers = existingMembers.filter((member) => desiredMembers.includes(member));
+
+  assert.deepEqual(reconciledMembers.sort(), desiredMembers.sort());
+  assert.equal(reconciledMembers.includes("former-maintainer"), false);
+  assert.match(tasks, /\/usr\/bin\/gpasswd[\s\S]*?--members[\s\S]*?brai_db_admin_members \| join\(','\)/);
+  assert.match(tasks, /brai_db_admin_group_before\.stdout\.split\(':'\)\[3\][\s\S]*?!= \(brai_db_admin_members \| sort\)/);
+  assert.match(tasks, /name: Assert exact production database administrator membership[\s\S]*?== \(brai_db_admin_members \| sort\)/);
+  assert.match(tasks, /not ansible_check_mode or \([\s\S]*?brai_db_admin_members_contract\.stat\.exists[\s\S]*?brai_db_admin_members_contract_content\.content \| b64decode \| trim/);
+  assert.match(tasks, /name: Record applied production database administrator membership contract/);
+  assert.doesNotMatch(tasks, /brai_db_admin_group[\s\S]{0,200}append: true/);
+});
+
+test("database administrator initial check permits planned reconciliation but post-apply check enforces it", () => {
+  const desired = "brai-deploy,mark";
+  const stale = "brai-deploy,former-maintainer,mark";
+  const shouldAssert = ({ checkMode, appliedContract }) => !checkMode || appliedContract === desired;
+
+  assert.equal(shouldAssert({ checkMode: true, appliedContract: "" }), false);
+  assert.equal(shouldAssert({ checkMode: true, appliedContract: "brai-deploy,former-maintainer,mark" }), false);
+  assert.equal(shouldAssert({ checkMode: false, appliedContract: "" }), true);
+  assert.equal(shouldAssert({ checkMode: true, appliedContract: desired }), true);
+  assert.notEqual(stale, desired);
 });
 
 test("auth bootstrap target installs API and verified-backup cutover prerequisites", () => {
