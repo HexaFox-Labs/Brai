@@ -588,14 +588,14 @@ test("self-hosted preview generator switches only to the non-production tenant a
       BRAI_SUPAVISOR_TENANT_ISOLATION: "true",
       BRAI_RELEASE_PASSWORD: "shared-release-password",
       SUPABASE_SELF_HOSTED: "true",
-      SUPABASE_SELF_HOSTED_DATABASE_URL: "postgres://postgres.brightos:p%40ss@127.0.0.1:55432/postgres?sslmode=disable",
+      SUPABASE_SELF_HOSTED_DATABASE_URL: "postgres://postgres.brai-nonprod:p%40ss@127.0.0.1:55432/postgres?sslmode=disable",
     },
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
 
   const databaseUrl = fs.readFileSync(envFile, "utf8").match(/^BRAI_DATABASE_URL='([^']+)'$/m)?.[1];
   const parsed = new URL(databaseUrl);
-  assert.equal(parsed.username, "postgres.brightos-nonprod");
+  assert.equal(parsed.username, "postgres.brai-nonprod");
   assert.equal(parsed.password, "p%40ss");
   assert.equal(parsed.searchParams.get("sslmode"), "disable");
   assert.equal(parsed.searchParams.get("options"), "-c search_path=brai_dev,public");
