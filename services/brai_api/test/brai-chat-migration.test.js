@@ -12,7 +12,7 @@ const TABLES = [
   'brai_chat_threads'
 ];
 const MIGRATION_SQL = fs.readFileSync(path.resolve(
-  import.meta.dirname, '../../../supabase/migrations/0031_brai_codex_chat.sql'
+  import.meta.dirname, '../../../supabase/migrations/0034_brai_codex_chat.sql'
 ), 'utf8');
 
 test('Brai chat migration is idempotent, described, RLS-protected and cascades account data', async () => {

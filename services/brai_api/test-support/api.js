@@ -259,11 +259,12 @@ export async function createTestDatabase(migrations = [
   '0028_context_decision_calibration.sql',
   '0029_goal_agent_workflows.sql',
   '0030_authenticated_brai_cmd_tokens_compat.sql',
-  '0032_pending_goal_plan_invariant.sql',
   '0026_user_ai_provider_credentials.sql',
-  '0031_brai_codex_chat.sql',
-  '0032_brai_chat_generated_titles.sql',
-  '0033_normalize_version_work_history.sql'
+  '0031_agent_operations_inbox_guard.sql',
+  '0032_pending_goal_plan_invariant.sql',
+  '0033_normalize_version_work_history.sql',
+  '0034_brai_codex_chat.sql',
+  '0035_brai_chat_generated_titles.sql'
 ]) {
   const baseUrl = process.env.BRAI_TEST_DATABASE_URL?.trim();
   if (!baseUrl) throw new Error('BRAI_TEST_DATABASE_URL is required for API tests');
