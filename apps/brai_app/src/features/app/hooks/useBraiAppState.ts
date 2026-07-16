@@ -30,7 +30,7 @@ import type { GoalData, HistoryData, SyncStatus, TimerState } from "@/shared/typ
 import { emptyGoal, emptyHistory, emptyTimerState } from "@/shared/types/timer";
 import { loadOnboardingState, saveOnboardingState } from "@/features/onboarding/onboardingModel";
 import type { FocusBackgroundMode, FocusContextPanel, SectionId } from "../appModel";
-import { FOCUS_BACKGROUND_STORAGE_KEY, FOCUS_CONTEXT_PANEL_STORAGE_KEY, resolveAuthMode, sectionFromLocation, syncSectionUrl } from "../appModel";
+import { ENGINE_HISTORY_PANEL_STORAGE_KEY, FOCUS_BACKGROUND_STORAGE_KEY, FOCUS_CONTEXT_PANEL_STORAGE_KEY, resolveAuthMode, sectionFromLocation, syncSectionUrl } from "../appModel";
 import { moscowTodayKey, normalizeHistory } from "../appUtils";
 import { useMobileNavigationViewport, useSectionSwipeNavigation } from "../navigation/useSectionSwipeNavigation";
 import { createBraiActionCommands } from "./useBraiActionCommands";
@@ -121,6 +121,7 @@ export function useBraiAppState(initialSection: SectionId) {
   const [timerBusy, setTimerBusy] = useState(false);
   const [actionOverlayOpen, setActionOverlayOpen] = useState(false);
   const [focusContextPanel, setFocusContextPanel] = useState<FocusContextPanel>("none");
+  const [engineHistoryOpen, setEngineHistoryOpen] = useState(loadEngineHistoryPanelPreference);
   const [focusBackground, setFocusBackgroundState] = useState<FocusBackgroundMode>(loadFocusBackgroundPreference);
   const [mobileContextPanelClosing, setMobileContextPanelClosing] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -276,6 +277,7 @@ export function useBraiAppState(initialSection: SectionId) {
     const timeout = window.setTimeout(() => {
       setMobileContextPanelClosing(false);
       setFocusContextPanel(loadFocusContextPanelPreference(authUser?.id));
+      setEngineHistoryOpen(loadEngineHistoryPanelPreference(authUser?.id));
     }, 0);
     return () => window.clearTimeout(timeout);
   }, [authUser?.id]);
@@ -1488,6 +1490,18 @@ export function useBraiAppState(initialSection: SectionId) {
     saveFocusContextPanelPreference(panel, authUser?.id);
   }
 
+  function toggleEngineHistory() {
+    setEngineHistoryOpen((current) => {
+      saveEngineHistoryPanelPreference(!current, authUser?.id);
+      return !current;
+    });
+  }
+
+  function closeEngineHistory() {
+    setEngineHistoryOpen(false);
+    saveEngineHistoryPanelPreference(false, authUser?.id);
+  }
+
   function setFocusBackground(nextBackground: FocusBackgroundMode) {
     setFocusBackgroundState(nextBackground);
     saveFocusBackgroundPreference(nextBackground);
@@ -1513,7 +1527,10 @@ export function useBraiAppState(initialSection: SectionId) {
   const mobileContextPanelActive = !mobileContextPanelClosing;
   const focusGoalActive = mobileContextPanelActive && focusContextPanel === "goal";
   const focusHistoryActive = mobileContextPanelActive && focusContextPanel === "history";
-  const mobilePanelOpen = mobileViewport && mobileContextPanelActive && focusContextPanel !== "none";
+  const mobilePanelOpen = mobileViewport && (
+    (mobileContextPanelActive && focusContextPanel !== "none") ||
+    (section === "engine" && engineHistoryOpen)
+  );
   // Factories only capture these getters for later commands; they do not dereference them during render.
   // eslint-disable-next-line react-hooks/refs
   const actionCommands = createBraiActionCommands({
@@ -1541,7 +1558,7 @@ export function useBraiAppState(initialSection: SectionId) {
     setSyncStatus,
   });
 
-  return { actionOverlayOpen, actions, active, api, appSettings, authDisplayName: authUser?.name ?? "", authMode, authUser, bundlePublishedAt, busy, displaySyncStatus, downloadApkOnce, downloadWebUpdateOnce, focusBackground, focusContextPanel, focusGoalActive, focusHistoryActive, goal, history, inbox, installApkOnce, localDatabaseBlocked, localMutationReady, localSnapshotReady, markMobileContextPanelClosing, mobileMenuOpen, mobilePanelOpen, ...actionCommands, ...inboxCommands, ...relationWorkspace, ...contextReviewWorkspace, onDeleteFocusSession, onEditFocusInterval, onEditFocusSession, onEmailLogin, onLogout, onRequestOtp, onStart, onStartActionFocus, onStop, onStopActionFocus, onSwitchActionFocus, onUpdateAppSettings: updateAppSettings, onVerifyOtp, openSettingsPage, otaCheckedAt, otaRefreshing, otaState, provisionBraiCmdDeviceToken, refreshEngineOnce, refreshOtaStateOnce, section, selectSection, setActionOverlayOpen, setFocusBackground, setFocusContextPanel: setFocusContextPanelState, setMobileMenuOpen, setTheme, swipeNavigation, theme, timer, timerBusy, todayKey, toggleFocusContextPanel, totalPendingCount, versionCheckedAt, versionError, versionRefreshing, versionState };
+  return { actionOverlayOpen, actions, active, api, appSettings, authDisplayName: authUser?.name ?? "", authMode, authUser, bundlePublishedAt, busy, closeEngineHistory, displaySyncStatus, downloadApkOnce, downloadWebUpdateOnce, engineHistoryOpen, focusBackground, focusContextPanel, focusGoalActive, focusHistoryActive, goal, history, inbox, installApkOnce, localDatabaseBlocked, localMutationReady, localSnapshotReady, markMobileContextPanelClosing, mobileMenuOpen, mobilePanelOpen, ...actionCommands, ...inboxCommands, ...relationWorkspace, ...contextReviewWorkspace, onDeleteFocusSession, onEditFocusInterval, onEditFocusSession, onEmailLogin, onLogout, onRequestOtp, onStart, onStartActionFocus, onStop, onStopActionFocus, onSwitchActionFocus, onUpdateAppSettings: updateAppSettings, onVerifyOtp, openSettingsPage, otaCheckedAt, otaRefreshing, otaState, provisionBraiCmdDeviceToken, refreshEngineOnce, refreshOtaStateOnce, section, selectSection, setActionOverlayOpen, setFocusBackground, setFocusContextPanel: setFocusContextPanelState, setMobileMenuOpen, setTheme, swipeNavigation, theme, timer, timerBusy, todayKey, toggleEngineHistory, toggleFocusContextPanel, totalPendingCount, versionCheckedAt, versionError, versionRefreshing, versionState };
 }
 
 function loadAppSettingsPreference(): AppSettings {
@@ -1584,6 +1601,28 @@ function saveFocusContextPanelPreference(panel: FocusContextPanel, userId?: stri
 
 function focusContextPanelStorageKey(userId?: string | null): string {
   return `${FOCUS_CONTEXT_PANEL_STORAGE_KEY}:${userId ?? "anonymous"}`;
+}
+
+function loadEngineHistoryPanelPreference(userId?: string | null): boolean {
+  if (typeof window === "undefined") return false;
+  let value = getBraiLocalStorageItem(engineHistoryPanelStorageKey(userId));
+  if (value == null && userId) {
+    value = getBraiLocalStorageItem(engineHistoryPanelStorageKey(null));
+    if (value != null) {
+      setBraiLocalStorageItem(engineHistoryPanelStorageKey(userId), value);
+      removeBraiLocalStorageItem(engineHistoryPanelStorageKey(null));
+    }
+  }
+  return value === "open";
+}
+
+function saveEngineHistoryPanelPreference(open: boolean, userId?: string | null) {
+  if (typeof window === "undefined") return;
+  setBraiLocalStorageItem(engineHistoryPanelStorageKey(userId), open ? "open" : "closed");
+}
+
+function engineHistoryPanelStorageKey(userId?: string | null): string {
+  return `${ENGINE_HISTORY_PANEL_STORAGE_KEY}:${userId ?? "anonymous"}`;
 }
 
 function loadFocusBackgroundPreference(): FocusBackgroundMode {

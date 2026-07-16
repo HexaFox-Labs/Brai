@@ -63,11 +63,16 @@ test("production seed loads only explicitly marked idempotent migrations into th
     path.join(repoRoot, "supabase/migrations/0010_agent_role_normalization_workflows.sql"),
     "utf8"
   );
+  const versionHistoryMigration = fs.readFileSync(
+    path.join(repoRoot, "supabase/migrations/0033_normalize_version_work_history.sql"),
+    "utf8"
+  );
   const seedStart = script.indexOf("async function seedTestDataFromProduction");
   const copyStart = script.indexOf("async function copySchemaData");
   const seedFunction = script.slice(seedStart, copyStart);
 
   assert.match(migration, /^-- brai:reapply-after-production-seed$/m);
+  assert.match(versionHistoryMigration, /^-- brai:reapply-after-production-seed$/m);
   assert.match(script, /sql\.includes\(POST_PRODUCTION_SEED_MIGRATION_MARKER\)/);
   assert.match(seedFunction, /const postSeedMigrations = postProductionSeedMigrations\(\)/);
   assert.match(seedFunction, /copySchemaData\(pool, \{ sourceSchema, targetSchema, postSeedMigrations \}\)/);
@@ -309,6 +314,12 @@ test("Postgres smoke inspects owned sequences on one repeatable-read client unde
   assert.ok(inspectIndex < commitIndex);
   assert.ok(commitIndex < releaseIndex);
   assert.match(smoke, /lockOwnedTables: true/);
+  assert.match(smoke, /version_types WHERE id IN \('apk', 'build', 'macos', 'ios'\)/);
+  assert.doesNotMatch(smoke, /COUNT\(\*\) FROM version_types\) = 4/);
+  assert.match(smoke, /build_version_counters WHERE version_type_id IN \('apk', 'build'\).*COUNT\(\*\) FROM build_version_counters\) = 2/);
+  assert.match(smoke, /versions\.version_type_id = 'build' AND versions\.version <= 148/);
+  assert.match(smoke, /cutoffVersionsWithDetails !== 159/);
+  assert.match(smoke, /importedMergedPulls < 288/);
 });
 
 test("owned sequence inspection SHARE-locks quoted tables before reading allocation state", async () => {

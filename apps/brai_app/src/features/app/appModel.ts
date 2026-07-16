@@ -16,6 +16,7 @@ export const navItems: Array<{ id: PrimarySectionId; label: string; icon: Lucide
   { id: "draws", label: "Draws", icon: Pencil, group: "Platform" },
 ];
 export const FOCUS_CONTEXT_PANEL_STORAGE_KEY = "brai_focus_context_panel";
+export const ENGINE_HISTORY_PANEL_STORAGE_KEY = "brai_engine_history_panel";
 export const FOCUS_BACKGROUND_STORAGE_KEY = "brai_focus_background";
 
 export function resolveAuthMode(production: boolean): AuthMode {
@@ -96,7 +97,7 @@ export const PAGE_WORKSPACE_REGISTRY: Record<SectionId, PageWorkspaceConfig> = {
   archive: { desktopRail: true, mobileRail: "all", persistentPanels: [], fullscreenOverride: false },
   settings: { desktopRail: true, mobileRail: "all", persistentPanels: [], fullscreenOverride: false },
   "brai-cmd": { desktopRail: false, mobileRail: "android", persistentPanels: [], fullscreenOverride: false },
-  engine: { desktopRail: false, mobileRail: "never", persistentPanels: [], fullscreenOverride: false },
+  engine: { desktopRail: false, mobileRail: "never", persistentPanels: ["history"], fullscreenOverride: false },
   profile: { desktopRail: false, mobileRail: "never", persistentPanels: [], fullscreenOverride: false },
 };
 
