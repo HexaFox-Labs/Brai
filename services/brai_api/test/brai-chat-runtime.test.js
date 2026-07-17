@@ -1961,7 +1961,4 @@ test('CopilotKit connect replays an incomplete active run without compacting it 
   assert.equal(noDelayCalls, 1);
   assert.equal(body.includes('Рисую изображение'), true);
   assert.equal(body.includes('image_generation'), true);
-  const owner = crypto.createHash('sha256').update('user-a-long-enough').digest('hex').slice(0, 20);
-  assert.equal(body.includes(`\"threadId\":\"${owner}:public-thread\"`), true);
-  assert.equal(body.includes('\"threadId\":\"public-thread\"'), false);
 });

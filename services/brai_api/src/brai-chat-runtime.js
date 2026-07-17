@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { AbstractAgent, compactEvents, EventType } from '@ag-ui/client';
-import { map, Observable, Subject } from 'rxjs';
+import { Observable, Subject } from 'rxjs';
 import { BraiCodexBrokerClient } from './brai-codex-broker-client.js';
 import { assistantMessageIdForRun, CodexAguiNormalizer } from './brai-codex-agui.js';
 import {
@@ -263,22 +263,21 @@ class BraiCodexAgent extends AbstractAgent {
 }
 
 class BraiPersistentAgentRunner {
-  constructor({ coordinator, store, userId, publicThreadId, runtimeThreadId }) {
+  constructor({ coordinator, store, userId, publicThreadId }) {
     this.coordinator = coordinator;
     this.store = store;
     this.userId = userId;
     this.publicThreadId = publicThreadId;
-    this.runtimeThreadId = runtimeThreadId;
   }
 
   run({ agent, input }) {
-    return agent.run(input).pipe(map((event) => runtimeThreadEvent(event, this.runtimeThreadId)));
+    return agent.run(input);
   }
 
   connect({ headers } = {}) {
     return this.coordinator.connect({
       store: this.store, userId: this.userId, publicThreadId: this.publicThreadId, headers
-    }).pipe(map((event) => runtimeThreadEvent(event, this.runtimeThreadId)));
+    });
   }
 
   isRunning() {
@@ -292,19 +291,6 @@ class BraiPersistentAgentRunner {
       store: this.store, userId: this.userId, publicThreadId: this.publicThreadId
     }).catch((error) => { throw publicRuntimeError(error); });
   }
-}
-
-// CopilotKit receives a private, owner-scoped runtime thread id. Durable AG-UI
-// records intentionally retain the public id so the API can authorise them.
-// Presenting the public id back to the runtime makes its thread reducer discard
-// assistant events on reconnect: they do not belong to the requested thread.
-function runtimeThreadEvent(event, runtimeThreadId) {
-  if (!runtimeThreadId || !event || typeof event !== 'object') return event;
-  const rewritten = { ...event, threadId: runtimeThreadId };
-  if (event.type === EventType.RUN_STARTED && event.input && typeof event.input === 'object') {
-    rewritten.input = { ...event.input, threadId: runtimeThreadId };
-  }
-  return rewritten;
 }
 
 export class BraiChatTurnCoordinator {
@@ -1586,9 +1572,7 @@ export function createBraiChatRuntime({
       const [{ CopilotSseRuntime, createCopilotRuntimeHandler }] = await Promise.all([
         import('@copilotkit/runtime/v2')
       ]);
-      const runner = new BraiPersistentAgentRunner({
-        coordinator, store, userId, publicThreadId, runtimeThreadId: namespacedThreadId
-      });
+      const runner = new BraiPersistentAgentRunner({ coordinator, store, userId, publicThreadId });
       const runtime = new CopilotSseRuntime({
         agents: {
           [AGENT_ID]: new BraiCodexAgent({ coordinator, store, userId, publicThreadId })
