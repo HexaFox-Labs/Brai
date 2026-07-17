@@ -1,7 +1,7 @@
 import type { ButtonHTMLAttributes, ComponentType, CSSProperties, ElementType, ReactNode } from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { BraiCopilotSurface, normalizeLatexDisplayMath } from "@/features/app/sections/brai/BraiCopilotSurface";
+import { BraiCopilotSurface, braiReasoningLabel, normalizeLatexDisplayMath } from "@/features/app/sections/brai/BraiCopilotSurface";
 
 type FakeMessage = { id: string; role: "user" | "assistant"; content: string };
 type FakeAttachment = { id: string; status: "uploading" | "ready"; metadata?: Record<string, unknown> };
@@ -308,6 +308,11 @@ describe("BraiCopilotSurface", () => {
     expect(fake.stockSubmit).not.toHaveBeenCalled();
     expect(normalizeLatexDisplayMath("\\[\\Delta x \\geq 1\\]")).toBe("$$\n\\Delta x \\geq 1\n$$");
     expect(normalizeLatexDisplayMath("[\\Delta p \\geq 1]")).toBe("$$\n\\Delta p \\geq 1\n$$");
+  });
+
+  it("uses a Russian public label for reasoning summaries", () => {
+    expect(braiReasoningLabel(true)).toBe("Размышляю…");
+    expect(braiReasoningLabel(false)).toBe("Размышлял несколько секунд");
   });
 
   it("keeps the per-thread draft when send is attempted during an attachment upload", async () => {

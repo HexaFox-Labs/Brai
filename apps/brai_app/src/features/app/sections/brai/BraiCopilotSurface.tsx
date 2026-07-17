@@ -2,7 +2,7 @@
 
 import type { ComponentProps, CSSProperties } from "react";
 import { createContext, forwardRef, useCallback, useContext, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ArrowUp, ChevronDown, ImageIcon, Plus, Search } from "lucide-react";
+import { ArrowUp, ChevronDown, ChevronRight, ImageIcon, Plus, Search } from "lucide-react";
 import {
   CopilotChat,
   CopilotChatAssistantMessage,
@@ -573,13 +573,46 @@ function BraiReasoningMessageComponent(props: ComponentProps<typeof CopilotChatR
     <CopilotChatReasoningMessage
       {...props}
       className={cx("my-1 rounded-md border border-border/70 bg-transparent text-foreground", props.className)}
-      header={{ className: "min-h-8 px-2 text-sm text-muted-foreground hover:text-foreground" }}
+      header={BraiReasoningHeader}
       contentView={{ className: "px-2 pb-2 text-sm text-muted-foreground" }}
     />
   );
 }
 
 const BraiReasoningMessage = Object.assign(BraiReasoningMessageComponent, CopilotChatReasoningMessage);
+
+/** Returns the public, localized status for a reasoning summary without exposing its raw chain of thought. */
+export function braiReasoningLabel(isStreaming: boolean | undefined) {
+  return isStreaming ? "Размышляю…" : "Размышлял несколько секунд";
+}
+
+function BraiReasoningHeader({
+  children,
+  className,
+  hasContent,
+  isOpen,
+  isStreaming,
+  label: _label,
+  ...props
+}: ComponentProps<typeof CopilotChatReasoningMessage.Header>) {
+  return (
+    <button
+      {...props}
+      type="button"
+      aria-expanded={hasContent ? isOpen : undefined}
+      className={cx(
+        "inline-flex min-h-8 items-center gap-1 px-2 text-sm text-muted-foreground transition-colors",
+        hasContent ? "cursor-pointer hover:text-foreground" : "cursor-default",
+        className,
+      )}
+    >
+      <span className="font-medium">{braiReasoningLabel(isStreaming)}</span>
+      {isStreaming && !hasContent ? <span className="size-1.5 animate-pulse rounded-full bg-muted-foreground" aria-hidden="true" /> : null}
+      {children}
+      {hasContent ? <ChevronRight className={cx("size-3.5 shrink-0 transition-transform duration-200", isOpen && "rotate-90")} aria-hidden="true" /> : null}
+    </button>
+  );
+}
 
 function AnchoredUserMessageComponent(props: ComponentProps<typeof CopilotChatUserMessage>) {
   return <CopilotChatUserMessage {...props} id={`brai-message-${props.message.id}`} className={cx("!pt-4 text-foreground", props.className)} />;
