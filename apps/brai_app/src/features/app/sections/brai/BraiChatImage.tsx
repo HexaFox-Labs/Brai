@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Download, Expand, Loader2, RefreshCw, X } from "lucide-react";
+import { Download, Loader2, RefreshCw, X } from "lucide-react";
+import { Dialog } from "@base-ui/react/dialog";
 import { Button } from "@/shared/ui/button";
 import { cx } from "../../appUtils";
 
@@ -80,27 +81,34 @@ export function BraiChatImage({
 
   return (
     <>
-      <div className={cx("group relative overflow-hidden rounded-lg border border-border bg-background", className)}>
+      <div className={cx("group relative", className)}>
         {/* The source is an authenticated, short-lived object URL. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={objectUrl} alt={label} className="h-auto max-h-[70dvh] w-full object-contain" />
-        <div className="absolute right-2 top-2 flex gap-1 opacity-100 transition-opacity min-[861px]:opacity-0 min-[861px]:group-hover:opacity-100 min-[861px]:group-focus-within:opacity-100">
-          <Button type="button" size="icon-sm" variant="secondary" aria-label="Открыть изображение" onClick={() => setViewerOpen(true)}><Expand aria-hidden="true" /></Button>
-          <Button type="button" size="icon-sm" variant="secondary" aria-label="Скачать изображение" onClick={() => void download()}><Download aria-hidden="true" /></Button>
+        <button type="button" className="block w-full cursor-zoom-in overflow-hidden rounded-lg text-left" aria-label={`Открыть изображение: ${label}`} onClick={() => setViewerOpen(true)}>
+          <img src={objectUrl} alt={label} className="h-auto max-h-[70dvh] w-full object-contain" />
+        </button>
+        <div className="absolute right-1.5 top-1.5 opacity-60 transition-opacity hover:opacity-100 focus-within:opacity-100">
+          <Button type="button" size="icon-xs" variant="secondary" aria-label="Скачать изображение" onClick={() => void download()}><Download aria-hidden="true" /></Button>
         </div>
       </div>
-      {viewerOpen ? (
-        <div role="dialog" aria-modal="true" aria-label={label} className="fixed inset-0 z-[180] grid grid-rows-[auto_minmax(0,1fr)] bg-background/95 p-3 backdrop-blur-sm">
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="secondary" onClick={() => void download()}><Download aria-hidden="true" />Скачать</Button>
-            <Button type="button" size="icon" variant="secondary" aria-label="Закрыть просмотр" onClick={() => setViewerOpen(false)}><X aria-hidden="true" /></Button>
-          </div>
-          <div className="grid min-h-0 place-items-center overflow-auto p-2">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={objectUrl} alt={label} className="max-h-full max-w-full object-contain" />
-          </div>
-        </div>
-      ) : null}
+      <Dialog.Root open={viewerOpen} onOpenChange={setViewerOpen}>
+        <Dialog.Portal>
+          <Dialog.Backdrop className="fixed inset-0 z-[180] bg-background/95 backdrop-blur-sm" />
+          <Dialog.Viewport className="fixed inset-0 z-[181] grid place-items-center p-3">
+            <Dialog.Popup className="grid h-full w-full max-w-5xl grid-rows-[auto_minmax(0,1fr)] outline-none">
+              <Dialog.Title className="sr-only">{label}</Dialog.Title>
+              <div className="flex justify-end gap-2">
+                <Button type="button" size="sm" variant="secondary" onClick={() => void download()}><Download aria-hidden="true" />Скачать</Button>
+                <Button type="button" size="icon-sm" variant="secondary" aria-label="Закрыть просмотр" onClick={() => setViewerOpen(false)}><X aria-hidden="true" /></Button>
+              </div>
+              <div className="grid min-h-0 place-items-center overflow-auto p-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={objectUrl} alt={label} className="max-h-full max-w-full object-contain" />
+              </div>
+            </Dialog.Popup>
+          </Dialog.Viewport>
+        </Dialog.Portal>
+      </Dialog.Root>
     </>
   );
 }

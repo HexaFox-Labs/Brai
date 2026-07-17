@@ -1,7 +1,7 @@
 import type { ButtonHTMLAttributes, ComponentType, CSSProperties, ElementType, ReactNode } from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { BraiCopilotSurface } from "@/features/app/sections/brai/BraiCopilotSurface";
+import { BraiCopilotSurface, normalizeLatexDisplayMath } from "@/features/app/sections/brai/BraiCopilotSurface";
 
 type FakeMessage = { id: string; role: "user" | "assistant"; content: string };
 type FakeAttachment = { id: string; status: "uploading" | "ready"; metadata?: Record<string, unknown> };
@@ -243,7 +243,9 @@ describe("BraiCopilotSurface", () => {
     expect(fake.chatProps?.style).toMatchObject({
       "--background": "var(--brai-copilot-background)",
       "--foreground": "var(--brai-copilot-foreground)",
-      "--card": "var(--brai-copilot-card)",
+      "--card": "var(--brai-copilot-background)",
+      "--cpk-color-gray-900": "var(--brai-copilot-background)",
+      "--cpk-color-zinc-900": "var(--brai-copilot-background)",
       "--primary": "var(--brai-copilot-primary)",
       "--border": "var(--brai-copilot-border)",
       "--cpk-default-font-family": "var(--font-app-sans)",
@@ -259,14 +261,14 @@ describe("BraiCopilotSurface", () => {
     expect(fake.inputProps?.textArea).toBeTruthy();
     expect(fake.inputProps?.bottomAnchored).toBe(true);
     expect(fake.inputProps?.showDisclaimer).toBe(false);
-    expect(screen.getByTestId("copilot-chat-input")).toHaveClass("min-h-14", "bg-background");
-    expect(screen.getByRole("textbox", { name: "Сообщение Браю" })).toHaveClass("max-h-32", "min-h-6");
+    expect(screen.getByTestId("copilot-chat-input")).toHaveClass("min-h-10", "bg-background");
+    expect(screen.getByRole("textbox", { name: "Сообщение Браю" })).toHaveClass("max-h-[50dvh]", "min-h-6");
     expect(fake.viewProps?.scrollView).toBeTypeOf("function");
     expect(screen.getByTestId("copilot-default-scroll-view")).toHaveTextContent("История");
     expect(screen.getByRole("button", { name: "Прокрутить к последнему сообщению" })).toBeInTheDocument();
   });
 
-  it("steers an active run with one stable optimistic user-message id", async () => {
+  it("steers an active run through the runtime before clearing its draft", async () => {
     fake.agent.isRunning = true;
     const onSteer = vi.fn(async () => undefined);
     renderSurface({ onSteer });
@@ -274,12 +276,38 @@ describe("BraiCopilotSurface", () => {
     fireEvent.click(screen.getByRole("button", { name: "Отправить тест" }));
 
     await waitFor(() => expect(onSteer).toHaveBeenCalledOnce());
-    const message = fake.agent.addMessage.mock.calls[0][0];
-    expect(message).toMatchObject({ role: "user", content: "Уточнение" });
-    expect(message.id).toMatch(/^[0-9a-f-]{36}$/i);
-    expect(onSteer).toHaveBeenCalledWith(message.id, "Уточнение");
+    const [messageId, text] = onSteer.mock.calls[0];
+    expect(messageId).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(text).toBe("Уточнение");
+    expect(fake.agent.addMessage).not.toHaveBeenCalled();
     expect(window.localStorage.getItem("brai_chat_draft:test")).toBe("");
     expect(fake.stockSubmit).not.toHaveBeenCalled();
+  });
+
+  it("keeps the active-run draft when the runtime rejects a turn", async () => {
+    window.localStorage.setItem("brai_chat_draft:test", "Уточнение во время ответа");
+    fake.agent.isRunning = true;
+    const onError = vi.fn();
+    const onSteer = vi.fn(async () => { throw new Error("turn_conflict"); });
+    renderSurface({ onError, onSteer });
+
+    fireEvent.click(screen.getByRole("button", { name: "Отправить тест" }));
+
+    await waitFor(() => expect(onError).toHaveBeenCalledWith("Сообщение не направлено в активный ответ. Попробуйте ещё раз"));
+    expect(fake.agent.addMessage).not.toHaveBeenCalled();
+    expect(window.localStorage.getItem("brai_chat_draft:test")).toBe("Уточнение во время ответа");
+    expect(fake.stockSubmit).not.toHaveBeenCalled();
+  });
+
+  it("keeps Enter as a newline key and normalizes Codex display math for the renderer", () => {
+    renderSurface();
+
+    const textarea = screen.getByRole("textbox", { name: "Сообщение Браю" });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    expect(fake.stockSubmit).not.toHaveBeenCalled();
+    expect(normalizeLatexDisplayMath("\\[\\Delta x \\geq 1\\]")).toBe("$$\n\\Delta x \\geq 1\n$$");
+    expect(normalizeLatexDisplayMath("[\\Delta p \\geq 1]")).toBe("$$\n\\Delta p \\geq 1\n$$");
   });
 
   it("keeps the per-thread draft when send is attempted during an attachment upload", async () => {
