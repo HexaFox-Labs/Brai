@@ -213,6 +213,13 @@ promotion workflow only after prior required steps have succeeded in GitHub Acti
 human-readable `build_versions` release notes are part of the existing version/ledger recording
 step; changing their text source does not add a new Temporal gate.
 
+Android clears the WebView resource cache before Capacitor loads the selected embedded or OTA
+bundle. Turbopack may reuse a chunk pathname across different static exports, so runtime metadata
+and JavaScript must never be assembled from different bundle versions. The early document script
+also recognizes the APK-only `BraiNative/1` user-agent marker before the Capacitor bridge is ready,
+keeping the server-rendered shell hidden until the startup splash is mounted without affecting
+ordinary in-app Android browsers.
+
 Dev deploys are persistent-environment promotions from branch `dev`. They use the long-lived
 Supabase branch `brai-dev`, do not refresh from production automatically after the first clone, and
 do not require accepted-preview cleanup.
