@@ -338,9 +338,9 @@ describe("Brai chat client", () => {
     const workspace = await screen.findByRole("complementary", { name: "Панель Preview" });
     expect(window.history.state?.braiMobileSheet).toBeUndefined();
     expect(await within(workspace).findByRole("img", { name: "screen.png" })).toHaveAttribute("src", "blob:brai-image");
-    expect(within(workspace).getByRole("button", { name: "Открыть изображение" })).toBeInTheDocument();
+    expect(within(workspace).getByRole("button", { name: "Открыть изображение: screen.png" })).toBeInTheDocument();
     expect(within(workspace).getByRole("button", { name: "Скачать изображение" })).toBeInTheDocument();
-    fireEvent.click(within(workspace).getByRole("button", { name: "Открыть изображение" }));
+    fireEvent.click(within(workspace).getByRole("button", { name: "Открыть изображение: screen.png" }));
     const viewer = screen.getByRole("dialog", { name: "screen.png" });
     expect(within(viewer).getByRole("img", { name: "screen.png" })).toHaveAttribute("src", "blob:brai-image");
     fireEvent.click(within(viewer).getByRole("button", { name: "Закрыть просмотр" }));
