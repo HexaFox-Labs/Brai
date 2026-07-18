@@ -39,7 +39,12 @@ type FakeViewProps = {
   onSubmitMessage?: (value: string) => void;
   scrollView?: ElementType<{ children?: ReactNode }>;
 };
-type FakeAssistantProps = FakeViewProps & { message: FakeMessage; id?: string; onRegenerate?: () => void };
+type FakeAssistantProps = FakeViewProps & {
+  message: FakeMessage;
+  id?: string;
+  markdownRenderer?: ComponentType<{ content: string; className?: string }>;
+  onRegenerate?: () => void;
+};
 type FakeChatProps = {
   attachments?: Record<string, unknown>;
   chatView: ComponentType<FakeViewProps>;
@@ -66,6 +71,7 @@ const fake = vi.hoisted(() => ({
   finishRun: null as (() => void) | null,
   inputChange: vi.fn(),
   inputProps: null as FakeInputProps | null,
+  markdownRendererTypes: [] as Array<FakeAssistantProps["markdownRenderer"]>,
   removeAttachment: vi.fn(),
   runAgent: vi.fn(async () => undefined),
   stockSubmit: vi.fn(),
@@ -132,7 +138,18 @@ vi.mock("@copilotkit/react-core/v2", async () => {
   }
 
   function FakeAssistantMessage(props: FakeAssistantProps) {
-    return <div id={props.id}>{props.message.content}{props.onRegenerate ? <button type="button" onClick={props.onRegenerate}>Повторить {props.message.id}</button> : null}</div>;
+    const MarkdownRenderer = props.markdownRenderer;
+    fake.markdownRendererTypes.push(MarkdownRenderer);
+    return (
+      <div id={props.id}>
+        {MarkdownRenderer ? <MarkdownRenderer content={props.message.content} /> : props.message.content}
+        {props.onRegenerate ? <button type="button" onClick={props.onRegenerate}>Повторить {props.message.id}</button> : null}
+      </div>
+    );
+  }
+
+  function FakeMarkdownRenderer({ content, className }: { content: string; className?: string }) {
+    return <span className={className}>{content}</span>;
   }
 
   function FakeUserMessage(props: { id?: string; message: FakeMessage }) {
@@ -180,7 +197,7 @@ vi.mock("@copilotkit/react-core/v2", async () => {
 
   return {
     CopilotChat: Object.assign(FakeChat, { View: FakeViewWithSlots }),
-    CopilotChatAssistantMessage: FakeAssistantMessage,
+    CopilotChatAssistantMessage: Object.assign(FakeAssistantMessage, { MarkdownRenderer: FakeMarkdownRenderer }),
     CopilotChatInput: Object.assign(FakeInput, { SendButton: () => null }),
     CopilotChatReasoningMessage: FakeReasoningMessage,
     CopilotChatUserMessage: FakeUserMessage,
@@ -211,6 +228,7 @@ describe("BraiCopilotSurface", () => {
     fake.finishRun = null;
     fake.inputChange.mockReset();
     fake.inputProps = null;
+    fake.markdownRendererTypes = [];
     fake.removeAttachment.mockReset();
     fake.runAgent.mockClear();
     fake.stockSubmit.mockReset();
@@ -274,13 +292,13 @@ describe("BraiCopilotSurface", () => {
     expect(fake.inputProps?.bottomAnchored).toBe(true);
     expect(fake.inputProps?.keyboardHeight).toBeUndefined();
     expect(fake.inputProps?.showDisclaimer).toBe(false);
-    expect(fake.viewProps?.autoScroll).toBe("none");
+    expect(fake.viewProps?.autoScroll).toBe("pin-to-bottom");
     expect(screen.getByTestId("copilot-chat-input")).toHaveClass("min-h-0", "bg-background");
     expect(screen.getByRole("textbox", { name: "Сообщение Браю" })).toHaveClass("field-sizing-content", "max-h-[50dvh]", "min-h-6");
     expect(screen.getByRole("textbox", { name: "Сообщение Браю" })).toHaveAttribute("rows", "1");
     expect(fake.viewProps?.scrollView).toBeTypeOf("function");
-    expect(screen.getByTestId("brai-chat-scroll")).toHaveTextContent("История");
-    expect(screen.queryByTestId("copilot-default-scroll-view")).not.toBeInTheDocument();
+    expect(screen.getByTestId("copilot-default-scroll-view")).toHaveTextContent("История");
+    expect(screen.getByRole("button", { name: "Прокрутить к последнему сообщению" })).toBeInTheDocument();
   });
 
   it("does not rewrite the textarea height for every typed character", () => {
@@ -292,28 +310,16 @@ describe("BraiCopilotSurface", () => {
     expect(textarea.style.height).toBe("");
   });
 
-  it("does not scroll on draft renders and follows actual message growth without animation", () => {
-    fake.agent.messages = [{ id: "assistant-1", role: "assistant", content: "Ответ" }];
+  it("keeps the assistant markdown renderer mounted across controlled draft changes", () => {
+    fake.agent.messages = [{ id: "assistant-1", role: "assistant", content: "Стабильный ответ" }];
     renderSurface();
 
-    const textarea = screen.getByRole<HTMLTextAreaElement>("textbox", { name: "Сообщение Браю" });
-    const scroll = screen.getByTestId("brai-chat-scroll");
-    let scrollHeight = 1_000;
-    Object.defineProperties(scroll, {
-      clientHeight: { configurable: true, get: () => 500 },
-      scrollHeight: { configurable: true, get: () => scrollHeight },
-      scrollTop: { configurable: true, value: 500, writable: true },
-    });
-    fireEvent.scroll(scroll);
+    const firstRenderer = fake.markdownRendererTypes.at(-1);
+    fireEvent.change(screen.getByRole("textbox", { name: "Сообщение Браю" }), { target: { value: "я" } });
 
-    fireEvent.change(textarea, { target: { value: "а" } });
-    expect(scroll.scrollTop).toBe(500);
-
-    fake.agent.messages = [{ id: "assistant-1", role: "assistant", content: "Ответ продолжился" }];
-    scrollHeight = 1_100;
-    fireEvent.change(textarea, { target: { value: "аб" } });
-
-    expect(scroll.scrollTop).toBe(1_100);
+    expect(firstRenderer).toBeTypeOf("function");
+    expect(fake.markdownRendererTypes.at(-1)).toBe(firstRenderer);
+    expect(screen.getByText("Стабильный ответ")).toBeInTheDocument();
   });
 
   it("steers an active run through the runtime before clearing its draft", async () => {
