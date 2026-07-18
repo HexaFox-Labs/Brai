@@ -8,4 +8,10 @@ describe("Android manifest", () => {
 
     expect(manifest).toContain('android:allowBackup="false"');
   });
+
+  it("resizes the WebView for the Android keyboard instead of allowing automatic panning", () => {
+    const manifest = readFileSync(resolve(process.cwd(), "android/app/src/main/AndroidManifest.xml"), "utf8");
+
+    expect(manifest).toContain('android:windowSoftInputMode="adjustResize"');
+  });
 });
