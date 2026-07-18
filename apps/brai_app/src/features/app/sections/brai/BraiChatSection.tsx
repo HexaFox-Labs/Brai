@@ -557,7 +557,7 @@ function BraiThreadRail({ activeThreadId, archived, searchResults, status, threa
           Искать в архиве
         </label>
       </form>
-      <SidebarContent>
+      <SidebarContent className="[&_[data-slot=scroll-area-viewport]]:!pr-0 [&_[data-slot=scroll-area-viewport]>div]:!block [&_[data-slot=scroll-area-viewport]>div]:!min-w-0 [&_[data-slot=scroll-area-viewport]>div]:!w-full">
         <SidebarGroup className="p-2">
           <SidebarGroupLabel id="brai-thread-list-label">Чаты</SidebarGroupLabel>
           <SidebarGroupContent>

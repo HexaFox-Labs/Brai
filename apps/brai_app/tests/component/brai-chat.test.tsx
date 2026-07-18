@@ -93,6 +93,9 @@ describe("Brai chat client", () => {
     expect(screen.getByRole("searchbox", { name: "Поиск по чатам" })).toHaveAttribute("id", "brai-chat-search");
     expect(screen.getByRole("searchbox", { name: "Поиск по чатам" })).toHaveAttribute("name", "query");
     expect(screen.getByRole("list", { name: "Чаты" })).toHaveAttribute("data-sidebar", "menu");
+    expect(screen.getByRole("list", { name: "Чаты" }).closest("[data-sidebar=content]")).toHaveClass(
+      "[&_[data-slot=scroll-area-viewport]]:!pr-0",
+    );
     expect(screen.getByRole("button", { name: "Действия чата: Проверка чата" })).toHaveAttribute("data-slot", "dropdown-menu-trigger");
     expect(screen.getByRole("button", { name: "Действия чата: Проверка чата" }).closest("li")).toHaveAttribute("data-sidebar", "menu-item");
     expect(screen.queryByRole("tab")).not.toBeInTheDocument();
