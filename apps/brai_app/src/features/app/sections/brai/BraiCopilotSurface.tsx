@@ -376,6 +376,7 @@ function BraiChatViewComponent(props: ComponentProps<typeof CopilotChat.View>) {
   return (
     <CopilotChat.View
       {...props}
+      autoScroll="pin-to-send"
       input={BraiCompactChatInput}
       scrollView={BraiChatScrollView}
       welcomeScreen={false}
@@ -395,6 +396,7 @@ function BraiCompactChatInputComponent(props: ComponentProps<typeof CopilotChatI
       {...props}
       positioning="static"
       bottomAnchored
+      keyboardHeight={0}
       showDisclaimer={false}
       className="!min-h-0 !bg-transparent !p-0"
       textArea={BraiChatTextArea}

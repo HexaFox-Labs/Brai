@@ -231,7 +231,7 @@ export function MobileContextSheet({
   return (
     <div
       ref={gestureRef}
-      className={cx("mobile-context-backdrop fixed inset-0 z-[84] hidden items-end max-[860px]:flex", className)}
+      className={cx("mobile-context-backdrop fixed inset-x-0 bottom-[calc(3.25rem+env(safe-area-inset-bottom))] z-[84] hidden items-end max-[860px]:flex", className)}
       style={{ top: sheetTop } as CSSProperties}
       data-nav-swipe-exclusion
       aria-hidden={inactive || undefined}
@@ -251,7 +251,7 @@ export function MobileContextSheet({
           "pointer-events-auto relative z-[1] grid max-h-full w-full min-w-0 overflow-hidden rounded-t-2xl border-t border-border bg-card pb-[env(safe-area-inset-bottom)] shadow-xl will-change-transform",
           variant === "detail"
             ? "actions-detail-panel mobile h-full grid-rows-[auto_minmax(0,1fr)] gap-0 pt-1"
-            : "mobile-context-sheet grid-rows-[auto_minmax(0,1fr)] pt-2",
+            : "mobile-context-sheet h-full grid-rows-[auto_minmax(0,1fr)] pt-2",
         )}
         style={sheetStyle}
         aria-label={label}

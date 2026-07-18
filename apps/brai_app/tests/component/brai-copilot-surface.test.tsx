@@ -10,6 +10,7 @@ type FakeInputProps = {
   bottomAnchored?: boolean;
   children?: (slots: { addMenuButton: ReactNode; sendButton: ReactNode; textArea: ReactNode }) => ReactNode;
   isRunning?: boolean;
+  keyboardHeight?: number;
   onAddFile?: () => void;
   onChange?: (value: string) => void;
   onSubmitMessage?: (value: string) => void;
@@ -19,6 +20,7 @@ type FakeInputProps = {
   value?: string;
 };
 type FakeViewProps = {
+  autoScroll?: "pin-to-bottom" | "pin-to-send" | "none" | boolean;
   attachments?: FakeAttachment[];
   input?: ComponentType<FakeInputProps> | {
     addMenuButton?: ElementType<ButtonHTMLAttributes<HTMLButtonElement> & { onAddFile?: () => void }>;
@@ -270,7 +272,9 @@ describe("BraiCopilotSurface", () => {
     expect(fake.inputProps?.addMenuButton).toBeTypeOf("function");
     expect(fake.inputProps?.textArea).toBeTruthy();
     expect(fake.inputProps?.bottomAnchored).toBe(true);
+    expect(fake.inputProps?.keyboardHeight).toBe(0);
     expect(fake.inputProps?.showDisclaimer).toBe(false);
+    expect(fake.viewProps?.autoScroll).toBe("pin-to-send");
     expect(screen.getByTestId("copilot-chat-input")).toHaveClass("min-h-0", "bg-background");
     expect(screen.getByRole("textbox", { name: "Сообщение Браю" })).toHaveClass("max-h-[50dvh]", "min-h-6");
     expect(screen.getByRole("textbox", { name: "Сообщение Браю" })).toHaveAttribute("rows", "1");
