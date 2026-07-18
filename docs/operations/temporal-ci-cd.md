@@ -80,6 +80,18 @@ Failure isolation is per agent queue: a stopped planner leaves planner workflows
 queued/retrying but does not justify routing them to another agent or stopping
 manual Goal/Relation work. Check the environment-specific unit journal, API
 context poller heartbeat, workflow execution/attempt, and `ai_logs` provenance;
+
+`BRAI_GOAL_AGENT_RECOMMENDATIONS_ENABLED` is a separate product producer gate.
+It is opt-in and therefore defaults to `false`. With the default, the API does
+not enqueue new classifier, matcher, member-finder, discovery, or planner
+proposal executions, and the Actions UI does not expose their proposal panels.
+The Goal-agent workers and API context worker remain deployable and health-
+checked, so delivery gates can still verify their isolated control plane.
+Existing queued executions are not deleted; ordinary Activity/Inbox
+normalization and manual Relations are independent and remain available. Set
+the variable to an explicit true value only for a deliberate recommendation
+experiment. `BRAI_GOAL_AGENTS_ENABLED=false` remains the stronger operational
+kill switch described above.
 do not infer domain success from an ordinary process log alone.
 
 ## Process Change Rule

@@ -53,6 +53,7 @@ export function ActionsSection({
   onRemoveFromGoal = async () => undefined,
   onReorderGoal = async () => undefined,
   onCreateActionInGoal = async () => undefined,
+  agentRecommendationsEnabled = true,
   contextReviews = emptyContextDecisionsState(),
   relationSyncIssues = [],
   onResolveContextDecision = async () => undefined,
@@ -86,6 +87,7 @@ export function ActionsSection({
   onRemoveFromGoal?: (relation: RelationItem) => Promise<void>;
   onReorderGoal?: (goalId: string, orderedRelationIds: string[]) => Promise<void>;
   onCreateActionInGoal?: (title: string, descriptionMd: string, goalItemsId: string) => Promise<void>;
+  agentRecommendationsEnabled?: boolean;
   contextReviews?: ContextDecisionsState;
   relationSyncIssues?: RelationSyncIssue[];
   onResolveContextDecision?: (decision: ContextDecision, resolution: ContextResolution, editedPayload?: Record<string, unknown>) => Promise<void>;
@@ -93,7 +95,14 @@ export function ActionsSection({
 }) {
   const fallbackWorkspace = useMemo(() => buildActionsWorkspace({ activities: state, inbox: emptyInboxState(), relations: emptyRelationsState(), filter: "actions" }), [state]);
   const workspace = providedWorkspace ?? fallbackWorkspace;
-  const inlineReviews = useMemo(() => partitionContextReviews(contextReviews, workspace), [contextReviews, workspace]);
+  const visibleContextReviews = useMemo(
+    () => agentRecommendationsEnabled ? contextReviews : emptyContextDecisionsState(),
+    [agentRecommendationsEnabled, contextReviews],
+  );
+  const inlineReviews = useMemo(
+    () => partitionContextReviews(visibleContextReviews, workspace),
+    [visibleContextReviews, workspace],
+  );
   const [draft, setDraft] = useState("");
   const [mobileCreateOpen, setMobileCreateOpen] = useState(false);
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
@@ -253,6 +262,7 @@ export function ActionsSection({
               onSetStatus={onSetGoalStatus}
               onDelete={onDeleteGoal}
               onPlan={onPlanGoal}
+              planEnabled={agentRecommendationsEnabled}
               planPending={inlineReviews.byGoal.get(workspace.selectedGoal.id)?.decisions.some((decision) => decision.decision_kind === "goal_plan" && decision.status === "pending")}
             >
               {inlineReviews.byGoal.get(workspace.selectedGoal.id) ? (

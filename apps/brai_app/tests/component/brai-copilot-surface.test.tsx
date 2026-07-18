@@ -342,7 +342,7 @@ describe("BraiCopilotSurface", () => {
     expect(screen.getByText("Стабильный ответ")).toBeInTheDocument();
   });
 
-  it("removes the hidden user toolbar gap and keeps assistant actions tiny and muted", () => {
+  it("keeps a small user-to-assistant gap and assistant actions tiny and muted", () => {
     fake.agent.messages = [
       { id: "user-1", role: "user", content: "Вопрос" },
       { id: "assistant-1", role: "assistant", content: "Ответ" },
@@ -352,10 +352,18 @@ describe("BraiCopilotSurface", () => {
 
     expect(fake.userProps[0]?.toolbar?.className).toContain("!hidden");
     expect(fake.userProps[0]?.className).toContain("!pt-2");
+    expect(fake.assistantProps[0]?.className).toContain("!pt-2");
     expect(fake.assistantProps[0]?.toolbar?.className).toContain("!h-4");
     expect(fake.assistantProps[0]?.copyButton?.className).toContain("opacity-20");
     expect(fake.assistantProps[0]?.copyButton?.className).toContain("!size-4");
     expect(fake.assistantProps[0]?.regenerateButton?.className).toContain("opacity-20");
+  });
+
+  it("reserves the compact composer inset before CopilotKit measures the overlay", () => {
+    renderSurface();
+
+    expect(fake.chatProps?.className).toContain("brai-chat-stable-composer-inset");
+    expect(screen.getByTestId("copilot-chat-input").closest("[data-brai-composer-inset-source]")).not.toBeNull();
   });
 
   it("steers an active run through the runtime before clearing its draft", async () => {

@@ -78,6 +78,7 @@ export async function createFixture(times, options = {}) {
       databaseBranch: options.databaseBranch,
       testEmailLogin: options.testEmailLogin,
       goalAgentsEnabled: options.goalAgentsEnabled ?? true,
+      goalAgentRecommendationsEnabled: options.goalAgentRecommendationsEnabled ?? true,
       shutdownGraceMs: options.shutdownGraceMs,
       braiChatAttachmentReapIntervalMs: options.braiChatAttachmentReapIntervalMs,
       braiChatUploadMaxConcurrent: options.braiChatUploadMaxConcurrent,

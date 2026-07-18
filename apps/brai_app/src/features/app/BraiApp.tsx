@@ -473,6 +473,7 @@ export function BraiApp({ initialSection = "actions" }: { initialSection?: Secti
             onRemoveFromGoal={app.onRemoveFromGoal}
             onReorderGoal={app.onReorderGoal}
             onCreateActionInGoal={app.onCreateActionInGoal}
+            agentRecommendationsEnabled={false}
             contextReviews={app.contextReviews}
             relationSyncIssues={app.relationSyncIssues}
             onResolveContextDecision={app.onResolveContextDecision}

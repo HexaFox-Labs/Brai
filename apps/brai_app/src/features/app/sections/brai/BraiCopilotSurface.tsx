@@ -1,7 +1,7 @@
 "use client";
 
 import type { ComponentProps, CSSProperties } from "react";
-import { createContext, forwardRef, memo, useCallback, useContext, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { createContext, forwardRef, memo, useCallback, useContext, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowUp, ChevronDown, ChevronRight, ImageIcon, Plus, Search } from "lucide-react";
 import {
   CopilotChat,
@@ -29,6 +29,7 @@ const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;
 type CopilotThemeStyle = CSSProperties & Record<`--${string}`, string>;
 
 const BRAI_COPILOT_TOKEN_BRIDGE: CopilotThemeStyle = {
+  "--brai-chat-composer-height": "3.25rem",
   "--brai-copilot-accent": "var(--accent)",
   "--brai-copilot-accent-foreground": "var(--accent-foreground)",
   "--brai-copilot-background": "var(--background)",
@@ -202,7 +203,7 @@ export const BraiCopilotSurface = memo(function BraiCopilotSurface({
           <CopilotChat
             agentId={BRAI_AGENT_ID}
             threadId={threadId}
-            className="h-full min-h-0 !bg-background text-foreground [&_.copilotKitChat]:!bg-background [&_[data-testid=copilot-scroll-content]]:!bg-background [&_[data-testid=copilot-chat-textarea]]:!text-foreground [&_[data-testid=copilot-chat-textarea]]:placeholder:!text-muted-foreground [&_[data-testid=copilot-slash-menu]]:!border-border [&_[data-testid=copilot-slash-menu]]:!bg-popover [&_[data-testid=copilot-slash-menu]]:!text-popover-foreground [&_[data-testid=copilot-slash-menu]_[role=option]:hover]:!bg-accent [&_[data-testid=copilot-slash-menu]_[role=option][data-active=true]]:!bg-accent"
+            className="brai-chat-stable-composer-inset h-full min-h-0 !bg-background text-foreground [&_.copilotKitChat]:!bg-background [&_[data-testid=copilot-scroll-content]]:!bg-background [&_[data-testid=copilot-chat-textarea]]:!text-foreground [&_[data-testid=copilot-chat-textarea]]:placeholder:!text-muted-foreground [&_[data-testid=copilot-slash-menu]]:!border-border [&_[data-testid=copilot-slash-menu]]:!bg-popover [&_[data-testid=copilot-slash-menu]]:!text-popover-foreground [&_[data-testid=copilot-slash-menu]_[role=option]:hover]:!bg-accent [&_[data-testid=copilot-slash-menu]_[role=option][data-active=true]]:!bg-accent"
             style={BRAI_COPILOT_THEME}
             chatView={BraiChatView}
             labels={{
@@ -392,6 +393,27 @@ function BraiChatViewComponent(props: ComponentProps<typeof CopilotChat.View>) {
 const BraiChatView = Object.assign(BraiChatViewComponent, CopilotChat.View);
 
 function BraiCompactChatInputComponent(props: ComponentProps<typeof CopilotChatInput>) {
+  const inputRef = useRef<HTMLDivElement | null>(null);
+
+  useLayoutEffect(() => {
+    const input = inputRef.current;
+    const surface = input?.closest<HTMLElement>(".brai-copilot-surface");
+    const overlay = input?.closest<HTMLElement>('[data-testid="copilot-input-overlay"]');
+    if (!surface || !overlay) return undefined;
+
+    const updateInset = () => {
+      const measuredHeight = Math.ceil(overlay.getBoundingClientRect().height);
+      if (measuredHeight > 0) {
+        surface.style.setProperty("--brai-chat-composer-height", `${Math.max(52, measuredHeight)}px`);
+      }
+    };
+    updateInset();
+    if (typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(updateInset);
+    observer.observe(overlay);
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <CopilotChatInput
       {...props}
@@ -406,6 +428,8 @@ function BraiCompactChatInputComponent(props: ComponentProps<typeof CopilotChatI
       {({ addMenuButton, sendButton, textArea }) => (
         <div
           data-copilotkit
+          ref={inputRef}
+          data-brai-composer-inset-source
           className="pointer-events-none relative z-20 bg-background px-3 pb-1 pt-0.5"
         >
           <div
@@ -574,7 +598,7 @@ function AnchoredAssistantMessageComponent(props: ComponentProps<typeof CopilotC
     <CopilotChatAssistantMessage
       {...props}
       id={`brai-message-${props.message.id}`}
-      className={cx("text-foreground", props.className)}
+      className={cx("!pt-2 text-foreground", props.className)}
       toolbar={{ className: "mt-0.5 flex !h-4 items-center gap-0.5" }}
       copyButton={{ className: "relative !size-4 !p-0.5 text-muted-foreground opacity-20 after:absolute after:-inset-2 hover:opacity-50 [&_svg]:!size-2.5" }}
       regenerateButton={{ className: "relative !size-4 !p-0.5 text-muted-foreground opacity-20 after:absolute after:-inset-2 hover:opacity-50 [&_svg]:!size-2.5" }}

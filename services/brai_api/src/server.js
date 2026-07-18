@@ -37,7 +37,10 @@ import {
   serveReleaseDownload,
   serveReleasePage
 } from './release-routes.js';
-import { goalAgentsEnabledFromEnv } from './goal-agent-switch.js';
+import {
+  goalAgentRecommendationsEnabledFromEnv,
+  goalAgentsEnabledFromEnv
+} from './goal-agent-switch.js';
 import { BraiStore, formatFocusInterval, formatSession } from './store.js';
 import { scopedUserId, withUserScope } from './user-scope.js';
 import {
@@ -99,6 +102,7 @@ export function createBraiServer({
   activityWorkflowStarter = null,
   activityAutoProcess = true,
   goalAgentsEnabled = goalAgentsEnabledFromEnv(),
+  goalAgentRecommendationsEnabled = goalAgentRecommendationsEnabledFromEnv(),
   goalAgentEnvironment = process.env.BRAI_ENVIRONMENT || 'prod',
   braiCmd = {},
   braiChatRuntime = null,
@@ -120,6 +124,7 @@ export function createBraiServer({
   const store = new BraiStore(databaseUrl);
   store.logger = logger;
   store.goalAgentsEnabled = goalAgentsEnabled !== false;
+  store.goalAgentRecommendationsEnabled = goalAgentRecommendationsEnabled === true;
   store.configureGoalAgentEnvironment(goalAgentEnvironment);
   store.configureUserAiEncryptionKey(userAiEncryptionKey);
   const releaseDownloadLimiter = new RateLimiterMemory({ points: 10, duration: 3600 });

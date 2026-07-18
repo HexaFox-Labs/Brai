@@ -59,7 +59,7 @@ export const goalAgentWorkflowMethods = {
   },
 
   scheduleGoalAgentForActivity({ itemsId, triggerKind, triggerRevision, skipClassifier = false, nowIso }) {
-    if (this.goalAgentsEnabled === false) return null;
+    if (!goalAgentRecommendationsEnabled(this)) return null;
     const activity = this.getActivityItem(itemsId);
     if (!activity || activity.deleted_at_utc || !activity.item_roles_id || activity.activity_type_id === 'operation') return null;
     if (activity.activity_type_id === 'goal' && activity.status !== 'New') return null;
@@ -73,7 +73,7 @@ export const goalAgentWorkflowMethods = {
   },
 
   scheduleGoalAgentForInbox({ inboxId, triggerKind, triggerRevision, nowIso }) {
-    if (this.goalAgentsEnabled === false) return null;
+    if (!goalAgentRecommendationsEnabled(this)) return null;
     const item = this.getInboxItem(inboxId);
     if (!item?.is_normalized || !item.items_id || item.deleted_at_utc) return null;
     const agentId = item.preliminary_section === 'operation'
@@ -86,7 +86,7 @@ export const goalAgentWorkflowMethods = {
   },
 
   scheduleGoalMatcherForCurrent({ itemsId, triggerKind = 'classifier_resolved', triggerRevision, nowIso }) {
-    if (this.goalAgentsEnabled === false) return null;
+    if (!goalAgentRecommendationsEnabled(this)) return null;
     const activity = this.getActivityItem(itemsId);
     if (activity && !activity.deleted_at_utc && activity.activity_type_id !== 'operation') {
       return this.scheduleGoalAgentForActivity({
@@ -105,7 +105,7 @@ export const goalAgentWorkflowMethods = {
   },
 
   requestGoalPlan({ itemsId, triggerRevision, nowIso }) {
-    if (this.goalAgentsEnabled === false) throw workflowError('goal_agents_disabled', 503);
+    if (!goalAgentRecommendationsEnabled(this)) throw workflowError('goal_agents_disabled', 503);
     const goal = this.getActivityItem(itemsId);
     if (!goal || goal.activity_type_id !== 'goal' || goal.deleted_at_utc) {
       throw workflowError('goal_not_found', 404);
@@ -118,7 +118,7 @@ export const goalAgentWorkflowMethods = {
   },
 
   noteGoalDiscoveryChanges({ count = 1, nowIso } = {}) {
-    if (this.goalAgentsEnabled === false) return false;
+    if (!goalAgentRecommendationsEnabled(this)) return false;
     const userId = requireUser();
     const increment = Math.max(1, Math.min(Number(count) || 1, 1000));
     const now = nowIso ?? new Date().toISOString();
@@ -145,7 +145,7 @@ export const goalAgentWorkflowMethods = {
   },
 
   ensureEligibleGoalDiscoveries({ nowIso, limit = 100 } = {}) {
-    if (this.goalAgentsEnabled === false) return [];
+    if (!goalAgentRecommendationsEnabled(this)) return [];
     const now = nowIso ?? new Date().toISOString();
     const cutoff = new Date(Date.parse(now) - DAY_MS).toISOString();
     const candidates = this.db.prepare(`SELECT user_id FROM context_discovery_watermarks
@@ -481,7 +481,7 @@ function advanceDiscovery(store, execution, now) {
 }
 
 export function scheduleFreshGoalAgentAnalysis(store, execution, now) {
-  if (store.goalAgentsEnabled === false) return;
+  if (!goalAgentRecommendationsEnabled(store)) return;
   const revision = Math.max(
     store.getActivityServerRevision(),
     store.getInboxServerRevision(),
@@ -545,6 +545,9 @@ function validEnvironment(value) {
   const environment = sanitizeText(value) ?? 'prod';
   if (!/^(prod|dev|preview-[a-e])$/.test(environment)) throw workflowError('invalid_environment', 500);
   return environment;
+}
+function goalAgentRecommendationsEnabled(store) {
+  return store.goalAgentsEnabled !== false && store.goalAgentRecommendationsEnabled !== false;
 }
 function nonNegative(value) {
   const number = Number(value);

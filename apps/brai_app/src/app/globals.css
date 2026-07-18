@@ -212,6 +212,13 @@ nextjs-portal {
   --secondary-foreground: var(--brai-copilot-secondary-foreground) !important;
 }
 
+/* CopilotKit measures its absolute input overlay after paint. BRAI keeps a
+ * one-line fallback from the first frame and updates this variable only when
+ * the composer or attachment queue actually changes height. */
+.brai-chat-stable-composer-inset [data-testid="copilot-scroll-content"] {
+  padding-bottom: calc(var(--brai-chat-composer-height, 3.25rem) + 0.25rem) !important;
+}
+
 ::view-transition-old(root),
 ::view-transition-new(root) {
   animation: none;
