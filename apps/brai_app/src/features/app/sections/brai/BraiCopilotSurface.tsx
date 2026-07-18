@@ -376,7 +376,12 @@ function BraiChatViewComponent(props: ComponentProps<typeof CopilotChat.View>) {
   return (
     <CopilotChat.View
       {...props}
-      autoScroll="pin-to-send"
+      // CopilotKit's pin-to-send mode still observes every streamed content
+      // resize and adjusts a spacer. In Android WebView that can combine with
+      // keyboard viewport changes into a visible scroll loop, so BRAI owns
+      // navigation to the latest message exclusively through its explicit
+      // scroll button.
+      autoScroll="none"
       input={BraiCompactChatInput}
       scrollView={BraiChatScrollView}
       welcomeScreen={false}

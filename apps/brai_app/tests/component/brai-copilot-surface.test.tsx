@@ -274,7 +274,7 @@ describe("BraiCopilotSurface", () => {
     expect(fake.inputProps?.bottomAnchored).toBe(true);
     expect(fake.inputProps?.keyboardHeight).toBe(0);
     expect(fake.inputProps?.showDisclaimer).toBe(false);
-    expect(fake.viewProps?.autoScroll).toBe("pin-to-send");
+    expect(fake.viewProps?.autoScroll).toBe("none");
     expect(screen.getByTestId("copilot-chat-input")).toHaveClass("min-h-0", "bg-background");
     expect(screen.getByRole("textbox", { name: "Сообщение Браю" })).toHaveClass("max-h-[50dvh]", "min-h-6");
     expect(screen.getByRole("textbox", { name: "Сообщение Браю" })).toHaveAttribute("rows", "1");
