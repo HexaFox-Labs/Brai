@@ -120,6 +120,17 @@ describe("Brai chat client", () => {
     expect(screen.getAllByText("Последний чат")).toHaveLength(2);
   });
 
+  it("uses the rounded black onboarding-style action when no chat exists", async () => {
+    chatFixture.threads = [];
+    renderChat();
+
+    await waitFor(() => {
+      const emptyStateButton = screen.getAllByRole("button", { name: "Новый чат" })
+        .find((button) => button.classList.contains("!bg-black"));
+      expect(emptyStateButton).toHaveClass("rounded-full", "!bg-black", "!text-white");
+    });
+  });
+
   it("shows a focused new-chat launch state until the composer is ready", async () => {
     renderChat();
     await screen.findByTestId("copilot-chat");
@@ -451,7 +462,7 @@ describe("Brai chat client", () => {
   });
 
   it("keeps MainDock order and uses a currentColor Lucide-style Brai sign", () => {
-    const { container } = render(<MainDock section="brai" hidden={false} mobileViewport timer={emptyTimerState()} onSection={() => undefined} />);
+    const { container } = render(<MainDock section="brai" mobileViewport timer={emptyTimerState()} onSection={() => undefined} />);
     const mobile = container.querySelector(".mobile-nav");
     expect(mobile).toBeInstanceOf(HTMLElement);
     expect(within(mobile as HTMLElement).getAllByRole("button").map((item) => item.getAttribute("aria-label"))).toEqual(["Брай", "Действия", "Входящие", "Фокус", "Factory"]);
@@ -463,7 +474,7 @@ describe("Brai chat client", () => {
   });
 
   it("animates the mobile Dock out of the global keyboard viewport", () => {
-    const { container } = render(<MainDock section="brai" hidden={false} keyboardOpen mobileViewport timer={emptyTimerState()} onSection={() => undefined} />);
+    const { container } = render(<MainDock section="brai" keyboardOpen mobileViewport timer={emptyTimerState()} onSection={() => undefined} />);
     const dock = container.querySelector(".main-dock");
 
     expect(dock).toHaveClass("max-[860px]:translate-y-2", "max-[860px]:opacity-0");

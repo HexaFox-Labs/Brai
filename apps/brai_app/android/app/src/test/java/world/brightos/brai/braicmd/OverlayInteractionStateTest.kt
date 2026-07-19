@@ -88,6 +88,18 @@ class OverlayInteractionStateTest {
     }
 
     @Test
+    fun onboardingQueueSaveIsAConfirmedLocalSuccess() {
+        assertEquals(
+            BraiCmdNotice(
+                text = "Запись поставлена в очередь",
+                tone = BraiCmdNoticeTone.LocalSuccess,
+                key = "message.queue.saved"
+            ),
+            onboardingQueueSavedNotice()
+        )
+    }
+
+    @Test
     fun updateDotUsesOnlyAvailableOrApkRequiredFlags() {
         assertFalse(shouldShowUpdateDot(updateAvailable = false, apkUpdateRequired = false))
         assertTrue(shouldShowUpdateDot(updateAvailable = true, apkUpdateRequired = false))
@@ -96,7 +108,7 @@ class OverlayInteractionStateTest {
     }
 
     @Test
-    fun queueIndicatorCountsOnlyFailedAudio() {
+    fun queueIndicatorIgnoresNormalTransportAndSeparatesFailedFromReadyItems() {
         val snapshot = BraiCmdQueueSnapshot(
             transport = QueueTransportCounts(
                 main = 1,
@@ -117,6 +129,10 @@ class OverlayInteractionStateTest {
         assertEquals(1, failedAudioCount(snapshot))
         assertEquals(1, failedAudioCount(snapshot, ContextButtonAction.ChatContextInbox))
         assertEquals(0, failedAudioCount(snapshot, ContextButtonAction.ScreenshotInbox))
+        assertEquals(
+            QueueBadgeState(3, QueueBadgeTone.Ready),
+            resolveQueueBadgeState(failedCount = failedAudioCount(snapshot), readyCount = snapshot.readyToInsert.mainDictation)
+        )
     }
 
     @Test

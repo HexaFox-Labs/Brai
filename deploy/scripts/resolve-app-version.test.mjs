@@ -7,13 +7,18 @@ import test from "node:test";
 
 import { BraiStore } from "../../services/brai_api/src/store.js";
 import { createTestDatabase } from "../../services/brai_api/test-support/api.js";
-import { productAncestorCommits, resolveAppVersion, resolveAppVersionAsync } from "./resolve-app-version.mjs";
+import { apkVersionFloor, productAncestorCommits, resolveAppVersion, resolveAppVersionAsync } from "./resolve-app-version.mjs";
 
 test("explicit versions resolve without database access", () => {
   assert.equal(resolveAppVersion({ explicit: "1.2.3" }), "1.2.3");
   assert.equal(resolveAppVersion({ kind: "apk", explicit: "7" }), "7");
   assert.equal(resolveAppVersion({ kind: "product", explicit: "148" }), "148");
   assert.equal(resolveAppVersion({ kind: "product", explicit: "" }), "");
+});
+
+test("published Production APK raises a stale ledger floor", () => {
+  assert.equal(apkVersionFloor(13, 14), 14);
+  assert.equal(apkVersionFloor(15, 14), 15);
 });
 
 test("Product ancestor commit input is explicit and validated", () => {
@@ -62,13 +67,69 @@ test("OTA version uses the already resolved Product version as its deployment fl
     explicit: "",
     productVersion: "152",
     clientArtifactChanged: "true",
-  }), "0.0.153");
+  }), "0.0.152");
   assert.equal(await resolveAppVersionAsync({
     environment: "prod",
     explicit: "",
     productVersion: "152",
     clientArtifactChanged: "false",
   }), "0.0.152");
+
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "brai-projected-version-"));
+  try {
+    const prodWebVersionJson = path.join(tmp, "version.json");
+    fs.writeFileSync(prodWebVersionJson, `${JSON.stringify({ version: "0.0.152" })}\n`);
+    assert.equal(await resolveAppVersionAsync({
+      environment: "prod",
+      explicit: "",
+      productVersion: "157",
+      prodWebVersionJson,
+      clientArtifactChanged: "true",
+    }), "0.0.157");
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("next APK version stays above the published Production artifact when the ledger is stale", { skip: !process.env.BRAI_TEST_DATABASE_URL }, async () => {
+  const database = await createTestDatabase();
+  const store = new BraiStore(database.url);
+  const releaseTarget = fs.mkdtempSync(path.join(os.tmpdir(), "brai-apk-release-floor-"));
+  try {
+    store.upsertBuildVersion({
+      versionTypeId: "apk",
+      version: 13,
+      includedInVersionId: null,
+      shortChanges: "APK v13.",
+      detailedChanges: "APK v13.",
+      reason: "Test.",
+      releasedAtUtc: "2026-07-18T00:00:00.000Z",
+      targetBranch: "main",
+      targetCommit: "d".repeat(40),
+    });
+    fs.writeFileSync(path.join(releaseTarget, "releases.json"), `${JSON.stringify({
+      sections: {
+        production: {
+          apkVersion: 14,
+          file: "brai-v14.apk",
+          versionCode: 14,
+        },
+      },
+    })}\n`);
+
+    assert.equal(await resolveAppVersionAsync({
+      kind: "apk",
+      nextApk: true,
+      postgresUrl: database.url,
+      releaseTarget,
+      targetBranch: "codex/native-fix",
+      targetCommit: "e".repeat(40),
+    }), "15");
+  } finally {
+    store.close();
+    await database.drop();
+    fs.rmSync(releaseTarget, { recursive: true, force: true });
+  }
 });
 
 test("OTA version uses published artifacts with the accepted Product version as a downgrade floor", { skip: !process.env.BRAI_TEST_DATABASE_URL }, async () => {

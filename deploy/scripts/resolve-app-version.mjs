@@ -14,6 +14,7 @@ if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
   const options = {
     kind: args.kind,
     root: args.root,
+    releaseTarget: args["release-target"] || process.env.BRAI_RELEASE_TARGET || "",
     environment: args.environment,
     postgresUrl: args["postgres-url"] || process.env.BRAI_DATABASE_URL || "",
     prodPostgresUrl: args["prod-postgres-url"] || process.env.BRAI_PROD_DATABASE_URL || "",
@@ -72,7 +73,15 @@ export async function resolveAppVersionAsync(options = {}) {
   } = options;
 
   if (kind === "apk") {
-    return validApkVersion(explicit || await resolveApkVersionPg(postgresUrl || prodPostgresUrl, { nextApk, targetBranch, targetCommit }));
+    const releaseTarget = options.releaseTarget
+      || process.env.BRAI_RELEASE_TARGET
+      || path.join(options.root || repoRoot, "deploy/releases");
+    return validApkVersion(explicit || await resolveApkVersionPg(postgresUrl || prodPostgresUrl, {
+      nextApk,
+      publishedApkVersion: publishedProductionApkVersion(releaseTarget),
+      targetBranch,
+      targetCommit,
+    }));
   }
   if (kind === "product") {
     if (explicit) return validProductVersion(explicit);
@@ -85,13 +94,19 @@ export async function resolveAppVersionAsync(options = {}) {
   const deployedVersions = [
     prodWebVersionJson && readVersionJson(prodWebVersionJson),
     mobileTarget && latestMobileTargetVersion(mobileTarget),
-    productVersion && `0.0.${productVersion}`,
   ];
   if (changedHint && !["true", "false"].includes(changedHint)) throw new Error(`invalid client artifact change hint: ${changedHint}`);
   const shouldIncrement = nextOta || (environment === "prod" && (changedHint === "true" || clientArtifactChanged({ root, baseCommit })));
-  if (shouldIncrement) return nextPatchVersion(latestOtaVersion(deployedVersions) || "0.0.0");
+  const publishedVersion = latestOtaVersion(deployedVersions);
+  const productFloor = productVersion ? `0.0.${productVersion}` : "";
+  if (shouldIncrement) {
+    return latestOtaVersion([
+      nextPatchVersion(publishedVersion || "0.0.0"),
+      productFloor,
+    ]);
+  }
 
-  const deployedVersion = latestOtaVersion(deployedVersions);
+  const deployedVersion = latestOtaVersion([publishedVersion, productFloor]);
   if (deployedVersion) return validOtaVersion(deployedVersion);
   throw new Error("Unable to resolve Brai X.Y.Z OTA version; set BRAI_APP_VERSION or provide published web/mobile metadata");
 }
@@ -126,13 +141,18 @@ export function productAncestorCommits(value) {
   return commits;
 }
 
-async function resolveApkVersionPg(databaseUrl, { nextApk = false, targetBranch = "", targetCommit = "" } = {}) {
+async function resolveApkVersionPg(databaseUrl, {
+  nextApk = false,
+  publishedApkVersion = 0,
+  targetBranch = "",
+  targetCommit = "",
+} = {}) {
   if (!databaseUrl) throw new Error("BRAI_DATABASE_URL is required to resolve Brai APK version");
   const { Pool } = requireFromApi("pg");
   const pool = new Pool({ connectionString: databaseUrl, ssl: postgresSsl(databaseUrl) });
   try {
     const latest = await pool.query("SELECT COALESCE(MAX(version), 0) AS apk FROM build_versions WHERE version_type_id = 'apk'");
-    let apk = Number(latest.rows[0]?.apk || 0);
+    let apk = apkVersionFloor(latest.rows[0]?.apk, publishedApkVersion);
     if (nextApk) {
       const existing = targetCommit
         ? await pool.query(`
@@ -154,6 +174,20 @@ async function resolveApkVersionPg(databaseUrl, { nextApk = false, targetBranch 
   } finally {
     await pool.end();
   }
+}
+
+export function apkVersionFloor(ledgerVersion, publishedVersion) {
+  return Math.max(
+    Number(ledgerVersion || 0),
+    Number(publishedVersion || 0),
+  );
+}
+
+function publishedProductionApkVersion(releaseTarget) {
+  const indexPath = path.join(releaseTarget, "releases.json");
+  if (!fs.existsSync(indexPath)) return 0;
+  const version = Number(JSON.parse(fs.readFileSync(indexPath, "utf8")).sections?.production?.apkVersion || 0);
+  return Number.isInteger(version) && version > 0 ? version : 0;
 }
 
 async function targetWorkHasApkBlock(pool, targetBranch, targetCommit) {
