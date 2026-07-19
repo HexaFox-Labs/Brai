@@ -21,10 +21,10 @@ describe("BraiChatImage", () => {
     expect(within(dialog).getByRole("img", { name: "Лиса в малине" })).toBeInTheDocument();
     expect(dialog.parentElement).toHaveClass("p-0", "overflow-hidden");
     expect(within(dialog).getByRole("img", { name: "Лиса в малине" })).toHaveClass(
-      "h-auto",
-      "max-h-full",
-      "w-auto",
-      "max-w-full",
+      "absolute",
+      "inset-0",
+      "h-full",
+      "w-full",
       "object-contain",
     );
     expect(within(dialog).getByRole("button", { name: "Скачать изображение" })).toHaveClass("bg-background/65");
