@@ -11,6 +11,12 @@ class OverlayGeometryTest {
     private val bounds = OverlayBounds(left = 24, top = 90, right = 1056, bottom = 2180)
 
     @Test
+    fun centersTheInitialOverlayWithinVisibleBounds() {
+        assertEquals(471, centeredOverlayAxis(bounds.left, bounds.right, 138))
+        assertEquals(1066, centeredOverlayAxis(bounds.top, bounds.bottom, 138))
+    }
+
+    @Test
     fun keepsHubFixedAndUsesOneRadiusPerLayoutAtCenterEdgeAndCorner() {
         val hubs = listOf(
             OverlayAnchor(x = 471, y = 980, size = 138),

@@ -41,8 +41,8 @@ class AirButtonView(context: Context) : View(context) {
         invalidate()
     }
 
-    fun setQueueState(pendingCount: Int, readyCount: Int) {
-        queueBadge = resolveQueueBadgeState(pendingCount, readyCount)
+    fun setQueueState(failedCount: Int, readyCount: Int) {
+        queueBadge = resolveQueueBadgeState(failedCount, readyCount)
         invalidate()
     }
 
@@ -160,7 +160,7 @@ class AirButtonView(context: Context) : View(context) {
 }
 
 internal enum class QueueBadgeTone {
-    Pending,
+    Failed,
     Ready
 }
 
@@ -169,8 +169,8 @@ internal data class QueueBadgeState(
     val tone: QueueBadgeTone
 )
 
-internal fun resolveQueueBadgeState(pendingCount: Int, readyCount: Int): QueueBadgeState? = when {
-    pendingCount > 0 -> QueueBadgeState(pendingCount + readyCount, QueueBadgeTone.Pending)
+internal fun resolveQueueBadgeState(failedCount: Int, readyCount: Int): QueueBadgeState? = when {
     readyCount > 0 -> QueueBadgeState(readyCount, QueueBadgeTone.Ready)
+    failedCount > 0 -> QueueBadgeState(failedCount, QueueBadgeTone.Failed)
     else -> null
 }

@@ -804,8 +804,8 @@ export function OnboardingFlow({
         <ChoiceScreen
           title="Как запускаем Brai?"
           choices={[
-            { icon: UserRound, title: "С чистого листа", text: "Начнём с нуля, познакомимся и всё настроим", onClick: () => choosePath("new") },
             { icon: KeyRound, title: "Есть профиль", text: "Вы уже создавали профиль или вам его кто-то создал и передал ключ активации", onClick: () => choosePath("existing") },
+            { icon: UserRound, title: "С чистого листа", text: "Начнём с нуля, познакомимся и всё настроим", onClick: () => choosePath("new") },
           ]}
         />
       );
@@ -818,7 +818,14 @@ export function OnboardingFlow({
           void submitName();
         }}>
           <div className="grid min-h-0 flex-1 content-center gap-5 overflow-hidden py-2">
-            <InfoBlock icon={UserRound} title="Как к вам обращаться" text="Имя будет использоваться для персонализации в обращениях Brai и будет в аккаунте при регистрации" />
+            <InfoBlock
+              icon={UserRound}
+              title="Как к вам обращаться"
+              text={[
+                "Введите имя",
+                "Имя будет использоваться для персонализации в обращениях Brai и будет в аккаунте при регистрации",
+              ]}
+            />
             <Input autoFocus value={state.name} placeholder="Только буквы и пробел" aria-label="Имя" className="placeholder:text-muted-foreground/35" onChange={(event) => {
               if (!nameDuplicateBlocked) setError("");
               update({ name: event.target.value });
@@ -869,8 +876,8 @@ export function OnboardingFlow({
     }
 
     if (state.step === "setup-start") return <InfoScreen icon={Command} title="Brai CMD" text="Превращает смартфон в командный центр, упрощая и ускоряя взаимодействие с Брай."><PrimaryButton onClick={() => go("floating-buttons")}>Далее</PrimaryButton></InfoScreen>;
-    if (state.step === "features") return <InfoScreen icon={Command} title="Плавающие кнопки" text="Brai CMD управляется кнопками поверх других приложений. Они слушают голос, берут контекст экрана, вставляют данные, добавляя магии в повседневные действия."><PrimaryButton onClick={() => go("demo-main-dictation")}>Ознакомиться</PrimaryButton></InfoScreen>;
-    if (state.step === "floating-buttons") return <InfoScreen icon={Command} title="Плавающие кнопки" text="Brai CMD управляется кнопками поверх других приложений. Они слушают голос, берут контекст экрана, вставляют данные, добавляя магии в повседневные действия."><PrimaryButton onClick={() => go("demo-main-dictation")}>Ознакомиться</PrimaryButton></InfoScreen>;
+    if (state.step === "features") return <InfoScreen icon={Command} title="Плавающие кнопки" text="Brai CMD управляется кнопками поверх других приложений. Они слушают голос, берут контекст экрана, вставляют данные, добавляя магии в повседневные действия."><SecondaryButton onClick={() => go("voice-intro")}>Пропустить</SecondaryButton><PrimaryButton onClick={() => go("demo-main-dictation")}>Ознакомиться</PrimaryButton></InfoScreen>;
+    if (state.step === "floating-buttons") return <InfoScreen icon={Command} title="Плавающие кнопки" text="Brai CMD управляется кнопками поверх других приложений. Они слушают голос, берут контекст экрана, вставляют данные, добавляя магии в повседневные действия."><SecondaryButton onClick={() => go("voice-intro")}>Пропустить</SecondaryButton><PrimaryButton onClick={() => go("demo-main-dictation")}>Ознакомиться</PrimaryButton></InfoScreen>;
 
     if (state.step.startsWith("demo-")) {
       const index = floatingButtonDemos.findIndex((demo) => demo.step === state.step);
@@ -1264,7 +1271,8 @@ function StepActions({ children, preserveBottomGap = false }: { children: ReactN
   );
 }
 
-function InfoBlock({ compactOnShort = false, icon: Icon, title, text }: { compactOnShort?: boolean; icon: LucideIcon; title: string; text?: string }) {
+function InfoBlock({ compactOnShort = false, icon: Icon, title, text }: { compactOnShort?: boolean; icon: LucideIcon; title: string; text?: string | string[] }) {
+  const paragraphs = Array.isArray(text) ? text : text ? [text] : [];
   return (
     <div className={cx("grid min-w-0 gap-4", compactOnShort ? "[@media(max-height:700px)]:gap-2 [@media(max-height:650px)]:gap-1.5 [@media(max-height:800px)_and_(min-aspect-ratio:2/3)]:gap-1" : "")}>
       <span className={cx("grid size-11 place-items-center rounded-full border border-primary/25 bg-primary/10 text-primary", compactOnShort ? "[@media(max-height:700px)]:size-9 [@media(max-height:650px)]:size-8 [@media(max-height:800px)_and_(min-aspect-ratio:2/3)]:hidden" : "")}>
@@ -1272,7 +1280,13 @@ function InfoBlock({ compactOnShort = false, icon: Icon, title, text }: { compac
       </span>
       <div className={cx("grid min-w-0 gap-2", compactOnShort ? "[@media(max-height:800px)_and_(min-aspect-ratio:2/3)]:gap-1" : "")}>
         <h2 className={cx("m-0 break-words text-3xl font-semibold leading-tight", compactOnShort ? "[@media(max-height:700px)]:text-2xl [@media(max-height:650px)]:text-xl [@media(max-height:800px)_and_(min-aspect-ratio:2/3)]:text-xl" : "")}>{title}</h2>
-        {text ? <p className={cx("m-0 whitespace-pre-line break-words text-base leading-6 text-muted-foreground", compactOnShort ? "[@media(max-height:700px)]:text-sm [@media(max-height:700px)]:leading-5 [@media(max-height:650px)]:text-sm [@media(max-height:650px)]:leading-5 [@media(max-height:800px)_and_(min-aspect-ratio:2/3)]:text-sm [@media(max-height:800px)_and_(min-aspect-ratio:2/3)]:leading-5" : "")}>{text}</p> : null}
+        {paragraphs.length ? (
+          <div className={cx("grid", paragraphs.length > 1 ? "gap-4" : "gap-0")}>
+            {paragraphs.map((paragraph) => (
+              <p key={paragraph} className={cx("m-0 whitespace-pre-line break-words text-base leading-6 text-muted-foreground", compactOnShort ? "[@media(max-height:700px)]:text-sm [@media(max-height:700px)]:leading-5 [@media(max-height:650px)]:text-sm [@media(max-height:650px)]:leading-5 [@media(max-height:800px)_and_(min-aspect-ratio:2/3)]:text-sm [@media(max-height:800px)_and_(min-aspect-ratio:2/3)]:leading-5" : "")}>{paragraph}</p>
+            ))}
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -1322,14 +1336,7 @@ function ChoiceScreen({ choices, compact = false, text, title }: { choices: Onbo
 function WelcomeCarousel({ currentStep, onStart, onStepChange }: { currentStep: OnboardingStep; onStart: () => void; onStepChange: (step: OnboardingStep) => void }) {
   const [api, setApi] = useState<CarouselApi>();
   const [current, setCurrent] = useState(() => welcomeStepIndex(currentStep));
-  const [showStartButton, setShowStartButton] = useState(false);
   const isLastSlide = current === welcomeSlides.length - 1;
-
-  useEffect(() => {
-    if (!isLastSlide) return;
-    const timer = window.setTimeout(() => setShowStartButton(true), 2000);
-    return () => window.clearTimeout(timer);
-  }, [isLastSlide]);
 
   useEffect(() => {
     if (!api) return;
@@ -1341,7 +1348,6 @@ function WelcomeCarousel({ currentStep, onStart, onStepChange }: { currentStep: 
     if (!api) return;
     const onSelect = () => {
       const index = api.selectedScrollSnap();
-      setShowStartButton(false);
       setCurrent(index);
       onStepChange(welcomeSlides[index]?.step ?? "welcome-1");
     };
@@ -1379,7 +1385,13 @@ function WelcomeCarousel({ currentStep, onStart, onStepChange }: { currentStep: 
         </div>
       </div>
       <StepActions>
-        <PrimaryButton className={showStartButton ? "opacity-100 duration-500" : "pointer-events-none opacity-0 duration-500"} disabled={!showStartButton} aria-hidden={!showStartButton} tabIndex={showStartButton ? 0 : -1} onClick={onStart}>Начать</PrimaryButton>
+        <PrimaryButton onClick={() => {
+          if (isLastSlide) {
+            onStart();
+          } else {
+            api?.scrollNext(true);
+          }
+        }}>Далее</PrimaryButton>
       </StepActions>
     </div>
   );

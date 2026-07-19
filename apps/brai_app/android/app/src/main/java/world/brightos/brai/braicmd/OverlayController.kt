@@ -50,6 +50,7 @@ class OverlayController(private val service: BraiAccessibilityService) {
 
     private val windowManager = service.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val config = ConfigStore(service)
+    private val otaManager by lazy { BraiOtaRegistry.getManager() ?: BraiOtaManager(service) }
     private val retryHandler = Handler(Looper.getMainLooper())
     private val screenshotButtonGapPx = service.dp(7)
     private val cancelSizePx = service.dp(31)
@@ -103,6 +104,7 @@ class OverlayController(private val service: BraiAccessibilityService) {
     private var contextActionFinishRunnable: Runnable? = null
     private var updateNoticeRunnable: Runnable? = null
     private var updateRefreshRunnable: Runnable? = null
+    private var updateStateRefreshRunnable: Runnable? = null
     private var updateCheckRunnable: Runnable? = null
     private var hiddenForScreenshot = false
     private var inputButtonRequested = false
@@ -848,13 +850,13 @@ class OverlayController(private val service: BraiAccessibilityService) {
 
     private fun updateQueueIndicators(snapshot: BraiCmdQueueSnapshot = BraiCmdQueue.snapshot(service)) {
         button?.setQueueState(
-            pendingCount = snapshot.transport.main + snapshot.transport.unknown,
+            failedCount = failedAudioCount(snapshot),
             readyCount = snapshot.readyToInsert.mainDictation
         )
         button?.setUpdateAvailable(shouldShowUpdateDot(updateAvailable, apkUpdateRequired, updateCheckInProgress))
         contextActionButtons.forEach { (menuAction, view) ->
             view.setQueueState(
-                pendingCount = snapshot.transport[menuAction.action],
+                failedCount = failedAudioCount(snapshot, menuAction.action),
                 readyCount = if (menuAction.action == ContextButtonAction.ChatContextInbox) {
                     snapshot.readyToInsert.chatReply
                 } else {
@@ -972,11 +974,14 @@ class OverlayController(private val service: BraiAccessibilityService) {
     private fun startUpdateIndicatorRefresh() {
         refreshUpdateIndicator(startCheck = true)
         scheduleNextUpdateIndicatorRefresh()
+        scheduleUpdateIndicatorStateRefresh()
     }
 
     private fun stopUpdateIndicatorRefresh() {
         updateRefreshRunnable?.let(retryHandler::removeCallbacks)
         updateRefreshRunnable = null
+        updateStateRefreshRunnable?.let(retryHandler::removeCallbacks)
+        updateStateRefreshRunnable = null
         updateCheckRunnable?.let(retryHandler::removeCallbacks)
         updateCheckRunnable = null
     }
@@ -989,14 +994,21 @@ class OverlayController(private val service: BraiAccessibilityService) {
         }.also { retryHandler.postDelayed(it, OTA_INDICATOR_REFRESH_MS) }
     }
 
+    private fun scheduleUpdateIndicatorStateRefresh() {
+        updateStateRefreshRunnable?.let(retryHandler::removeCallbacks)
+        updateStateRefreshRunnable = Runnable {
+            otaManager.stateJson().let(::applyUpdateIndicatorState)
+            scheduleUpdateIndicatorStateRefresh()
+        }.also { retryHandler.postDelayed(it, OTA_STATE_REFRESH_MS) }
+    }
+
     private fun refreshUpdateIndicator(startCheck: Boolean) {
-        val manager = BraiOtaRegistry.getManager() ?: BraiOtaManager(service)
         if (startCheck) {
             updateCheckInProgress = true
             button?.setUpdateAvailable(false)
-            manager.checkForUpdatesAsync()
+            otaManager.checkForUpdatesAsync()
         }
-        settleUpdateIndicator(manager)
+        settleUpdateIndicator(otaManager)
     }
 
     private fun settleUpdateIndicator(manager: BraiOtaManager) {
@@ -1142,6 +1154,7 @@ class OverlayController(private val service: BraiAccessibilityService) {
         const val CONTEXT_ACTION_SUCCESS_MS = 1000L
         const val CONTEXT_ACTION_TERMINAL_MS = 800L
         const val OTA_INDICATOR_REFRESH_MS = 5 * 60 * 1000L
+        const val OTA_STATE_REFRESH_MS = 1000L
         const val OTA_CHECK_POLL_MS = 250L
         val contextActionSettingKeys = setOf(
             AppConstants.KEY_CONTEXT_ACTION_IDEA_ENABLED,
@@ -1161,6 +1174,12 @@ class OverlayController(private val service: BraiAccessibilityService) {
             AppConstants.KEY_ONBOARDING_VOICE_ONLY
         ) + contextActionSettingKeys
     }
+}
+
+internal fun failedAudioCount(snapshot: BraiCmdQueueSnapshot, action: ContextButtonAction? = null): Int = when (action) {
+    null -> snapshot.failedTransport.main + snapshot.failedTransport.unknown
+    ContextButtonAction.ScreenshotInbox -> 0
+    else -> snapshot.failedTransport[action]
 }
 
 internal fun secondaryCloseAlpha(progress: Float): Float =

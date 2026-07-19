@@ -39,15 +39,19 @@ class ScreenshotButtonViewTest {
     }
 
     @Test
-    fun queueBadgePrioritizesPendingAndTurnsGreenWhenOnlyReadyTextRemains() {
+    fun queueBadgeShowsOnlyFailedOrReadyCountsAndPrioritizesReadyText() {
         assertEquals(
-            QueueBadgeState(3, QueueBadgeTone.Pending),
-            resolveQueueBadgeState(pendingCount = 2, readyCount = 1)
+            QueueBadgeState(1, QueueBadgeTone.Ready),
+            resolveQueueBadgeState(failedCount = 2, readyCount = 1)
         )
         assertEquals(
             QueueBadgeState(2, QueueBadgeTone.Ready),
-            resolveQueueBadgeState(pendingCount = 0, readyCount = 2)
+            resolveQueueBadgeState(failedCount = 0, readyCount = 2)
         )
-        assertNull(resolveQueueBadgeState(pendingCount = 0, readyCount = 0))
+        assertEquals(
+            QueueBadgeState(2, QueueBadgeTone.Failed),
+            resolveQueueBadgeState(failedCount = 2, readyCount = 0)
+        )
+        assertNull(resolveQueueBadgeState(failedCount = 0, readyCount = 0))
     }
 }

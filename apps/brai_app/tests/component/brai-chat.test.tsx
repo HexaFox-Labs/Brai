@@ -120,6 +120,17 @@ describe("Brai chat client", () => {
     expect(screen.getAllByText("Последний чат")).toHaveLength(2);
   });
 
+  it("uses the rounded black onboarding-style action when no chat exists", async () => {
+    chatFixture.threads = [];
+    renderChat();
+
+    await waitFor(() => {
+      const emptyStateButton = screen.getAllByRole("button", { name: "Новый чат" })
+        .find((button) => button.classList.contains("!bg-black"));
+      expect(emptyStateButton).toHaveClass("rounded-full", "!bg-black", "!text-white");
+    });
+  });
+
   it("shows a focused new-chat launch state until the composer is ready", async () => {
     renderChat();
     await screen.findByTestId("copilot-chat");

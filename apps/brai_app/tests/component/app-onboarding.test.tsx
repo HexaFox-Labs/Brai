@@ -125,7 +125,7 @@ describe("BraiApp onboarding", () => {
     expect(document.documentElement.dataset.theme).toBe("dark");
   });
 
-  it("renders the first welcome cards without carousel arrow buttons", async () => {
+  it("renders the first welcome cards with an immediately available next button", async () => {
     vi.useFakeTimers();
     stubAndroidCapacitor();
     window.localStorage.removeItem(ONBOARDING_STORAGE_KEY);
@@ -151,11 +151,10 @@ describe("BraiApp onboarding", () => {
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Previous slide" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Next slide" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Начать" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Далее" })).toBeEnabled();
   });
 
-  it("shows the start button on the sixth welcome card", async () => {
-    vi.useFakeTimers();
+  it("continues immediately from the sixth welcome card", async () => {
     stubAndroidCapacitor();
     window.localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({
       complete: false,
@@ -169,15 +168,13 @@ describe("BraiApp onboarding", () => {
 
     render(<BraiApp />);
 
-    expect(screen.queryByRole("button", { name: "Начать" })).not.toBeInTheDocument();
-    act(() => vi.advanceTimersByTime(1999));
-    expect(screen.queryByRole("button", { name: "Начать" })).not.toBeInTheDocument();
-    act(() => vi.advanceTimersByTime(1));
-    vi.useRealTimers();
-    fireEvent.click(await screen.findByRole("button", { name: "Начать" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Далее" }));
     expect(screen.getByText("Как запускаем Brai?")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /С чистого листа/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Есть профиль/ })).toBeInTheDocument();
+    const choices = screen.getAllByRole("button").filter((button) => /С чистого листа|Есть профиль/.test(button.textContent ?? ""));
+    expect(choices.map((button) => button.textContent)).toEqual([
+      expect.stringContaining("Есть профиль"),
+      expect.stringContaining("С чистого листа"),
+    ]);
   });
 
   it("keeps self-hosted profiles unavailable and marks them as in development", async () => {
@@ -215,6 +212,8 @@ describe("BraiApp onboarding", () => {
 
     const input = await screen.findByRole("textbox", { name: "Имя" });
     const continueButton = screen.getByRole("button", { name: "Продолжить" });
+    expect(screen.getByText("Введите имя")).toBeInTheDocument();
+    expect(screen.getByText(/Имя будет использоваться для персонализации/)).toBeInTheDocument();
     expect(input).toHaveFocus();
     expect(input).toHaveAttribute("placeholder", "Только буквы и пробел");
     expect(continueButton).toBeDisabled();
@@ -346,7 +345,26 @@ describe("BraiApp onboarding", () => {
     expect(await screen.findByText("Brai CMD")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Далее" }));
     expect(await screen.findByText("Плавающие кнопки")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Пропустить" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ознакомиться" })).toBeInTheDocument();
+  });
+
+  it("skips floating button demos directly to Brai CMD setup", async () => {
+    stubAndroidCapacitor();
+    window.localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({
+      complete: false,
+      history: ["setup-start"],
+      name: "Брай",
+      path: "new",
+      profileVersion: "cloud",
+      step: "floating-buttons",
+      voiceMode: null,
+    }));
+
+    render(<BraiApp />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Пропустить" }));
+    expect(await screen.findByRole("heading", { name: "Давайте настроим Brai CMD" })).toBeInTheDocument();
   });
 
   it("explains all six Brai CMD floating buttons before special settings", async () => {

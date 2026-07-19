@@ -108,7 +108,7 @@ class OverlayInteractionStateTest {
     }
 
     @Test
-    fun queueIndicatorSeparatesPendingAndReadyItems() {
+    fun queueIndicatorIgnoresNormalTransportAndSeparatesFailedFromReadyItems() {
         val snapshot = BraiCmdQueueSnapshot(
             transport = QueueTransportCounts(
                 main = 1,
@@ -126,19 +126,12 @@ class OverlayInteractionStateTest {
             readyToInsert = QueueReadyToInsertCounts(mainDictation = 3, chatReply = 2)
         )
 
+        assertEquals(1, failedAudioCount(snapshot))
+        assertEquals(1, failedAudioCount(snapshot, ContextButtonAction.ChatContextInbox))
+        assertEquals(0, failedAudioCount(snapshot, ContextButtonAction.ScreenshotInbox))
         assertEquals(
-            QueueBadgeState(5, QueueBadgeTone.Pending),
-            resolveQueueBadgeState(
-                pendingCount = snapshot.transport.main + snapshot.transport.unknown,
-                readyCount = snapshot.readyToInsert.mainDictation
-            )
-        )
-        assertEquals(
-            QueueBadgeState(3, QueueBadgeTone.Pending),
-            resolveQueueBadgeState(
-                pendingCount = snapshot.transport[ContextButtonAction.ChatContextInbox],
-                readyCount = snapshot.readyToInsert.chatReply
-            )
+            QueueBadgeState(3, QueueBadgeTone.Ready),
+            resolveQueueBadgeState(failedCount = failedAudioCount(snapshot), readyCount = snapshot.readyToInsert.mainDictation)
         )
     }
 

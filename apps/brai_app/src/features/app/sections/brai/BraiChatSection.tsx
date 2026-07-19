@@ -474,7 +474,7 @@ export function BraiChatSection({
               draftStorageKey={`brai_chat_draft:${encodeURIComponent(userId ?? "anonymous")}:${encodeURIComponent(defaultApiBase() || "same-origin")}:${activeThread.id}`}
             />
           ) : (
-            <div className="grid h-full place-items-center px-6 text-center"><div><p className="text-sm text-muted-foreground">{status}</p>{!archived ? <Button type="button" className="mt-3" onClick={() => void createThread()}><Plus aria-hidden="true" />Новый чат</Button> : null}</div></div>
+            <div className="grid h-full place-items-center px-6 text-center"><div><p className="text-sm text-muted-foreground">{status}</p>{!archived ? <Button type="button" variant="outline" className="mt-3 rounded-full border-white/15 !bg-black px-5 !text-white shadow-none hover:!bg-black/90" onClick={() => void createThread()}><Plus aria-hidden="true" />Новый чат</Button> : null}</div></div>
           )}
           {startingNewThread ? (
             <div className="absolute inset-0 z-30 grid place-items-center bg-background px-6 text-center" role="status">

@@ -52,9 +52,11 @@ internal class OverlayGeometry(
     private val cancelSizePx: Int,
     private val cancelGapPx: Int
 ) {
-    fun defaultButtonX(): Int = visibleBounds().right - mainSizePx - service.dp(18)
+    fun defaultButtonX(): Int =
+        visibleBounds().let { centeredOverlayAxis(it.left, it.right, mainSizePx) }
 
-    fun defaultButtonY(): Int = visibleBounds().bottom - mainSizePx - service.dp(132)
+    fun defaultButtonY(): Int =
+        visibleBounds().let { centeredOverlayAxis(it.top, it.bottom, mainSizePx) }
 
     fun screenshotButtonX(buttonX: Int): Int {
         val bounds = visibleBounds().inset(service.dp(8))
@@ -135,6 +137,9 @@ internal class OverlayGeometry(
         return if (id == 0) 0 else service.resources.getDimensionPixelSize(id)
     }
 }
+
+internal fun centeredOverlayAxis(start: Int, end: Int, overlaySize: Int): Int =
+    start + ((end - start - overlaySize).coerceAtLeast(0) / 2)
 
 internal object RadialActionLayout {
     fun layout(
