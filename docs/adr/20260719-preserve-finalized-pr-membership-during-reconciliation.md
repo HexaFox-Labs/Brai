@@ -27,6 +27,10 @@ reconciliation исключает такой identity, даже если GitHub 
 `upsertGithubPullRequest` от конфликта между незавершёнными работами остаётся
 неизменной.
 
+Нормальный delivery trigger не меняется: production promotion запускается
+только штатным `push` в `main` через `Brai delivery`. Reconciliation устраняет
+лишь конфликт данных внутри уже запущенной promotion.
+
 ## Рассмотренные альтернативы
 
 - Переписать старый marker в GitHub: отклонено, потому что это меняет внешний
